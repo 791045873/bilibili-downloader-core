@@ -19,10 +19,9 @@ import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { DownloadEventType } from "@bilibili-downloader/core/events";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
 
 const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
-const OUTPUT_DIR = process.env.OUTPUT_DIR ?? join(homedir(), "bilibili-downloads");
+const OUTPUT_DIR = process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads");
 const COOKIE_FILE = process.env.COOKIE_FILE ?? "";
 const TASK_STORE_PATH = join(OUTPUT_DIR, ".tasks.json");
 

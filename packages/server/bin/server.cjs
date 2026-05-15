@@ -25072,9 +25072,8 @@ function formatTime(ms) {
 // dist/server.js
 var import_node_path7 = require("node:path");
 var import_node_crypto2 = require("node:crypto");
-var import_node_os2 = require("node:os");
 var PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
-var OUTPUT_DIR = process.env.OUTPUT_DIR ?? (0, import_node_path7.join)((0, import_node_os2.homedir)(), "bilibili-downloads");
+var OUTPUT_DIR = process.env.OUTPUT_DIR ?? (0, import_node_path7.join)(process.cwd(), "downloads");
 var COOKIE_FILE = process.env.COOKIE_FILE ?? "";
 var TASK_STORE_PATH = (0, import_node_path7.join)(OUTPUT_DIR, ".tasks.json");
 var tasks = /* @__PURE__ */ new Map();
