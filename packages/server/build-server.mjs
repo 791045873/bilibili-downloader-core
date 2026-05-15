@@ -4,13 +4,16 @@
  */
 
 import { execSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
 
 const outdir = "bin";
 mkdirSync(outdir, { recursive: true });
 
+// 将 HTML 复制到 dist 目录 (esbuild 从 dist/server.js 解析相对路径)
+copyFileSync("src/index.html", "dist/index.html");
+
 execSync(
-  `esbuild dist/server.js --bundle --platform=node --target=node18 --format=cjs --outfile=${outdir}/server.cjs --banner:js="#!/usr/bin/env node" --external:node:*`,
+  `esbuild dist/server.js --bundle --platform=node --target=node18 --format=cjs --outfile=${outdir}/server.cjs --banner:js="#!/usr/bin/env node" --external:node:* --loader:.html=text`,
   { stdio: "inherit" },
 );
 
