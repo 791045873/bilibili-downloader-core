@@ -1,0 +1,47 @@
+{
+  "name": "@bilibili-downloader/adapters",
+  "version": "0.0.1",
+  "description": "基础设施适配层 - B站API、HTTP下载器、ffmpeg、文件系统",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./bilibili": {
+      "import": "./dist/bilibili/index.js",
+      "types": "./dist/bilibili/index.d.ts"
+    },
+    "./bilibili-auth": {
+      "import": "./dist/bilibili-auth/index.js",
+      "types": "./dist/bilibili-auth/index.d.ts"
+    },
+    "./downloader": {
+      "import": "./dist/downloader/index.js",
+      "types": "./dist/downloader/index.d.ts"
+    },
+    "./ffmpeg": {
+      "import": "./dist/ffmpeg/index.js",
+      "types": "./dist/ffmpeg/index.d.ts"
+    },
+    "./fs": {
+      "import": "./dist/fs/index.js",
+      "types": "./dist/fs/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "dev": "tsc -b --watch",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@bilibili-downloader/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

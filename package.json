@@ -1,0 +1,17 @@
+{
+  "name": "bilibili-downloader-core",
+  "private": true,
+  "description": "Bilibili 下载引擎 - 可嵌入多种运行形态的核心下载能力",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "clean": "pnpm -r clean",
+    "dev": "pnpm -r dev",
+    "typecheck": "pnpm -r typecheck",
+    "download": "node packages/cli/dist/index.js download",
+    "login": "node packages/cli/dist/index.js login"
+  }
+}
