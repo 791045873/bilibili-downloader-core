@@ -11,6 +11,12 @@ export interface DownloadRequest {
   /** 是否下载字幕 */
   downloadSubtitle?: boolean;
 
+  /** 是否跳过已存在的输出文件，默认 true */
+  skipExisting?: boolean;
+
+  /** 文件名模板 */
+  fileNameTemplate?: string;
+
   /** 输出目录路径 */
   outputDir: string;
 
@@ -22,9 +28,6 @@ export interface DownloadRequest {
 
   /** 音频质量偏好，可选 */
   audioQuality?: number;
-
-  /** 自定义文件名模板，可选 */
-  fileNameTemplate?: string;
 
   /** Cookie 文件路径，用于携带登录态请求，可选 */
   cookieFile?: string;

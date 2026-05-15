@@ -45,6 +45,7 @@ export function createDownloadCommand(): Command {
     .option("--all-pages", "下载所有分 P", false)
     .option("--downloader <type>", "下载器 (http/aria2)", "http")
     .option("--subtitle", "下载字幕 (.srt)", false)
+    .option("--no-skip", "不跳过已存在的文件 (强制重新下载)", false)
     .option("--log-file <path>", "日志文件路径")
     .option("--task-store <path>", "任务记录文件", join(homedir(), ".bilibili-downloader", "tasks.json"))
     .action(async (input: string, options) => {
@@ -65,6 +66,7 @@ export function createDownloadCommand(): Command {
         cookieFile: options.cookieFile,
         keepTempOnFailure: options.keepTemp,
         downloadSubtitle: options.subtitle,
+        skipExisting: !options.noSkip,
       };
 
       // 加载 Cookie

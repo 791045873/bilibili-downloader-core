@@ -146,6 +146,32 @@ export class DownloadSingleVideoUseCase extends EventEmitter {
         ),
       };
 
+      // 计算最终输出文件路径
+      const outputFile = join(
+        request.outputDir,
+        `${plan.outputFileName}.mp4`,
+      );
+
+      // 检查是否跳过已存在的文件
+      const shouldSkip = request.skipExisting ?? true;
+      if (shouldSkip && (await this.deps.fileStore.exists(outputFile))) {
+        const fileSize = await this.deps.fileStore.getFileSize(outputFile);
+        const result: DownloadResult = {
+          status: TaskStatus.Completed,
+          outputFile,
+          fileSize,
+          errorCode: DownloadErrorCode.UNKNOWN_ERROR,
+          errorMessage: "文件已存在, 跳过下载",
+          timing: { totalMs: Date.now() - startTime, resolveMs, downloadMs: 0, mergeMs: 0 },
+        };
+        this.emitEvent({
+          type: DownloadEventType.TaskCompleted,
+          result,
+          status: TaskStatus.Completed,
+        });
+        return result;
+      }
+
       this.emitEvent({
         type: DownloadEventType.TaskResolved,
         request,
@@ -190,10 +216,6 @@ export class DownloadSingleVideoUseCase extends EventEmitter {
       this.emitEvent({ type: DownloadEventType.MergeProgress });
 
       const mergeStart = Date.now();
-      const outputFile = join(
-        request.outputDir,
-        `${plan.outputFileName}.mp4`,
-      );
       await this.deps.mediaMerger.merge(videoFile, audioFile, outputFile);
       mergeMs = Date.now() - mergeStart;
 
