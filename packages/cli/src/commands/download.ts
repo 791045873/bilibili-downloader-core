@@ -13,6 +13,7 @@ import { ResourceType } from "@bilibili-downloader/core/ports";
 import {
   createBilibiliApiAdapter,
   BilibiliFavoritesProvider,
+  BilibiliSubtitleProvider,
 } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliAuthProvider } from "@bilibili-downloader/adapters/bilibili-auth";
 import { HttpDownloader } from "@bilibili-downloader/adapters/downloader";
@@ -38,6 +39,7 @@ export function createDownloadCommand(): Command {
     .option("-p, --page <n>", "下载指定分 P (1-based)", parseInt)
     .option("--all-pages", "下载所有分 P", false)
     .option("--downloader <type>", "下载器 (http/aria2)", "http")
+    .option("--subtitle", "下载字幕 (.srt)", false)
     .action(async (input: string, options) => {
       const quality = Number.parseInt(options.quality, 10);
 
@@ -48,6 +50,7 @@ export function createDownloadCommand(): Command {
         videoCodec: options.codec,
         cookieFile: options.cookieFile,
         keepTempOnFailure: options.keepTemp,
+        downloadSubtitle: options.subtitle,
       };
 
       // 加载 Cookie
@@ -85,6 +88,7 @@ export function createDownloadCommand(): Command {
         mediaMerger: merger,
         fileStore,
         authProvider,
+        subtitleProvider: new BilibiliSubtitleProvider(api.webClient),
       };
 
       // 先解析输入，判断是单视频还是合集

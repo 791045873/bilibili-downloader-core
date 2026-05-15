@@ -14,6 +14,7 @@ import type { MediaDownloaderPort } from "../ports/MediaDownloaderPort.js";
 import type { MediaMergerPort } from "../ports/MediaMergerPort.js";
 import type { FileStorePort } from "../ports/FileStorePort.js";
 import type { AuthProviderPort } from "../ports/AuthProviderPort.js";
+import type { SubtitleProviderPort } from "../ports/SubtitleProviderPort.js";
 
 /**
  * 单视频下载用例依赖项
@@ -25,6 +26,7 @@ export interface DownloadSingleVideoDeps {
   mediaMerger: MediaMergerPort;
   fileStore: FileStorePort;
   authProvider?: AuthProviderPort;
+  subtitleProvider?: SubtitleProviderPort;
 }
 
 /**
@@ -194,6 +196,26 @@ export class DownloadSingleVideoUseCase extends EventEmitter {
       );
       await this.deps.mediaMerger.merge(videoFile, audioFile, outputFile);
       mergeMs = Date.now() - mergeStart;
+
+      // --- 字幕下载 (可选) ---
+      if (request.downloadSubtitle && this.deps.subtitleProvider) {
+        try {
+          const subtitles = await this.deps.subtitleProvider.fetchSubtitles(
+            parseResult.bvid,
+            cid,
+            cookieString,
+          );
+          if (subtitles.length > 0) {
+            const { writeFile } = await import("node:fs/promises");
+            for (const sub of subtitles) {
+              const srtFile = outputFile.replace(/\.mp4$/, `.${sub.langKey}.srt`);
+              await writeFile(srtFile, sub.srtContent, "utf-8");
+            }
+          }
+        } catch {
+          // 字幕下载失败不阻塞主流程
+        }
+      }
 
       // --- 阶段 6: 输出结果 ---
       const totalMs = Date.now() - startTime;

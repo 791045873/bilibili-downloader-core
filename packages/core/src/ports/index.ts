@@ -9,3 +9,4 @@ export * from "./MediaMergerPort.js";
 export * from "./FileStorePort.js";
 export * from "./AuthProviderPort.js";
 export * from "./FavoritesProviderPort.js";
+export * from "./SubtitleProviderPort.js";

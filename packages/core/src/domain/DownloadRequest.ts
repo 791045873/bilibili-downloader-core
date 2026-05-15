@@ -8,6 +8,9 @@ export interface DownloadRequest {
   /** 下载指定分 P (1-based)，不指定则下载第 1P */
   page?: number;
 
+  /** 是否下载字幕 */
+  downloadSubtitle?: boolean;
+
   /** 输出目录路径 */
   outputDir: string;
 
