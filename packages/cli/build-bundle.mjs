@@ -1,18 +1,25 @@
 /**
  * 打包 CLI 为单文件可执行脚本
- * 需要全局安装 esbuild: npm install -g esbuild
  */
 
-import { execSync } from "node:child_process";
+import * as esbuild from "esbuild";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const outdir = "bin";
 mkdirSync(outdir, { recursive: true });
 
-execSync(
-  `esbuild dist/index.js --bundle --platform=node --target=node18 --format=cjs --outfile=${outdir}/bili-dl.cjs --banner:js="#!/usr/bin/env node" --external:node:*`,
-  { stdio: "inherit" },
-);
+await esbuild.build({
+  entryPoints: ["dist/index.js"],
+  bundle: true,
+  platform: "node",
+  target: "node18",
+  format: "cjs",
+  outfile: `${outdir}/bili-dl.cjs`,
+  banner: { js: "#!/usr/bin/env node" },
+  external: ["node:*"],
+  minify: false,
+  sourcemap: false,
+});
 
 // 修复双 shebang
 let content = readFileSync(`${outdir}/bili-dl.cjs`, "utf-8");

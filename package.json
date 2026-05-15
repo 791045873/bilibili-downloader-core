@@ -17,5 +17,8 @@
     "setup": "pnpm --filter @bilibili-downloader/cli start:install",
     "docker:build": "pnpm --filter @bilibili-downloader/server docker:build",
     "docker:run": "pnpm --filter @bilibili-downloader/server docker:run"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   }
 }
