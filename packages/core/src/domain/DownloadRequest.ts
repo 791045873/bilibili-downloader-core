@@ -5,6 +5,9 @@ export interface DownloadRequest {
   /** 输入资源标识: BV/AV/URL */
   input: string;
 
+  /** 下载指定分 P (1-based)，不指定则下载第 1P */
+  page?: number;
+
   /** 输出目录路径 */
   outputDir: string;
 

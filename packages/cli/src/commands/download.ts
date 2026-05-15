@@ -34,6 +34,8 @@ export function createDownloadCommand(): Command {
     .option("-c, --codec <codec>", "视频编码偏好 (avc/hevc/av1)")
     .option("--cookie-file <path>", "Cookie 文件路径")
     .option("--keep-temp", "失败时保留临时文件", false)
+    .option("-p, --page <n>", "下载指定分 P (1-based)", parseInt)
+    .option("--all-pages", "下载所有分 P", false)
     .action(async (input: string, options) => {
       const quality = Number.parseInt(options.quality, 10);
 
@@ -104,55 +106,75 @@ export function createDownloadCommand(): Command {
 
         await batchUseCase.execute(parseResult.mediaId, baseRequest, cookieString);
       } else {
-        // === 单视频下载 ===
-        const useCase = new DownloadSingleVideoUseCase(commonDeps);
+        // === 单视频下载 (支持分 P) ===
+        // 创建事件监听工厂
+        const createListeners = (useCase: DownloadSingleVideoUseCase, label: string) => {
+          useCase.on(DownloadEventType.TaskStarted, () => {
+            console.log(`\n${label}`);
+            if (cookieString) console.log("  使用登录 Cookie");
+          });
+          useCase.on(DownloadEventType.TaskResolved, (event) => {
+            console.log(`  标题: ${event.plan.title}`);
+          });
+          useCase.on(DownloadEventType.StreamSelected, (event) => {
+            console.log(`  视频流: ${event.videoCodec}`);
+            console.log(`  音频流: ${event.audioCodec}`);
+          });
+          useCase.on(DownloadEventType.DownloadProgress, (event) => {
+            const pct = String(event.percentage).padStart(3);
+            process.stdout.write(
+              `\r  进度: ${pct}% | ${formatBytes(event.downloadedBytes)} / ${formatBytes(event.totalBytes)} | ${formatSpeed(event.speedBytesPerSec)}    `,
+            );
+          });
+          useCase.on(DownloadEventType.MergeProgress, () => {
+            console.log("\n  合并音视频...");
+          });
+          useCase.on(DownloadEventType.TaskCompleted, (event) => {
+            console.log(`\n  ✅ 完成: ${formatBytes(event.result.fileSize ?? 0)} (${formatTime(event.result.timing?.totalMs ?? 0)})`);
+          });
+          useCase.on(DownloadEventType.TaskFailed, (event) => {
+            console.log(`\n  ❌ 失败: [${event.result.errorCode}] ${event.result.errorMessage}`);
+          });
+        };
 
-        useCase.on(DownloadEventType.TaskStarted, () => {
-          console.log(`\n开始下载: ${input}`);
-          if (cookieString) console.log("  使用登录 Cookie");
-        });
+        if (options.allPages) {
+          // 下载所有分 P: 先获取页数，再逐一下载
+          const videoInfo = await api.streamProvider.getVideoInfo(parseResult.bvid);
+          const totalPages = videoInfo.pages.length;
+          console.log(`\n多 P 视频: 共 ${totalPages} 个分 P`);
 
-        useCase.on(DownloadEventType.TaskResolved, (event) => {
-          console.log(`  标题: ${event.plan.title}`);
-        });
+          let completed = 0;
+          for (let i = 0; i < totalPages; i++) {
+            const pageNum = i + 1;
+            const pageName = videoInfo.pages[i].title;
+            const label = `[${pageNum}/${totalPages}] ${pageName}`;
 
-        useCase.on(DownloadEventType.StreamSelected, (event) => {
-          console.log(`  视频流: ${event.videoCodec}`);
-          console.log(`  音频流: ${event.audioCodec}`);
-        });
+            const pageUseCase = new DownloadSingleVideoUseCase(commonDeps);
+            createListeners(pageUseCase, label);
 
-        useCase.on(DownloadEventType.DownloadProgress, (event) => {
-          const pct = String(event.percentage).padStart(3);
-          process.stdout.write(
-            `\r  进度: ${pct}% | ${formatBytes(event.downloadedBytes)} / ${formatBytes(event.totalBytes)} | ${formatSpeed(event.speedBytesPerSec)}    `,
-          );
-        });
+            const result = await pageUseCase.execute({
+              ...baseRequest,
+              page: pageNum,
+            });
+            if (result.status === TaskStatus.Completed) completed++;
+          }
+          console.log(`\n全部分 P 下载完成: ${completed}/${totalPages} 成功`);
+        } else {
+          // 单分 P 下载 (默认 P1，或用 --page 指定)
+          const useCase = new DownloadSingleVideoUseCase(commonDeps);
+          createListeners(useCase, `开始下载: ${input}`);
 
-        useCase.on(DownloadEventType.MergeProgress, () => {
-          console.log("\n  合并音视频...");
-        });
+          process.on("SIGINT", () => {
+            console.log("\n  正在取消...");
+            useCase.cancel();
+          });
 
-        useCase.on(DownloadEventType.TaskCompleted, (event) => {
-          console.log(`\n\n下载完成!`);
-          console.log(`  文件: ${event.result.outputFile}`);
-          console.log(`  大小: ${formatBytes(event.result.fileSize ?? 0)}`);
-          console.log(`  耗时: ${formatTime(event.result.timing?.totalMs ?? 0)}`);
-        });
+          const request = options.page
+            ? { ...baseRequest, page: options.page }
+            : baseRequest;
 
-        useCase.on(DownloadEventType.TaskFailed, (event) => {
-          console.error(
-            `\n\n下载失败: [${event.result.errorCode}] ${event.result.errorMessage}`,
-          );
-        });
-
-        process.on("SIGINT", () => {
-          console.log("\n  正在取消...");
-          useCase.cancel();
-        });
-
-        const result = await useCase.execute(baseRequest);
-        if (result.status === TaskStatus.Failed) {
-          process.exit(1);
+          const result = await useCase.execute(request);
+          if (result.status === TaskStatus.Failed) process.exit(1);
         }
       }
     });

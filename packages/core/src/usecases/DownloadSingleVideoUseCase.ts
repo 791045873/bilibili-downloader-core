@@ -88,17 +88,22 @@ export class DownloadSingleVideoUseCase extends EventEmitter {
         parseResult.bvid,
       );
 
-      // 使用第一个分 P 的 cid
-      const firstPage = videoInfo.pages[0];
-      if (!firstPage) {
+      // 选择分 P: 默认第 1P，可通过 request.page 指定
+      const targetPageIndex = (request.page ?? 1) - 1; // 转为 0-based
+      const targetPage = videoInfo.pages[targetPageIndex];
+
+      if (!targetPage) {
         return this.failResult(
           DownloadErrorCode.RESOURCE_NOT_FOUND,
-          "该视频无分 P 信息",
+          `分 P ${targetPageIndex + 1} 不存在 (共 ${videoInfo.pages.length}P)`,
           startTime,
         );
       }
 
-      const cid = firstPage.cid;
+      const cid = targetPage.cid;
+      const pageSuffix =
+        videoInfo.pages.length > 1 ? ` P${targetPageIndex + 1}` : "";
+      const fullTitle = `${videoInfo.title}${pageSuffix}`;
 
       // --- 阶段 3: 获取播放流 + 选择流 ---
       const playStreams = await this.deps.streamProvider.getPlayStreams({
@@ -130,11 +135,11 @@ export class DownloadSingleVideoUseCase extends EventEmitter {
       const plan: DownloadPlan = {
         bvid: parseResult.bvid,
         cid,
-        title: videoInfo.title,
+        title: fullTitle,
         videoStream,
         audioStream,
         outputFileName: this.buildFileName(
-          videoInfo.title,
+          fullTitle,
           request.fileNameTemplate ?? "{title}",
         ),
       };

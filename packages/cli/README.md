@@ -15,12 +15,12 @@ pnpm build
 
 ```bash
 # 单视频
-pnpm download "BV11z536jELv"
-pnpm download "https://www.bilibili.com/video/BV11z536jELv/"
+pnpm run download "BV11z536jELv"
+pnpm run download "https://www.bilibili.com/video/BV11z536jELv/"
 
 # 合集/收藏夹
-pnpm download "ml1329019876"
-pnpm download "https://www.bilibili.com/list/ml1329019876"
+pnpm run download "ml1329019876"
+pnpm run download "https://www.bilibili.com/list/ml1329019876"
 ```
 
 | 参数 | 说明 | 默认值 |
@@ -35,7 +35,7 @@ pnpm download "https://www.bilibili.com/list/ml1329019876"
 ### 登录
 
 ```bash
-pnpm login
+pnpm run login
 ```
 
 终端显示二维码，使用 Bilibili 手机客户端扫码登录。Cookie 保存在 `~/.bilibili-downloader/cookies.json`。
