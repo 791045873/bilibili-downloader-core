@@ -20,7 +20,6 @@ import { DownloadEventType } from "@bilibili-downloader/core/events";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import HTML_PAGE from "./index.html";
 
 const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
 const OUTPUT_DIR = process.env.OUTPUT_DIR ?? join(homedir(), "bilibili-downloads");
@@ -69,7 +68,10 @@ async function main() {
   const app = express();
   app.use(express.json());
 
-  app.get("/", (_req, res) => res.type("html").send(HTML_PAGE));
+  app.get("/", (_req, res) => {
+    const htmlPath = join(process.cwd(), "index.html");
+    res.sendFile(htmlPath);
+  });
 
   app.post("/api/download", async (req, res) => {
     const { input, quality, codec } = req.body;

@@ -11,6 +11,7 @@ RUN apk add --no-cache ffmpeg
 WORKDIR /app
 
 COPY packages/server/bin/server.cjs ./server.cjs
+COPY packages/server/src/index.html ./index.html
 
 EXPOSE 3000
 
