@@ -67,11 +67,7 @@ async function main() {
 
   const app = express();
   app.use(express.json());
-
-  app.get("/", (_req, res) => {
-    const htmlPath = join(process.cwd(), "index.html");
-    res.sendFile(htmlPath);
-  });
+  app.use(express.static(process.cwd()));
 
   app.post("/api/download", async (req, res) => {
     const { input, quality, codec } = req.body;

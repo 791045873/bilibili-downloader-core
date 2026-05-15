@@ -25098,10 +25098,7 @@ async function main() {
   };
   const app = (0, import_express.default)();
   app.use(import_express.default.json());
-  app.get("/", (_req, res) => {
-    const htmlPath = (0, import_node_path7.join)(process.cwd(), "index.html");
-    res.sendFile(htmlPath);
-  });
+  app.use(import_express.default.static(process.cwd()));
   app.post("/api/download", async (req, res) => {
     const { input, quality, codec } = req.body;
     if (!input)
