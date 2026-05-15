@@ -1,18 +1,12 @@
 {
-  "name": "@bilibili-downloader/cli",
+  "name": "@bilibili-downloader/server",
   "version": "0.0.1",
-  "description": "CLI 运行时入口 - 命令行下载工具",
+  "description": "Docker Web 服务器 - Bilibili 下载器管理界面",
   "type": "module",
-  "main": "./dist/index.js",
-  "bin": {
-    "bili-dl": "./bin/bili-dl.cjs"
-  },
-  "files": [
-    "bin/bili-dl.cjs"
-  ],
+  "main": "./dist/server.js",
   "scripts": {
     "build": "tsc -b",
-    "build:bundle": "node build-bundle.mjs",
+    "build:bundle": "node build-server.mjs",
     "clean": "tsc -b --clean && rm -rf bin",
     "dev": "tsc -b --watch",
     "typecheck": "tsc -b"
@@ -20,13 +14,11 @@
   "dependencies": {
     "@bilibili-downloader/adapters": "workspace:*",
     "@bilibili-downloader/core": "workspace:*",
-    "commander": "^13.1.0",
-    "qrcode-terminal": "^0.12.0"
+    "express": "^5.2.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
-    "@types/qrcode-terminal": "^0.12.2",
-    "tsx": "^4.21.0",
     "typescript": "^5.7.0"
   }
 }

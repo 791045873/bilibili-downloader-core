@@ -15,7 +15,7 @@
     "login-bili": "node packages/cli/dist/index.js login",
     "history": "node packages/cli/dist/index.js history",
     "setup": "node packages/cli/dist/index.js install",
-    "docker:build": "cd packages/cli && node build-server.mjs && cd ../.. && docker build -t bilibili-downloader .",
-    "docker:run": "docker run -p 3000:3000 -v ./downloads:/downloads bilibili-downloader"
+    "docker:build": "cd packages/server && node build-server.mjs && cd ../.. && docker build -t bilibili-downloader .",
+    "docker:run": "docker run -d -p 3000:3000 -v ./downloads:/downloads bilibili-downloader"
   }
 }
