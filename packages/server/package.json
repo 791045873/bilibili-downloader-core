@@ -10,6 +10,7 @@
     "clean": "tsc -b --clean && rm -rf bin",
     "dev": "tsc -b --watch",
     "typecheck": "tsc -b",
+    "start": "node bin/server.cjs",
     "docker:build": "pnpm build:bundle && docker build -t bilibili-downloader .",
     "docker:run": "docker run -d -p 3000:3000 -v C:/Users/79104/Downloads:/downloads bilibili-downloader"
   },

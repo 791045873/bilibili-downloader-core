@@ -18788,7 +18788,7 @@ var require_view = __commonJS({
     var debug = require_src()("express:view");
     var path = require("node:path");
     var fs = require("node:fs");
-    var dirname4 = path.dirname;
+    var dirname5 = path.dirname;
     var basename = path.basename;
     var extname = path.extname;
     var join5 = path.join;
@@ -18827,7 +18827,7 @@ var require_view = __commonJS({
       for (var i = 0; i < roots.length && !path2; i++) {
         var root = roots[i];
         var loc = resolve(root, name);
-        var dir = dirname4(loc);
+        var dir = dirname5(loc);
         var file = basename(loc);
         path2 = this.resolve(dir, file);
       }
@@ -25075,6 +25075,7 @@ var import_node_crypto2 = require("node:crypto");
 var PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
 var OUTPUT_DIR = process.env.OUTPUT_DIR ?? (0, import_node_path7.join)(process.cwd(), "downloads");
 var COOKIE_FILE = process.env.COOKIE_FILE ?? "";
+var STATIC_DIR = (0, import_node_path7.dirname)(process.argv[1]);
 var TASK_STORE_PATH = (0, import_node_path7.join)(OUTPUT_DIR, ".tasks.json");
 var tasks = /* @__PURE__ */ new Map();
 var taskStore = new TaskStore(TASK_STORE_PATH);
@@ -25097,7 +25098,7 @@ async function main() {
   };
   const app = (0, import_express.default)();
   app.use(import_express.default.json());
-  app.use(import_express.default.static(process.cwd()));
+  app.use(import_express.default.static(STATIC_DIR));
   app.post("/api/download", async (req, res) => {
     const { input, quality, codec } = req.body;
     if (!input)

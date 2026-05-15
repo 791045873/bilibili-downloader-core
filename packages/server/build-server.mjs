@@ -3,7 +3,7 @@
  */
 
 import * as esbuild from "esbuild";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
 
 const outdir = "bin";
 mkdirSync(outdir, { recursive: true });
@@ -28,5 +28,9 @@ if (content.startsWith(shebang + "\n" + shebang)) {
   content = content.slice(shebang.length + 1);
   writeFileSync(`${outdir}/server.cjs`, content);
 }
+
+// 复制 HTML 到 bin 目录，确保启动时能找到
+copyFileSync("src/index.html", `${outdir}/index.html`);
+copyFileSync("src/index.html", "dist/index.html");
 
 console.log(`✅ Web 服务器已打包为 bin/server.cjs`);

@@ -17,12 +17,13 @@ import { DownloadFavoritesUseCase } from "@bilibili-downloader/core/usecases";
 import { ResourceType } from "@bilibili-downloader/core/ports";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { DownloadEventType } from "@bilibili-downloader/core/events";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
 const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
 const OUTPUT_DIR = process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads");
 const COOKIE_FILE = process.env.COOKIE_FILE ?? "";
+const STATIC_DIR = dirname(process.argv[1]);
 const TASK_STORE_PATH = join(OUTPUT_DIR, ".tasks.json");
 
 interface TaskEntry {
@@ -66,7 +67,7 @@ async function main() {
 
   const app = express();
   app.use(express.json());
-  app.use(express.static(process.cwd()));
+  app.use(express.static(STATIC_DIR));
 
   app.post("/api/download", async (req, res) => {
     const { input, quality, codec } = req.body;
