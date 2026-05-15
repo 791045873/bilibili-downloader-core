@@ -7,7 +7,7 @@ import {
   DownloadSingleVideoUseCase,
   DownloadFavoritesUseCase,
 } from "@bilibili-downloader/core/usecases";
-import type { DownloadRequest } from "@bilibili-downloader/core/domain";
+import type { DownloadRequest, DownloadResult } from "@bilibili-downloader/core/domain";
 import { DownloadEventType } from "@bilibili-downloader/core/events";
 import { ResourceType } from "@bilibili-downloader/core/ports";
 import {
@@ -21,6 +21,11 @@ import { Aria2Downloader } from "@bilibili-downloader/adapters/downloader";
 import { FfmpegMerger } from "@bilibili-downloader/adapters/ffmpeg";
 import { NodeFileStore } from "@bilibili-downloader/adapters/fs";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
+import { Logger } from "@bilibili-downloader/adapters/logger";
+import { TaskStore } from "@bilibili-downloader/adapters/task-store";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 export function createDownloadCommand(): Command {
   return new Command("download")
@@ -40,8 +45,17 @@ export function createDownloadCommand(): Command {
     .option("--all-pages", "下载所有分 P", false)
     .option("--downloader <type>", "下载器 (http/aria2)", "http")
     .option("--subtitle", "下载字幕 (.srt)", false)
+    .option("--log-file <path>", "日志文件路径")
+    .option("--task-store <path>", "任务记录文件", join(homedir(), ".bilibili-downloader", "tasks.json"))
     .action(async (input: string, options) => {
+      const startTime = Date.now();
       const quality = Number.parseInt(options.quality, 10);
+
+      // 初始化日志
+      const log = options.logFile
+        ? new Logger({ filePath: options.logFile })
+        : undefined;
+      const taskStore = new TaskStore(options.taskStore);
 
       const baseRequest: DownloadRequest = {
         input,
@@ -185,9 +199,36 @@ export function createDownloadCommand(): Command {
 
           const result = await useCase.execute(request);
           if (result.status === TaskStatus.Failed) process.exit(1);
+
+          await saveTaskRecord(taskStore, {
+            request: request,
+            result,
+            startTime,
+          }, log);
         }
       }
     });
+}
+
+async function saveTaskRecord(
+  store: TaskStore,
+  info: { request: DownloadRequest; result: DownloadResult; startTime: number },
+  log?: Logger,
+): Promise<void> {
+  try {
+    await store.save({
+      id: randomUUID(),
+      request: info.request,
+      status: info.result.status,
+      outputFile: info.result.outputFile,
+      errorMessage: info.result.errorMessage,
+      createdAt: new Date(info.startTime).toISOString(),
+      completedAt: new Date().toISOString(),
+      durationMs: info.result.timing?.totalMs,
+    });
+  } catch (err) {
+    log?.error("保存任务记录失败:", (err as Error).message);
+  }
 }
 
 function formatBytes(bytes: number): string {

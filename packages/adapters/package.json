@@ -29,6 +29,14 @@
     "./fs": {
       "import": "./dist/fs/index.js",
       "types": "./dist/fs/index.d.ts"
+    },
+    "./logger": {
+      "import": "./dist/logger.js",
+      "types": "./dist/logger.d.ts"
+    },
+    "./task-store": {
+      "import": "./dist/task-store.js",
+      "types": "./dist/task-store.d.ts"
     }
   },
   "scripts": {
