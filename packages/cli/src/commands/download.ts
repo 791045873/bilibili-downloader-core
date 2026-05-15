@@ -16,6 +16,7 @@ import {
 } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliAuthProvider } from "@bilibili-downloader/adapters/bilibili-auth";
 import { HttpDownloader } from "@bilibili-downloader/adapters/downloader";
+import { Aria2Downloader } from "@bilibili-downloader/adapters/downloader";
 import { FfmpegMerger } from "@bilibili-downloader/adapters/ffmpeg";
 import { NodeFileStore } from "@bilibili-downloader/adapters/fs";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
@@ -36,6 +37,7 @@ export function createDownloadCommand(): Command {
     .option("--keep-temp", "失败时保留临时文件", false)
     .option("-p, --page <n>", "下载指定分 P (1-based)", parseInt)
     .option("--all-pages", "下载所有分 P", false)
+    .option("--downloader <type>", "下载器 (http/aria2)", "http")
     .action(async (input: string, options) => {
       const quality = Number.parseInt(options.quality, 10);
 
@@ -63,7 +65,11 @@ export function createDownloadCommand(): Command {
 
       // 组装适配器
       const api = createBilibiliApiAdapter(cookieString);
-      const downloader = new HttpDownloader();
+      // 选择下载器
+      const downloader =
+        options.downloader === "aria2"
+          ? new Aria2Downloader()
+          : new HttpDownloader();
       const merger = new FfmpegMerger();
       const fileStore = new NodeFileStore();
 
