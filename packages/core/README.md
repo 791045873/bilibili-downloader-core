@@ -7,9 +7,24 @@ Bilibili 下载引擎核心域层。定义领域模型、端口接口、用例�
 | 目录 | 说明 |
 |---|---|
 | `domain/` | 领域模型: `DownloadRequest`, `DownloadPlan`, `DownloadResult`, `TaskStatus` |
-| `ports/` | 可替换接口: `ResourceParserPort`, `StreamProviderPort`, `MediaDownloaderPort`, `MediaMergerPort`, `FileStorePort`, `AuthProviderPort`, `FavoritesProviderPort` |
+| `ports/` | 可替换接口: `ResourceParserPort`, `StreamProviderPort`, `MediaDownloaderPort`, `MediaMergerPort`, `FileStorePort`, `AuthProviderPort`, `FavoritesProviderPort`, `SubtitleProviderPort` |
 | `events/` | 领域事件: 8 种下载事件类型 (TaskStarted → TaskCompleted/Failed) |
 | `usecases/` | 用例编排: `DownloadSingleVideoUseCase`, `DownloadFavoritesUseCase` |
+
+### DownloadRequest 字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `input` | `string` | 输入标识 (BV/AV/URL) |
+| `outputDir` | `string` | 输出目录 |
+| `quality` | `number?` | 清晰度 qn 值 |
+| `videoCodec` | `string?` | 编码偏好 (avc/hevc/av1) |
+| `audioQuality` | `number?` | 音频质量 |
+| `cookieFile` | `string?` | Cookie 文件路径 |
+| `keepTempOnFailure` | `boolean?` | 失败时保留临时文件 |
+| `page` | `number?` | 指定分 P (1-based) |
+| `downloadSubtitle` | `boolean?` | 是否下载字幕 |
+| `fileNameTemplate` | `string?` | 文件名模板 |
 
 ## 设计原则
 
@@ -89,6 +104,34 @@ await batchUseCase.execute(
   { outputDir: "./downloads", quality: 80 },
   cookieString,         // 可选 Cookie (用于私密收藏夹)
 );
+```
+
+### 分 P 下载
+
+```ts
+// 下载指定分 P
+await useCase.execute({
+  input: "BV11z536jELv",
+  outputDir: "./downloads",
+  page: 3,              // 下载第 3P
+});
+
+// 批量下载所有分 P (CLI 通过 --all-pages 实现，内部分次调用单 P UseCase)
+```
+
+### 字幕下载
+
+```ts
+const useCase = new DownloadSingleVideoUseCase({
+  ...commonDeps,
+  subtitleProvider,     // SubtitleProviderPort 实现 (可选)
+});
+
+await useCase.execute({
+  input: "BV11z536jELv",
+  outputDir: "./downloads",
+  downloadSubtitle: true, // 下载字幕为 .srt 文件
+});
 ```
 
 ### 事件类型
