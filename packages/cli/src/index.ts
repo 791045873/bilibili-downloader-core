@@ -7,6 +7,7 @@ import { Command } from "commander";
 import { createDownloadCommand } from "./commands/download.js";
 import { createLoginCommand } from "./commands/login.js";
 import { createHistoryCommand } from "./commands/history.js";
+import { createInstallCommand } from "./commands/install.js";
 
 const program = new Command();
 
@@ -18,5 +19,6 @@ program
 program.addCommand(createDownloadCommand());
 program.addCommand(createLoginCommand());
 program.addCommand(createHistoryCommand());
+program.addCommand(createInstallCommand());
 
 program.parse();
