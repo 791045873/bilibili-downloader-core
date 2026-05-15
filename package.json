@@ -11,11 +11,11 @@
     "clean": "pnpm -r clean",
     "dev": "pnpm -r dev",
     "typecheck": "pnpm -r typecheck",
-    "download": "node packages/cli/dist/index.js download",
-    "login-bili": "node packages/cli/dist/index.js login",
-    "history": "node packages/cli/dist/index.js history",
-    "setup": "node packages/cli/dist/index.js install",
-    "docker:build": "cd packages/server && node build-server.mjs && cd ../.. && docker build -t bilibili-downloader .",
-    "docker:run": "docker run -d -p 3000:3000 -v ./downloads:/downloads bilibili-downloader"
+    "download": "pnpm --filter @bilibili-downloader/cli start:download",
+    "login-bili": "pnpm --filter @bilibili-downloader/cli start:login",
+    "history": "pnpm --filter @bilibili-downloader/cli start:history",
+    "setup": "pnpm --filter @bilibili-downloader/cli start:install",
+    "docker:build": "pnpm --filter @bilibili-downloader/server docker:build",
+    "docker:run": "pnpm --filter @bilibili-downloader/server docker:run"
   }
 }

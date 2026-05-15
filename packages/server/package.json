@@ -9,7 +9,9 @@
     "build:bundle": "node build-server.mjs",
     "clean": "tsc -b --clean && rm -rf bin",
     "dev": "tsc -b --watch",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "docker:build": "pnpm build:bundle && docker build -t bilibili-downloader .",
+    "docker:run": "docker run -d -p 3000:3000 -v ./downloads:/downloads bilibili-downloader"
   },
   "dependencies": {
     "@bilibili-downloader/adapters": "workspace:*",

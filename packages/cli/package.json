@@ -15,7 +15,11 @@
     "build:bundle": "node build-bundle.mjs",
     "clean": "tsc -b --clean && rm -rf bin",
     "dev": "tsc -b --watch",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "start:download": "node dist/index.js download",
+    "start:login": "node dist/index.js login",
+    "start:history": "node dist/index.js history",
+    "start:install": "node dist/index.js install"
   },
   "dependencies": {
     "@bilibili-downloader/adapters": "workspace:*",
