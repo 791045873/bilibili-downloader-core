@@ -12,7 +12,7 @@
     "dev": "pnpm -r dev",
     "typecheck": "pnpm -r typecheck",
     "download": "node packages/cli/dist/index.js download",
-    "login": "node packages/cli/dist/index.js login",
+    "login-bili": "node packages/cli/dist/index.js login",
     "history": "node packages/cli/dist/index.js history",
     "setup": "node packages/cli/dist/index.js install"
   }

@@ -47,7 +47,7 @@ pnpm download "BV11z536jELv" -p 3
 ### 登录
 
 ```bash
-pnpm login
+pnpm login-bili
 ```
 
 终端显示二维码，使用 Bilibili 手机客户端扫码登录。Cookie 保存在 `~/.bilibili-downloader/cookies.json`。
