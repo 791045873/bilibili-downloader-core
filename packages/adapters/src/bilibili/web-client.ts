@@ -1,7 +1,7 @@
 /**
  * Bilibili HTTP 客户端
  *
- * 封装 Cookie 注入、重试、通用请求头
+ * 封装 Cookie 注入、buvid 设备指纹、重试、通用请求头
  * 参考: downkyicore/DownKyi.Core/BiliApi/WebClient.cs
  */
 
@@ -21,17 +21,66 @@ export interface BilibiliWebClient {
   setCookieString(cookieString: string | undefined): void;
 }
 
+/** buvid 指纹 SPI 端点 */
+const SPI_URL = `${BILI_API_BASE}/x/frontend/finger/spi`;
+
 export function createBilibiliWebClient(
   options?: { cookieString?: string; maxRetries?: number },
 ): BilibiliWebClient {
   let cookieString = options?.cookieString;
   const maxRetries = options?.maxRetries ?? 2;
 
+  // buvid 设备指纹缓存
+  let buvid3: string | undefined;
+  let buvid4: string | undefined;
+  let buvidPromise: Promise<void> | null = null;
+
+  /** 懒加载 buvid 设备指纹 */
+  async function initBuvid(): Promise<void> {
+    if (buvid3 !== undefined) return;
+    if (buvidPromise) {
+      await buvidPromise;
+      return;
+    }
+
+    buvidPromise = (async () => {
+      try {
+        const response = await fetch(SPI_URL, {
+          headers: DEFAULT_HEADERS,
+        });
+        const data = await response.json() as {
+          code: number;
+          data?: { b_3?: string; b_4?: string };
+        };
+        buvid3 = data.data?.b_3;
+        buvid4 = data.data?.b_4;
+      } catch {
+        // buvid 获取失败不阻塞主流程
+        buvid3 = "";
+        buvid4 = "";
+      }
+    })();
+
+    await buvidPromise;
+  }
+
   function getHeaders(extraCookie?: string): Record<string, string> {
     const headers = { ...DEFAULT_HEADERS };
+
+    // 合并 Cookie: 登录 cookie + buvid 设备指纹
+    const cookies: string[] = [];
     const effectiveCookie = extraCookie ?? cookieString;
     if (effectiveCookie) {
-      headers["Cookie"] = effectiveCookie;
+      cookies.push(effectiveCookie);
+    }
+    if (buvid3) {
+      cookies.push(`buvid3=${encodeURIComponent(buvid3)}`);
+    }
+    if (buvid4) {
+      cookies.push(`buvid4=${encodeURIComponent(buvid4)}`);
+    }
+    if (cookies.length > 0) {
+      headers["Cookie"] = cookies.join("; ");
     }
     return headers;
   }
@@ -41,6 +90,11 @@ export function createBilibiliWebClient(
     init: RequestInit,
     retries: number,
   ): Promise<Response> {
+    // 非 SPI 请求时，确保 buvid 已初始化
+    if (url !== SPI_URL) {
+      await initBuvid();
+    }
+
     for (let i = 0; i <= retries; i++) {
       try {
         const response = await fetch(url, init);

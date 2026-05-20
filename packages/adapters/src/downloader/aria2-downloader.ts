@@ -78,8 +78,6 @@ export class Aria2Downloader implements MediaDownloaderPort {
           if (status.status === "complete") {
             if (params.onProgress) {
               params.onProgress({
-                downloadedBytes: Number.parseInt(status.totalLength),
-                totalBytes: Number.parseInt(status.totalLength),
                 speedBytesPerSec: 0,
                 percentage: 100,
               });
@@ -104,8 +102,6 @@ export class Aria2Downloader implements MediaDownloaderPort {
             const total = Number.parseInt(status.totalLength);
             const speed = Number.parseInt(status.downloadSpeed);
             params.onProgress({
-              downloadedBytes: downloaded,
-              totalBytes: total,
               speedBytesPerSec: speed,
               percentage: total > 0 ? Math.round((downloaded / total) * 100) : 0,
             });

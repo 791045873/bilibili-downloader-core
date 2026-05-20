@@ -1,7 +1,0 @@
-node_modules/
-*.tsbuildinfo
-docs/
-downloads/
-.git/
-*.log
-# 不忽略 bin/ (打包产物) 和 src/index.html

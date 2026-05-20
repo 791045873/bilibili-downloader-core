@@ -3,11 +3,8 @@
  */
 
 import { Command } from "commander";
-import {
-  DownloadSingleVideoUseCase,
-  DownloadFavoritesUseCase,
-} from "@bilibili-downloader/core/usecases";
-import type { DownloadRequest, DownloadResult } from "@bilibili-downloader/core/domain";
+import { ResolutionService, DownloadExecutionUseCase } from "@bilibili-downloader/core/usecases";
+import type { DownloadResult } from "@bilibili-downloader/core/domain";
 import { DownloadEventType } from "@bilibili-downloader/core/events";
 import { ResourceType } from "@bilibili-downloader/core/ports";
 import {
@@ -52,22 +49,10 @@ export function createDownloadCommand(): Command {
       const startTime = Date.now();
       const quality = Number.parseInt(options.quality, 10);
 
-      // 初始化日志
       const log = options.logFile
         ? new Logger({ filePath: options.logFile })
         : undefined;
       const taskStore = new TaskStore(options.taskStore);
-
-      const baseRequest: DownloadRequest = {
-        input,
-        outputDir: options.output,
-        quality,
-        videoCodec: options.codec,
-        cookieFile: options.cookieFile,
-        keepTempOnFailure: options.keepTemp,
-        downloadSubtitle: options.subtitle,
-        skipExisting: !options.noSkip,
-      };
 
       // 加载 Cookie
       const authProvider = new BilibiliAuthProvider();
@@ -82,9 +67,7 @@ export function createDownloadCommand(): Command {
         }
       }
 
-      // 组装适配器
       const api = createBilibiliApiAdapter(cookieString);
-      // 选择下载器
       const downloader =
         options.downloader === "aria2"
           ? new Aria2Downloader()
@@ -97,13 +80,16 @@ export function createDownloadCommand(): Command {
         process.exit(1);
       }
 
-      const commonDeps = {
-        resourceParser: api.resourceParser,
-        streamProvider: api.streamProvider,
+      const resolutionService = new ResolutionService(
+        api.resourceParser,
+        api.streamProvider,
+        authProvider,
+      );
+
+      const executionDeps = {
         mediaDownloader: downloader,
         mediaMerger: merger,
         fileStore,
-        authProvider,
         subtitleProvider: new BilibiliSubtitleProvider(api.webClient),
       };
 
@@ -112,125 +98,179 @@ export function createDownloadCommand(): Command {
 
       if (parseResult.type === ResourceType.Favorites && parseResult.mediaId) {
         // === 合集批量下载 ===
-        const batchUseCase = new DownloadFavoritesUseCase({
-          ...commonDeps,
-          favoritesProvider: new BilibiliFavoritesProvider(api.webClient),
-        });
+        const favoritesProvider = new BilibiliFavoritesProvider(api.webClient);
+        const info = await favoritesProvider.getFavoritesInfo(
+          parseResult.mediaId,
+          cookieString,
+        );
+        console.log(`\n合集: ${info.title}`);
+        console.log(`共 ${info.mediaCount} 个视频\n`);
 
-        // 监听进度事件 (来自内部 DownloadSingleVideoUseCase)
-        batchUseCase.on(DownloadEventType.DownloadProgress, (event: any) => {
-          const pct = String(event.percentage).padStart(3);
-          process.stdout.write(
-            `\r  进度: ${pct}% | ${formatBytes(event.downloadedBytes)} / ${formatBytes(event.totalBytes)} | ${formatSpeed(event.speedBytesPerSec)}    `,
+        const allVideos: { bvid: string; title: string }[] = [];
+        let page = 1;
+        let hasMore = true;
+        while (hasMore) {
+          const result = await favoritesProvider.getFavoritesVideos(
+            parseResult.mediaId,
+            page,
+            20,
+            cookieString,
           );
-        });
+          allVideos.push(...result.videos.map((v) => ({ bvid: v.bvid, title: v.title })));
+          hasMore = result.hasMore;
+          page++;
+        }
+        console.log(`已获取 ${allVideos.length} 个视频\n`);
 
-        process.on("SIGINT", () => {
-          console.log("\n  正在取消...");
-          batchUseCase.cancel();
-        });
+        let completed = 0;
+        let failed = 0;
+        for (let i = 0; i < allVideos.length; i++) {
+          const video = allVideos[i];
+          const idx = i + 1;
+          console.log(`[${idx}/${allVideos.length}] ${video.title}`);
 
-        await batchUseCase.execute(parseResult.mediaId, baseRequest, cookieString);
+          const result = await downloadVideo(
+            resolutionService,
+            executionDeps,
+            video.bvid,
+            options.output,
+            { quality, codec: options.codec, cookieString },
+          );
+
+          if (result.status === TaskStatus.Success) {
+            completed++;
+            console.log(`  ✅ 完成`);
+          } else {
+            failed++;
+            console.log(`  ❌ [${result.errorCode}] ${result.errorMessage}`);
+          }
+        }
+        console.log(
+          `\n合集下载完成: ${completed} 成功 / ${failed} 失败 / ${allVideos.length} 总计`,
+        );
       } else {
-        // === 单视频下载 (支持分 P) ===
-        // 创建事件监听工厂
-        const createListeners = (useCase: DownloadSingleVideoUseCase, label: string) => {
-          useCase.on(DownloadEventType.TaskStarted, () => {
-            console.log(`\n${label}`);
-            if (cookieString) console.log("  使用登录 Cookie");
-          });
-          useCase.on(DownloadEventType.TaskResolved, (event) => {
-            console.log(`  标题: ${event.plan.title}`);
-          });
-          useCase.on(DownloadEventType.StreamSelected, (event) => {
-            console.log(`  视频流: ${event.videoCodec}`);
-            console.log(`  音频流: ${event.audioCodec}`);
-          });
-          useCase.on(DownloadEventType.DownloadProgress, (event) => {
-            const pct = String(event.percentage).padStart(3);
-            process.stdout.write(
-              `\r  进度: ${pct}% | ${formatBytes(event.downloadedBytes)} / ${formatBytes(event.totalBytes)} | ${formatSpeed(event.speedBytesPerSec)}    `,
-            );
-          });
-          useCase.on(DownloadEventType.MergeProgress, () => {
-            console.log("\n  合并音视频...");
-          });
-          useCase.on(DownloadEventType.TaskCompleted, (event) => {
-            console.log(`\n  ✅ 完成: ${formatBytes(event.result.fileSize ?? 0)} (${formatTime(event.result.timing?.totalMs ?? 0)})`);
-          });
-          useCase.on(DownloadEventType.TaskFailed, (event) => {
-            console.log(`\n  ❌ 失败: [${event.result.errorCode}] ${event.result.errorMessage}`);
-          });
-        };
-
+        // === 单视频下载 ===
         if (options.allPages) {
-          // 下载所有分 P: 先获取页数，再逐一下载
-          const videoInfo = await api.streamProvider.getVideoInfo(parseResult.bvid);
-          const totalPages = videoInfo.pages.length;
+          const resolved = await resolutionService.resolve(input, { cookieFile: options.cookieFile });
+          const totalPages = resolved.pages.length;
           console.log(`\n多 P 视频: 共 ${totalPages} 个分 P`);
 
           let completed = 0;
           for (let i = 0; i < totalPages; i++) {
             const pageNum = i + 1;
-            const pageName = videoInfo.pages[i].title;
-            const label = `[${pageNum}/${totalPages}] ${pageName}`;
-
-            const pageUseCase = new DownloadSingleVideoUseCase(commonDeps);
-            createListeners(pageUseCase, label);
-
-            const result = await pageUseCase.execute({
-              ...baseRequest,
+            const pageResolved = await resolutionService.resolve(input, {
               page: pageNum,
+              cookieFile: options.cookieFile,
             });
-            if (result.status === TaskStatus.Completed) completed++;
+            console.log(`\n[${pageNum}/${totalPages}] ${pageResolved.title}`);
+
+            const result = await downloadVideo(
+              resolutionService,
+              executionDeps,
+              input,
+              options.output,
+              { page: pageNum, quality, codec: options.codec, cookieString },
+            );
+            if (result.status === TaskStatus.Success) completed++;
           }
           console.log(`\n全部分 P 下载完成: ${completed}/${totalPages} 成功`);
         } else {
-          // 单分 P 下载 (默认 P1，或用 --page 指定)
-          const useCase = new DownloadSingleVideoUseCase(commonDeps);
-          createListeners(useCase, `开始下载: ${input}`);
+          const result = await downloadVideo(
+            resolutionService,
+            executionDeps,
+            input,
+            options.output,
+            {
+              page: options.page,
+              quality,
+              codec: options.codec,
+              cookieString,
+            },
+          );
 
-          process.on("SIGINT", () => {
-            console.log("\n  正在取消...");
-            useCase.cancel();
-          });
-
-          const request = options.page
-            ? { ...baseRequest, page: options.page }
-            : baseRequest;
-
-          const result = await useCase.execute(request);
           if (result.status === TaskStatus.Failed) process.exit(1);
 
-          await saveTaskRecord(taskStore, {
-            request: request,
-            result,
-            startTime,
-          }, log);
+          await saveTaskRecord(taskStore, { result, startTime }, log);
         }
       }
     });
 }
 
-async function saveTaskRecord(
-  store: TaskStore,
-  info: { request: DownloadRequest; result: DownloadResult; startTime: number },
-  log?: Logger,
-): Promise<void> {
-  try {
-    await store.save({
-      id: randomUUID(),
-      request: info.request,
-      status: info.result.status,
-      outputFile: info.result.outputFile,
-      errorMessage: info.result.errorMessage,
-      createdAt: new Date(info.startTime).toISOString(),
-      completedAt: new Date().toISOString(),
-      durationMs: info.result.timing?.totalMs,
-    });
-  } catch (err) {
-    log?.error("保存任务记录失败:", (err as Error).message);
+// ==================== 下载辅助函数 ====================
+
+async function downloadVideo(
+  resolutionService: ResolutionService,
+  executionDeps: any,
+  input: string,
+  outputDir: string,
+  opts: {
+    page?: number;
+    quality?: number;
+    codec?: string;
+    cookieString?: string;
+  },
+): Promise<DownloadResult> {
+  const resolved = await resolutionService.resolve(input, { page: opts.page });
+
+  const streams = await resolutionService.resolveStreams({
+    bvid: resolved.bvid,
+    cid: resolved.cid,
+    resourceType: resolved.resourceType,
+    cookieString: opts.cookieString,
+  });
+
+  const videoStream = resolutionService.selectBestStream(
+    streams.videoStreams,
+    opts.codec,
+    opts.quality,
+  );
+  const audioStream = resolutionService.selectBestStream(streams.audioStreams);
+
+  if (!videoStream || !audioStream) {
+    throw new Error("无法选择合适的视频或音频流");
   }
+
+  console.log(`  视频流: ${videoStream.codec} qn=${videoStream.quality}`);
+  console.log(`  音频流: ${audioStream.codec} qn=${audioStream.quality}`);
+
+  const fileName = `${sanitizeFileName(resolved.title)}.mp4`;
+  const outputFile = join(outputDir, fileName);
+
+  const executionUseCase = new DownloadExecutionUseCase(executionDeps);
+
+  executionUseCase.on(DownloadEventType.DownloadProgress, (e: any) => {
+    const pct = String(e.percentage).padStart(3);
+    process.stdout.write(
+      `\r  进度: ${pct}%  `,
+    );
+  });
+  executionUseCase.on(DownloadEventType.MergeProgress, () => {
+    console.log("\n  合并音视频...");
+  });
+
+  const result = await executionUseCase.execute({
+    bvid: resolved.bvid,
+    cid: resolved.cid,
+    title: resolved.title,
+    outputFile,
+    videoStream,
+    audioStream,
+    cookieString: opts.cookieString,
+  });
+
+  if (result.status === TaskStatus.Success) {
+    console.log(`\n  ✅ 完成: ${formatBytes(result.fileSize ?? 0)} (${formatTime(result.timing?.totalMs ?? 0)})`);
+  } else {
+    console.log(`\n  ❌ 失败: [${result.errorCode}] ${result.errorMessage}`);
+  }
+
+  return result;
+}
+
+// ==================== 工具函数 ====================
+
+function sanitizeFileName(name: string): string {
+  return name.replace(/[<>:"/\\|?*]/g, "_");
 }
 
 function formatBytes(bytes: number): string {
@@ -250,4 +290,25 @@ function formatTime(ms: number): string {
   const secs = seconds % 60;
   if (minutes > 0) return `${minutes}分${secs}秒`;
   return `${secs}秒`;
+}
+
+async function saveTaskRecord(
+  store: TaskStore,
+  info: { result: DownloadResult; startTime: number },
+  log?: Logger,
+): Promise<void> {
+  try {
+    await store.save({
+      id: randomUUID(),
+      request: { input: "", outputDir: "" },
+      status: info.result.status,
+      outputFile: info.result.outputFile,
+      errorMessage: info.result.errorMessage,
+      createdAt: new Date(info.startTime).toISOString(),
+      completedAt: new Date().toISOString(),
+      durationMs: info.result.timing?.totalMs,
+    });
+  } catch (err) {
+    log?.error("保存任务记录失败:", (err as Error).message);
+  }
 }

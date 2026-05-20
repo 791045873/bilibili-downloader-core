@@ -92,4 +92,12 @@ export class TaskStore {
     await mkdir(dirname(this.filePath), { recursive: true });
     await writeFile(this.filePath, JSON.stringify(this.cache, null, 2), "utf-8");
   }
+
+  async delete(id: string): Promise<void> {
+    if (!this.cache) await this.load();
+    this.cache!.tasks = this.cache!.tasks.filter((t) => t.id !== id);
+    this.cache!.updatedAt = new Date().toISOString();
+    await mkdir(dirname(this.filePath), { recursive: true });
+    await writeFile(this.filePath, JSON.stringify(this.cache, null, 2), "utf-8");
+  }
 }

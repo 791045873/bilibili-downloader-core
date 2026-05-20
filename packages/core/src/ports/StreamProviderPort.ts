@@ -5,28 +5,57 @@ import { ResourceType } from "./ResourceParserPort.js";
  * 流信息提供端口 - 获取视频/音频的播放流列表和元信息
  */
 export interface StreamProviderPort {
-  /**
-   * 获取视频元信息 (标题、分 P 列表、封面等)
-   */
   getVideoInfo(bvid: string): Promise<VideoInfo>;
-
-  /**
-   * 获取播放流信息 (Dash/DURL 流列表)
-   */
   getPlayStreams(input: StreamInput): Promise<PlayStreams>;
 }
+
+// ---- 视频元信息 ----
 
 export interface VideoInfo {
   bvid: string;
   avid: number;
   title: string;
-  /** 总时长 (秒) */
   duration: number;
-  /** 封面 URL */
   coverUrl: string;
-  /** 分 P 列表 */
+  upperName: string;
+  upperMid: number;
+  upperFace?: string;
+  playCount: string;
+  danmakuCount: string;
+  publishTime: string;
+  description: string;
+  videoZone: string;
+  typeId: number;
+  pages: VideoPage[];
+  /** 合集信息（该视频所属的 UGC 合集，无合集时为 undefined） */
+  ugcSeason?: UgcSeasonInfo;
+}
+
+// ---- 合集三级结构 ----
+
+export interface UgcSeasonInfo {
+  id: number;
+  title: string;
+  cover: string;
+  sections: UgcSection[];
+}
+
+export interface UgcSection {
+  id: number;
+  seasonId: number;
+  title: string;
+  episodes: UgcEpisode[];
+}
+
+export interface UgcEpisode {
+  aid: number;
+  bvid: string;
+  cid: number;
+  title: string;
   pages: VideoPage[];
 }
+
+// ---- 分 P / 流输入 / 播放流 ----
 
 export interface VideoPage {
   cid: number;
@@ -38,15 +67,11 @@ export interface VideoPage {
 export interface StreamInput {
   bvid: string;
   cid: number;
-  /** 资源类型，用于区分视频/番剧/课程 API */
   resourceType: ResourceType;
-  /** Cookie 字符串，用于需要登录的视频 */
   cookieString?: string;
 }
 
 export interface PlayStreams {
-  /** DASH 视频流列表 */
   videoStreams: MediaStreamInfo[];
-  /** DASH 音频流列表 */
   audioStreams: MediaStreamInfo[];
 }

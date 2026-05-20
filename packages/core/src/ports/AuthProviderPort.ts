@@ -35,6 +35,20 @@ export interface AuthProviderPort {
    * 将 Cookie 列表序列化为 HTTP Cookie header 值
    */
   toCookieString(cookies: LoginCookie[]): string;
+
+  /**
+   * 获取当前登录用户信息
+   * @param cookieString 登录后的 Cookie 字符串
+   * @returns 用户信息，未登录返回 null
+   */
+  getUserInfo(cookieString: string): Promise<UserInfo | null>;
+}
+
+export interface UserInfo {
+  mid: number;
+  name: string;
+  face: string;
+  isLogin: boolean;
 }
 
 export interface QrCodeResult {

@@ -1,0 +1,10 @@
+{
+  "name": "@bilibili-downloader/docker",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Docker 镜像打包 — 将 server 和 frontend 打包为 Docker 镜像",
+  "scripts": {
+    "docker:build": "docker build -f ./Dockerfile -t bilibili-downloader ../..",
+    "docker:run": "cross-var docker run -d -p 3000:3000 -v \"$HOME/Downloads/bilibili_download:/downloads\" bilibili-downloader"
+  }
+}

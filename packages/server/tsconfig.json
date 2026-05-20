@@ -2,10 +2,12 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "bin"],
+  "exclude": ["node_modules", "dist"],
   "references": [
     { "path": "../core" },
     { "path": "../adapters" }

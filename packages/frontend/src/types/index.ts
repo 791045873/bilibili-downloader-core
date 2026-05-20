@@ -1,0 +1,114 @@
+// ---- 视频相关 ----
+
+export interface VideoPage {
+  cid: number;
+  page: number;
+  title: string;
+  duration: number;
+}
+
+/** 合集信息 */
+export interface UgcSeasonInfo {
+  id: number;
+  title: string;
+  cover: string;
+  sections: UgcSection[];
+}
+
+/** 合集下的子分类 */
+export interface UgcSection {
+  id: number;
+  seasonId: number;
+  title: string;
+  episodes: UgcEpisode[];
+}
+
+/** 合集中的单个视频 */
+export interface UgcEpisode {
+  aid: number;
+  bvid: string;
+  cid: number;
+  title: string;
+  pages: VideoPage[];
+}
+
+/** 服务端 /api/video/info 返回类型 */
+export interface VideoInfo {
+  bvid: string;
+  cid: number;
+  title: string;
+  pages: VideoPage[];
+  videoInfo: {
+    bvid: string;
+    avid: number;
+    title: string;
+    duration: number;
+    coverUrl: string;
+    upperName: string;
+    upperMid: number;
+    upperFace?: string;
+    playCount: string;
+    danmakuCount: string;
+    publishTime: string;
+    description: string;
+    videoZone: string;
+    typeId: number;
+  };
+  resourceType: string;
+  originalUrl?: string;
+  ugcSeason?: UgcSeasonInfo | null;
+}
+
+export interface VideoQualityOption {
+  id: number;
+  name: string;
+  codecList: string[];
+  selectedCodec: string;
+}
+
+export interface ParseResultItem {
+  cid: number;
+  videoQualityList: { id: number; name: string; codecList: string[] }[];
+  audioQualityList: string[];
+}
+
+// ---- 下载相关 ----
+
+/** 服务端任务记录 */
+export interface TaskEntry {
+  id: number;
+  status: string;
+  title?: string;
+  progress?: number;
+  speed?: string;
+  outputFile?: string;
+  fileSize?: number;
+  errorCode?: string;
+  errorMessage?: string;
+  durationMs?: number;
+  createdAt?: string;
+  completedAt?: string;
+}
+
+// ---- 设置 ----
+
+export interface AppSettings {
+  autoParse: boolean;
+  autoDownload: boolean;
+  defaultQuality: number;
+  defaultCodec: string;
+  defaultAudioQuality: string;
+  downloadDanmaku: boolean;
+  downloadSubtitle: boolean;
+}
+
+// ---- 认证 ----
+
+export interface UserInfo {
+  mid: number;
+  name: string;
+  face: string;
+  isLogin: boolean;
+}
+
+export type LoginStatus = "pending" | "scanned" | "confirmed" | "expired";

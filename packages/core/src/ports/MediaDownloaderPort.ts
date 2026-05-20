@@ -33,9 +33,9 @@ export interface DownloadParams {
 
 export interface DownloadProgress {
   /** 已下载字节数 */
-  downloadedBytes: number;
+  downloadedBytes?: number;
   /** 总字节数 */
-  totalBytes: number;
+  totalBytes?: number;
   /** 下载速度 (bytes/s) */
   speedBytesPerSec: number;
   /** 进度百分比 0-100 */

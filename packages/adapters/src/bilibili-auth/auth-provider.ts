@@ -10,9 +10,14 @@ import type {
   QrCodeResult,
   QrStatusResult,
   LoginCookie,
+  UserInfo,
 } from "@bilibili-downloader/core/ports";
 import { DEFAULT_HEADERS } from "../bilibili/constants.js";
-import type { BiliQrCodeResponse, BiliQrStatusResponse } from "../bilibili/types.js";
+import type {
+  BiliQrCodeResponse,
+  BiliQrStatusResponse,
+  BiliNavUserInfo,
+} from "../bilibili/types.js";
 import { CookieStore } from "./cookie-store.js";
 
 /** Bilibili 二维码登录 API 端点 */
@@ -20,6 +25,8 @@ const QR_GENERATE_URL =
   "https://passport.bilibili.com/x/passport-login/web/qrcode/generate";
 const QR_POLL_URL =
   "https://passport.bilibili.com/x/passport-login/web/qrcode/poll";
+/** 导航接口 (获取用户信息) */
+const NAV_URL = "https://api.bilibili.com/x/web-interface/nav";
 
 export class BilibiliAuthProvider implements AuthProviderPort {
   private readonly cookieStore = new CookieStore();
@@ -109,5 +116,30 @@ export class BilibiliAuthProvider implements AuthProviderPort {
 
   toCookieString(cookies: LoginCookie[]): string {
     return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+  }
+
+  async getUserInfo(cookieString: string): Promise<UserInfo | null> {
+    try {
+      const response = await fetch(NAV_URL, {
+        headers: { ...DEFAULT_HEADERS, Cookie: cookieString },
+      });
+      const data = await response.json() as {
+        code: number;
+        data: BiliNavUserInfo;
+      };
+
+      if (data.code !== 0 || !data.data.isLogin) {
+        return null;
+      }
+
+      return {
+        mid: data.data.mid,
+        name: data.data.uname,
+        face: data.data.face,
+        isLogin: data.data.isLogin,
+      };
+    } catch {
+      return null;
+    }
   }
 }

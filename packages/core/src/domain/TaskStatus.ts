@@ -1,23 +1,35 @@
 /**
  * 下载任务状态机
  *
- * Created -> Resolving -> Downloading -> Merging -> Completed
- *                                           \-> Failed
- * 任意状态均可 -> Cancelled
+ * Created ──→ Stopped ──→ Created  (用户停止/恢复)
+ * Created ──────────→ Downloading  (调度器触发)
+ * Downloading ──→ Success (终态)
+ * Downloading ──→ Failed  (终态)
  */
 export enum TaskStatus {
   Created = "created",
-  Resolving = "resolving",
+  Stopped = "stopped",
   Downloading = "downloading",
-  Merging = "merging",
-  Completed = "completed",
+  Success = "success",
   Failed = "failed",
-  Cancelled = "cancelled",
 }
 
-/** 不可逆的终态集合 */
+/** 状态流转表 */
+const ALLOWED_TRANSITIONS: Readonly<Record<TaskStatus, ReadonlyArray<TaskStatus>>> = {
+  [TaskStatus.Created]: [TaskStatus.Downloading, TaskStatus.Stopped],
+  [TaskStatus.Stopped]: [TaskStatus.Created],
+  [TaskStatus.Downloading]: [TaskStatus.Success, TaskStatus.Failed],
+  [TaskStatus.Success]: [],
+  [TaskStatus.Failed]: [],
+};
+
+/** 终态集合 */
 export const TERMINAL_STATUSES: ReadonlySet<TaskStatus> = new Set([
-  TaskStatus.Completed,
+  TaskStatus.Success,
   TaskStatus.Failed,
-  TaskStatus.Cancelled,
 ]);
+
+/** 校验状态流转是否合法 */
+export function canTransition(from: TaskStatus, to: TaskStatus): boolean {
+  return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false;
+}

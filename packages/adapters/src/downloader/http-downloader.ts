@@ -88,8 +88,6 @@ export class HttpDownloader implements MediaDownloaderPort {
               }
 
               params.onProgress({
-                downloadedBytes,
-                totalBytes: contentLength,
                 speedBytesPerSec: speedBytesPerSec || 0,
                 percentage: contentLength
                   ? Math.round((downloadedBytes / contentLength) * 100)

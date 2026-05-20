@@ -1,28 +1,32 @@
 {
   "name": "@bilibili-downloader/server",
   "version": "0.0.1",
-  "description": "Docker Web 服务器 - Bilibili 下载器管理界面",
+  "description": "NestJS Web 服务器 - Bilibili 下载器管理界面",
   "type": "module",
-  "main": "./dist/server.js",
+  "main": "./dist/main.js",
   "scripts": {
-    "build": "tsc -b",
-    "build:bundle": "node build-server.mjs",
-    "clean": "tsc -b --clean && rm -rf bin",
-    "dev": "tsc -b --watch",
-    "typecheck": "tsc -b",
-    "start": "node bin/server.cjs",
-    "docker:build": "pnpm build:bundle && docker build -t bilibili-downloader .",
-    "docker:run": "docker run -d -p 3000:3000 -v C:/Users/79104/Downloads:/downloads bilibili-downloader"
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node --env-file=.env dist/main",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@bilibili-downloader/adapters": "workspace:*",
     "@bilibili-downloader/core": "workspace:*",
-    "express": "^5.2.1"
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "better-sqlite3": "^12.10.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
-    "esbuild": "^0.28.0",
     "typescript": "^5.7.0"
   }
 }

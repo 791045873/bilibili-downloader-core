@@ -9,6 +9,14 @@ export enum PlayStreamType {
   Cheese = "cheese",
 }
 
+interface VideoPage {cid: number, page: number, part: string, duration: number}
+
+interface Episode {aid: number, bvid: string, cid: number, id: number, pages: Array<VideoPage>, season_id: number, section_id: number, title: string}
+
+interface VideoSection {
+  id: number, season_id: number, title: string, episodes: Array<Episode>
+}
+
 /** 视频信息 API 响应 */
 export interface BiliVideoInfo {
   bvid: string;
@@ -30,6 +38,23 @@ export interface BiliVideoInfo {
     mid: number;
     name: string;
     face: string;
+  };
+  /** 发布时间 (Unix 时间戳) */
+  pubdate?: number;
+  /** 发布时间 (Unix 时间戳，部分 API 使用) */
+  ctime?: number;
+  /** 视频简介 */
+  desc?: string;
+  /** 分区 typeId */
+  tid?: number;
+  /** 分区名称 */
+  tname?: string;
+  // 类型有点复杂，就不写了，下面是该视频所属合集的全部视频信息
+  ugc_season: {
+    id: number;
+    title: string;
+    cover: string;
+    sections: VideoSection[];
   };
 }
 
@@ -138,4 +163,12 @@ export interface BiliQrStatusResponse {
     code: number;
     message: string;
   };
+}
+
+/** Nav API 响应用户信息部分 */
+export interface BiliNavUserInfo {
+  isLogin: boolean;
+  mid: number;
+  uname: string;
+  face: string;
 }

@@ -25,20 +25,6 @@ export const CODEC_MAP: Record<number, string> = {
   13: "AV1",
 };
 
-/** BV <-> AV 转换表 */
-export const BV_AV_CONVERT = {
-  TABLE: "fZodR9XQDSUm21yCkr6zBqiveYah8bt4xsWpHnJE7jL5VG3guMTKNPAwcF",
-  TR: new Map<string, number>(),
-  S: [11, 10, 3, 8, 4, 6] as const,
-  XOR: 177451812n,
-  ADD: 8728348608n,
-};
-
-// 初始化 TR 映射
-for (let i = 0; i < BV_AV_CONVERT.TABLE.length; i++) {
-  BV_AV_CONVERT.TR.set(BV_AV_CONVERT.TABLE[i], i);
-}
-
 /** Bilibili API 基础 URL */
 export const BILI_API_BASE = "https://api.bilibili.com";
 

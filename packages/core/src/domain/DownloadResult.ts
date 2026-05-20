@@ -5,7 +5,7 @@ import type { TaskStatus } from "./TaskStatus.js";
  */
 export interface DownloadResult {
   /** 最终状态 */
-  status: TaskStatus.Completed | TaskStatus.Failed | TaskStatus.Cancelled;
+  status: TaskStatus.Success | TaskStatus.Failed;
 
   /** 输出文件绝对路径 (成功时) */
   outputFile?: string;

@@ -1,9 +1,9 @@
 /**
- * Bilibili 合集/收藏夹提供器
+ * Bilibili 收藏夹/收藏夹提供器
  *
  * API 端点:
- * - 合集信息: GET /x/v3/fav/folder/info?media_id={mediaId}
- * - 合集视频列表: GET /x/v3/fav/resource/list?media_id={mediaId}&pn={pn}&ps={ps}&platform=web
+ * - 收藏夹信息: GET /x/v3/fav/folder/info?media_id={mediaId}
+ * - 收藏夹视频列表: GET /x/v3/fav/resource/list?media_id={mediaId}&pn={pn}&ps={ps}&platform=web
  * 参考: downkyicore/DownKyi.Core/BiliApi/Favorites/
  */
 
@@ -65,7 +65,7 @@ export class BilibiliFavoritesProvider implements FavoritesProviderPort {
 
     if (response.code !== 0) {
       throw new Error(
-        `获取合集信息失败: code=${response.code}, ${response.message}`,
+        `获取收藏夹信息失败: code=${response.code}, ${response.message}`,
       );
     }
 
@@ -94,7 +94,7 @@ export class BilibiliFavoritesProvider implements FavoritesProviderPort {
 
     if (response.code !== 0) {
       throw new Error(
-        `获取合集视频列表失败: code=${response.code}, ${response.message}`,
+        `获取收藏夹视频列表失败: code=${response.code}, ${response.message}`,
       );
     }
 

@@ -35,7 +35,7 @@ export function createHistoryCommand(): Command {
 
       console.log(`\n下载历史 (最近 ${tasks.length} 条):\n`);
       for (const task of tasks) {
-        const icon = task.status === "completed" ? "✅" : "❌";
+        const icon = task.status === "success" ? "✅" : "❌";
         const time = task.createdAt.split("T")[0];
         const duration = task.durationMs
           ? ` (${(task.durationMs / 1000).toFixed(1)}s)`
