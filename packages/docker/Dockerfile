@@ -39,8 +39,8 @@ COPY --from=builder /app/packages/frontend/dist ./public
 
 EXPOSE 3000
 ENV PORT=3000
-ENV OUTPUT_DIR=/downloads
+ENV OUTPUT_DIR=/download
 ENV MAX_CONCURRENT_DOWNLOADS=10
-RUN mkdir -p /downloads
+RUN mkdir -p /download
 
 CMD ["node", "packages/server/dist/main.js"]
