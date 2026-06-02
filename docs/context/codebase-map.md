@@ -1,0 +1,54 @@
+# Codebase Map
+
+## Purpose
+
+This file gives AI agents a compact map of the live repository so they do not rediscover the structure by repeatedly searching imports and directories.
+
+Keep it current enough to route common work. Do not turn it into a full architecture document.
+
+## Entry Points
+
+| Area         | Path                          | Notes                                          | Last Verified | Confidence |
+| ------------ | ----------------------------- | ---------------------------------------------- | ------------- | ---------- |
+| Core         | `packages/core/src/`          | 下载领域模型、用例编排、ports 接口                | 2026-06-02    | high       |
+| Adapters     | `packages/adapters/src/`      | B站 API、HTTP 下载器、FFmpeg、文件系统适配       | 2026-06-02    | high       |
+| CLI          | `packages/cli/src/`           | 命令行入口，参数到 DownloadRequest 的转换        | 2026-06-02    | high       |
+| Server       | `packages/server/src/`        | NestJS 后端 API，下载任务管理                    | 2026-06-02    | high       |
+| Frontend     | `packages/frontend/src/`      | Vue 3 前端，视频输入、下载列表、设置              | 2026-06-02    | high       |
+| Docker       | `packages/docker/`            | Dockerfile 与构建脚本                            | 2026-06-02    | high       |
+| Config       | `tsconfig.base.json`, `pnpm-workspace.yaml`, `package.json` | 项目配置                          | 2026-06-02    | high       |
+| Tests        | 无统一测试目录                    | 当前无自动化测试                                  | 2026-06-02    | low        |
+
+## Common Change Routes
+
+| Task Type           | Start Here                    | Then Check                                | Verification                    | Last Verified | Confidence |
+| ------------------- | ----------------------------- | ----------------------------------------- | ------------------------------- | ------------- | ---------- |
+| 新增下载能力         | `packages/core/src/`          | `packages/adapters/src/`                  | `pnpm typecheck`                | 2026-06-02    | high       |
+| 新增 API 端点        | `packages/server/src/`        | `packages/core/src/` (usecase)            | `pnpm typecheck`                | 2026-06-02    | high       |
+| 新增 UI 页面         | `packages/frontend/src/`      | `packages/server/src/` (API)              | `pnpm typecheck`                | 2026-06-02    | high       |
+| 修改下载器行为        | `packages/adapters/src/`      | `packages/core/src/` (ports)              | `pnpm typecheck`                | 2026-06-02    | high       |
+| 修改 B站 API 适配     | `packages/adapters/src/bilibili/` | `packages/core/src/` (domain models)  | `pnpm typecheck`                | 2026-06-02    | high       |
+| 修改部署配置          | `packages/docker/`            | `package.json` (scripts)                  | `pnpm docker:build`             | 2026-06-02    | high       |
+| 修改 CLI 参数         | `packages/cli/src/`           | `packages/core/src/` (DownloadRequest)    | `pnpm typecheck`                | 2026-06-02    | high       |
+
+## Large Or Fragile Files
+
+| Path                                  | Risk                               | Preferred Approach                                     |
+| ------------------------------------- | ---------------------------------- | ------------------------------------------------------ |
+| `packages/core/src/`                  | 核心编排逻辑，改动需谨慎             | 优先阅读现有 usecase 和 port 接口，理解领域模型后再修改    |
+| `packages/adapters/src/bilibili/`     | B站 API 适配，外部 API 变更敏感      | 关注 B站接口稳定性，变更时保留向后兼容                    |
+| `packages/server/src/`                | NestJS 模块装配，依赖注入复杂度高     | 新增 API 遵循现有 controller/service 模式               |
+
+## Project-Specific Search Hints
+
+- Use file patterns: `packages/*/src/**/*.ts`
+- Use content anchors: `DownloadRequest`, `DownloadUseCase`, `ResourceParser`, `MediaDownloader`, `FFmpegMerger`
+- Avoid editing generated files: `node_modules/`, `dist/`, `*.d.ts`（非手写的类型声明）
+
+## Update Rule
+
+Update this file when a change creates a new major entry point, moves common code, adds a new test location, or repeatedly causes agents to rediscover the same path.
+
+If a listed path is missing, placeholders remain, or live imports contradict this map, do not treat the map as authority. Verify with the live repo, then update the map or mark the row low confidence before implementation.
+
+If `Last Verified` is old for the project's pace, predates major structural changes, or the task touches a listed route's boundary, verify the live repo before relying on the row. Low-confidence rows do not block low-risk work after live verification, but protected-area, migration, or cross-module work should update the row before implementation.
