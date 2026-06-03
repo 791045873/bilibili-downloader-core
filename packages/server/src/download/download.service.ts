@@ -16,7 +16,10 @@ import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { DownloadEventType } from "@bilibili-downloader/core/events";
 import type { ResolvedVideo } from "@bilibili-downloader/core/domain";
 import { join } from "node:path";
-import { DatabaseService, type TaskRecord } from "../database/database.service.js";
+import {
+  DatabaseService,
+  type TaskRecord,
+} from "../database/database.service.js";
 import type { DownloadDto } from "./download.dto.js";
 
 // ---------- 公开类型（旧前端兼容） ----------
@@ -71,7 +74,8 @@ export class DownloadService implements OnModuleInit {
 
   constructor(private readonly db: DatabaseService) {
     this.outputDir = process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads");
-    this.cookieFile = process.env.COOKIE_FILE || join(this.outputDir, ".cookies.json");
+    this.cookieFile =
+      process.env.COOKIE_FILE || join(this.outputDir, ".cookies.json");
   }
 
   async onModuleInit(): Promise<void> {
@@ -202,7 +206,10 @@ export class DownloadService implements OnModuleInit {
     }
 
     // 校验状态：只有 Created 或 Stopped 可进入 Downloading
-    if (cached.status !== TaskStatus.Created && cached.status !== TaskStatus.Stopped) {
+    if (
+      cached.status !== TaskStatus.Created &&
+      cached.status !== TaskStatus.Stopped
+    ) {
       throw new Error(`任务 ${id} 状态为 ${cached.status}，无法执行`);
     }
 
@@ -250,15 +257,16 @@ export class DownloadService implements OnModuleInit {
         );
       }
 
-      const executionUseCase = new DownloadExecutionUseCase(
-        this.executionDeps,
-      );
+      const executionUseCase = new DownloadExecutionUseCase(this.executionDeps);
 
-      executionUseCase.on(DownloadEventType.DownloadProgress, (e: {percentage: number; speedBytesPerSec: number}) => {
-        cached.progress = e.percentage;
-        cached.speed = formatBytes(e.speedBytesPerSec) + "/s";
-        this.db.updateTaskProgress(id, e.percentage, cached.speed);
-      });
+      executionUseCase.on(
+        DownloadEventType.DownloadProgress,
+        (e: { percentage: number; speedBytesPerSec: number }) => {
+          cached.progress = e.percentage;
+          cached.speed = formatBytes(e.speedBytesPerSec) + "/s";
+          this.db.updateTaskProgress(id, e.percentage, cached.speed);
+        },
+      );
 
       const request: DownloadExecutionRequest = {
         bvid: task.bvid!,
@@ -393,7 +401,9 @@ export class DownloadService implements OnModuleInit {
    * 代理 B站图片（绕过防盗链）
    * 浏览器端无法在 <img> 上加 Referer 请求头，通过服务端代理转发
    */
-  async proxyCoverImage(url: string): Promise<{ data: Buffer; contentType: string }> {
+  async proxyCoverImage(
+    url: string,
+  ): Promise<{ data: Buffer; contentType: string }> {
     const response = await fetch(url, {
       headers: {
         Referer: "https://www.bilibili.com",
@@ -405,8 +415,7 @@ export class DownloadService implements OnModuleInit {
       throw new Error(`获取封面失败: HTTP ${response.status}`);
     }
     const data = Buffer.from(await response.arrayBuffer());
-    const contentType =
-      response.headers.get("content-type") ?? "image/jpeg";
+    const contentType = response.headers.get("content-type") ?? "image/jpeg";
     return { data, contentType };
   }
 
@@ -427,7 +436,8 @@ export class DownloadService implements OnModuleInit {
 function extractCodecName(codec: string): string {
   const c = codec.toLowerCase();
   if (c.includes("av01") || c.includes("av1")) return "AV1";
-  if (c.includes("hev") || c.includes("hvc") || c.includes("hevc")) return "HEVC";
+  if (c.includes("hev") || c.includes("hvc") || c.includes("hevc"))
+    return "HEVC";
   if (c.includes("dvh") || c.includes("dolby")) return "Dolby Vision";
   return "AVC";
 }
@@ -468,7 +478,7 @@ function sanitizeOutputPath(path: string): string {
   const sep = path.includes("\\") ? "\\" : "/";
   return path
     .split(/[\\/]/)
-    .map(seg => seg.replace(/[<>:"|?*]/g, "_").replace(/^[. ]+|[. ]+$/g, ""))
+    .map((seg) => seg.replace(/[<>:"|?*]/g, "_").replace(/^[. ]+|[. ]+$/g, ""))
     .filter(Boolean)
     .join(sep);
 }

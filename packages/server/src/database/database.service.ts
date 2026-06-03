@@ -32,7 +32,8 @@ export class DatabaseService {
   private readonly db: Database.Database;
 
   constructor() {
-    const outputDir = process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads");
+    const outputDir =
+      process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads");
     const dbPath = join(outputDir, "tasks.db");
 
     // ensureOutputDir before opening db
@@ -114,27 +115,36 @@ export class DatabaseService {
   updateTaskProgress(id: number, progress: number, speed?: string): void {
     const now = new Date().toISOString();
     this.db
-      .prepare("UPDATE task SET progress = @progress, speed = @speed, updatedAt = @updatedAt WHERE id = @id")
+      .prepare(
+        "UPDATE task SET progress = @progress, speed = @speed, updatedAt = @updatedAt WHERE id = @id",
+      )
       .run({ id, progress, speed: speed ?? null, updatedAt: now });
   }
 
   /** 更新任务状态（完成/失败时） */
-  updateTaskStatus(id: number, fields: {
-    status: string;
-    outputFile?: string;
-    fileSize?: number;
-    errorCode?: string;
-    errorMessage?: string;
-    durationMs?: number;
-    progress?: number;
-  }): void {
+  updateTaskStatus(
+    id: number,
+    fields: {
+      status: string;
+      outputFile?: string;
+      fileSize?: number;
+      errorCode?: string;
+      errorMessage?: string;
+      durationMs?: number;
+      progress?: number;
+    },
+  ): void {
     const now = new Date().toISOString();
     const setClauses: string[] = ["status = @status", "updatedAt = @updatedAt"];
-    if (fields.outputFile !== undefined) setClauses.push("outputFile = @outputFile");
+    if (fields.outputFile !== undefined)
+      setClauses.push("outputFile = @outputFile");
     if (fields.fileSize !== undefined) setClauses.push("fileSize = @fileSize");
-    if (fields.errorCode !== undefined) setClauses.push("errorCode = @errorCode");
-    if (fields.errorMessage !== undefined) setClauses.push("errorMessage = @errorMessage");
-    if (fields.durationMs !== undefined) setClauses.push("durationMs = @durationMs");
+    if (fields.errorCode !== undefined)
+      setClauses.push("errorCode = @errorCode");
+    if (fields.errorMessage !== undefined)
+      setClauses.push("errorMessage = @errorMessage");
+    if (fields.durationMs !== undefined)
+      setClauses.push("durationMs = @durationMs");
     if (fields.progress !== undefined) setClauses.push("progress = @progress");
     if (fields.status === "success" || fields.status === "failed") {
       setClauses.push("completedAt = @completedAt");
@@ -151,7 +161,10 @@ export class DatabaseService {
         durationMs: fields.durationMs ?? null,
         progress: fields.progress ?? null,
         updatedAt: now,
-        completedAt: (fields.status === "success" || fields.status === "failed") ? now : null,
+        completedAt:
+          fields.status === "success" || fields.status === "failed"
+            ? now
+            : null,
       });
   }
 
@@ -164,15 +177,17 @@ export class DatabaseService {
 
   /** 获取单个任务 */
   getTaskById(id: number): TaskRecord | undefined {
-    return this.db
-      .prepare("SELECT * FROM task WHERE id = ?")
-      .get(id) as TaskRecord | undefined;
+    return this.db.prepare("SELECT * FROM task WHERE id = ?").get(id) as
+      | TaskRecord
+      | undefined;
   }
 
   /** 取队首 "created" 任务（调度器抢占用） */
   findNextCreatedTask(): TaskRecord | undefined {
     return this.db
-      .prepare("SELECT * FROM task WHERE status = 'created' ORDER BY createdAt ASC LIMIT 1")
+      .prepare(
+        "SELECT * FROM task WHERE status = 'created' ORDER BY createdAt ASC LIMIT 1",
+      )
       .get() as TaskRecord | undefined;
   }
 
