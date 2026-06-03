@@ -16,12 +16,12 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `docs/requirements/2026-06-02-ui-improvement.md`
-- Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-06-02-age-workflow-migration-plan.md`
-- Active backlog item: `docs/backlog/README.md#P0-UI-界面优化`
-- AI autonomy: `plan-first`
-- Current blocker: `none`
+- Active requirement: `none`
+- Active owner doc: `none`
+- Active plan: `none`
+- Active backlog item: `none`
+- AI autonomy: `blocked`
+- Current blocker: `P0 UI 界面优化需求已废弃；下一步需重新创建实现就绪需求`
 
 Rule:
 

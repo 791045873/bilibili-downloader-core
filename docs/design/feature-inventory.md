@@ -18,7 +18,7 @@ Track the stable feature map for the application.
 | HTTP 内置下载器 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | 支持重试和基础进度 |
 | 下载目录配置 | done | `docs/design/app-overview.md` | `docs/requirements/mvp.md` | 可配置输出目录 |
 | 临时文件清理 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | 成功后清理，失败可配置保留 |
-| UI 界面优化 | planned | `docs/design/app-overview.md` | `docs/requirements/2026-06-02-ui-improvement.md` | P0，需求已编写，待计划 |
+| UI 界面优化 | deprecated | `docs/design/app-overview.md` | `docs/requirements/2026-06-02-ui-improvement.md` | 需求已废弃：范围涉及交互调整和后端接口修改，需重新拆分需求 |
 
 ## Rule
 
