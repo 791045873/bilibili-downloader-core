@@ -7,6 +7,7 @@
     "pnpm": ">=8.0.0"
   },
   "scripts": {
+    "postinstall": "node scripts/check-ffmpeg.mjs",
     "build": "pnpm -r build",
     "clean": "pnpm -r clean",
     "dev": "pnpm -r dev",
