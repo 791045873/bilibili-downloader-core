@@ -5,6 +5,7 @@
 > Source: `docs/requirements/2026-06-02-video-detail-page-improvement.md`
 > Related: 无
 > Audit: required
+> Testing: `docs/testing/2026/06-03-video-detail-page-improvement-testing.md`
 
 ## 当前基线
 
@@ -85,19 +86,22 @@ Targets: `packages/server/src/download/`, `packages/server/src/database/`, `pack
 - [ ] **Decision | Add**：实现 24h 已完成任务复用规则。
   - **Decision**: 以 `createdAt` 为时间基准（与需求文档一致）。
   - **24h 判定方向**：`findTasksByBvidsAndCids` 返回每个 `(bvid, cid)` 的最新一条任务。前端按以下规则判定该视频是否可选中：
+    - 后端无匹配任务 → **可选中**（从未入队）。
     - 任务存在 **且** 状态为 `success` **且** `(now - createdAt) > 24h` → **可选中**（允许重新加入）。
-    - 否则（任务不存在、或状态非 success、或 success 但距今 ≤ 24h） → **不可选中**（已入队）。
+    - 任务存在 **且** 状态非 `success` → **不可选中**（已入队）。
+    - 任务存在 **且** 状态为 `success` **但** `(now - createdAt) <= 24h` → **不可选中**（已入队）。
+    - 用户本次选中 A、B 并成功加入下载队列后，A、B 从可选状态转为“已选中但禁用”状态；已选中表示已加载到队列，禁用表示不能重复选中或取消选中以再次操作。
   - **替代方案**：在 SQL 层完成过滤——不采用，因前端需要完整记录供 UI 展示和调试，且判定逻辑简单、容易在 JS 中实现。
 
 Phase 1 Exit Criteria:
-- [ ] `POST /api/tasks/check` 端点可用，返回 `{ bvid, cid, status, createdAt }[]`。
-- [ ] 前端 `api.checkTasks` 可正常调用并解析响应。
-- [ ] 已入队视频在前端不可选中。
-- [ ] 已完成超过 24 小时的视频允许重新加入。
-- [ ] `idx_task_bvid_cid` 索引已创建。
+- [x] `POST /api/tasks/check` 端点可用，返回 `{ bvid, cid, status, createdAt }[]`。
+- [x] 前端 `api.checkTasks` 可正常调用并解析响应。
+- [x] 已入队视频在前端不可选中。
+- [x] 已完成超过 24 小时的视频允许重新加入。
+- [x] `idx_task_bvid_cid` 索引已创建。
 - [ ] `docs/design/app-overview.md` 中 Integration Points 已更新（新增 `POST /api/tasks/check`）。
 - [ ] `docs/logs/` 已更新。
-- [ ] `pnpm typecheck` 通过。
+- [x] `pnpm typecheck` 通过。
 
 ### Phase 2 — 前端 Section 选择器 + 交互调整
 
@@ -117,15 +121,15 @@ Targets: `packages/frontend/src/views/VideoDetail.vue`
 - [ ] **Fix**：加入队列失败时停留在当前页面并展示错误信息。
 
 Phase 2 Exit Criteria:
-- [ ] section 选择器胶囊按钮正常展示、切换和默认选中。
-- [ ] 无合集时不显示 section 选择器，直接展示视频内容。
-- [ ] 表格第一列 header 文案已修正为"选择"。
-- [ ] "解析当前页所有视频"可解析当前选中 section 内所有未解析视频。
-- [ ] 入队后不跳转到 `/downloading`。
-- [ ] 入队失败不跳转且有错误提示。
+- [x] section 选择器胶囊按钮正常展示、切换和默认选中。
+- [x] 无合集时不显示 section 选择器，直接展示视频内容。
+- [x] 表格第一列 header 文案已修正为"选择"。
+- [x] "解析当前页所有视频"可解析当前选中 section 内所有未解析视频。
+- [x] 入队后不跳转到 `/downloading`。
+- [x] 入队失败不跳转且有错误提示。
 - [ ] `docs/design/app-overview.md` 中 Main Surfaces / Core Workflows 已更新（section 选择器、入队不跳转、新增按钮）。
 - [ ] `docs/logs/` 已更新。
-- [ ] `pnpm typecheck` 通过。
+- [x] `pnpm typecheck` 通过。
 
 ### Phase 3 — 目录确认弹框 + 空目录校验
 
@@ -145,14 +149,14 @@ Targets: `packages/frontend/src/views/VideoDetail.vue`, `packages/server/src/dow
 - [ ] **Proof**：对 `POST /api/download` 使用 curl 验证空 `outputPath` 返回 400 及错误信息。
 
 Phase 3 Exit Criteria:
-- [ ] 目录确认弹框正常展示，默认填入 section 默认目录；无合集场景填入视频标题。
-- [ ] 弹框可修改目录，修改后加入队列使用修正后的目录。
-- [ ] 前端空目录校验：阻止提交并有提示。
-- [ ] 后端空目录校验：返回 400 错误。
-- [ ] 后端其他校验字段（bvid/cid/title）也统一使用 BadRequestException（HTTP 400）。
+- [x] 目录确认弹框正常展示，默认填入 section 默认目录；无合集场景填入视频标题。
+- [x] 弹框可修改目录，修改后加入队列使用修正后的目录。
+- [x] 前端空目录校验：阻止提交并有提示。
+- [x] 后端空目录校验：返回 400 错误。
+- [x] 后端其他校验字段（bvid/cid/title）也统一使用 BadRequestException（HTTP 400）。
 - [ ] `docs/design/app-overview.md` 中 Integration Points 已更新（`createDownload` 校验行为变更说明）。
 - [ ] `docs/logs/` 已更新。
-- [ ] `pnpm typecheck` 通过。
+- [x] `pnpm typecheck` 通过。
 
 ## Plan Audit
 
@@ -176,6 +180,7 @@ Phase 3 Exit Criteria:
 - [ ] `docs/design/feature-inventory.md` 中"视频解析页面优化"状态已更新（`planned` → `done`）
 - [ ] Plan Audit 通过
 - [ ] Closure Audit 通过
+- [ ] 对应 Testing 文档中所有测试方向均已确认通过或明确 out of scope
 - [ ] text consistency 验证通过
 - [ ] `pnpm typecheck` 通过
 

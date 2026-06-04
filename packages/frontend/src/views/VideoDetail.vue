@@ -6,7 +6,8 @@ import Column from "primevue/column";
 import Checkbox from "primevue/checkbox";
 import Button from "primevue/button";
 import Select from "primevue/select";
-import { ChevronDownIcon, ChevronRightIcon } from "lucide-vue-next";
+import Dialog from "primevue/dialog";
+import InputText from "primevue/inputtext";
 import { useSettingsStore } from "../stores/settings";
 import { useDownloadQueueStore } from "../stores/useDownloadQueueStore";
 import * as api from "../api";
@@ -21,10 +22,9 @@ const loading = ref(true);
 const error = ref("");
 const videoInfo = ref<VideoInfo | null>(null);
 
-// 展开的 sections
-const expandedSections = ref<Record<number, boolean>>({});
+// 当前选中的 section id
+const selectedSectionId = ref<number>(0);
 
-// 每个 section 的 TreeTable 节点
 interface TreeNode {
   key: string;
   data: {
@@ -32,6 +32,7 @@ interface TreeNode {
     episode?: UgcEpisode;
     page?: VideoPage;
     resolved: boolean;
+    enqueued: boolean;
     qualityList?: { id: number; name: string; codecList: string[] }[];
     audioQualityList?: string[];
     selectedQuality?: number;
@@ -42,8 +43,6 @@ interface TreeNode {
 }
 
 const sectionTrees = ref<Map<number, TreeNode[]>>(new Map());
-
-// 选中的分 P 节点 key 集合（独立 reactive set，确保 v-model 变化被追踪）
 const selectedKeys = ref<Set<string>>(new Set());
 
 function isPageSelected(nodeKey: string): boolean {
@@ -51,12 +50,8 @@ function isPageSelected(nodeKey: string): boolean {
 }
 
 function setPageSelected(nodeKey: string, val: boolean) {
-  if (val) {
-    selectedKeys.value.add(nodeKey);
-  } else {
-    selectedKeys.value.delete(nodeKey);
-  }
-  // 重新赋值触发响应式
+  if (val) selectedKeys.value.add(nodeKey);
+  else selectedKeys.value.delete(nodeKey);
   selectedKeys.value = new Set(selectedKeys.value);
 }
 
@@ -67,17 +62,22 @@ onMounted(async () => {
   try {
     const info = await api.getVideoInfo(input);
     videoInfo.value = info;
+
     if (info.ugcSeason?.sections) {
-      // 有合集 → 从 ugcSeason.sections 构建树
       for (const sec of info.ugcSeason.sections) {
-        expandedSections.value[sec.id] = true;
         sectionTrees.value.set(sec.id, buildEpisodeTree(sec));
       }
+      selectedSectionId.value = info.ugcSeason.sections[0]?.id ?? 0;
     } else {
-      // 无合集 → 构建 mock 树：一个 section，其下唯一的 episode 包含视频的所有分P
       const flatSectionId = -1;
-      expandedSections.value[flatSectionId] = true;
       sectionTrees.value.set(flatSectionId, [buildMockVideoNode(info)]);
+      selectedSectionId.value = flatSectionId;
+    }
+
+    const allBvidCids = collectBvidCids();
+    if (allBvidCids.length > 0) {
+      const existing = await api.checkTasks(allBvidCids);
+      markEnqueued(existing);
     }
   } catch (e: any) {
     error.value = e.message || "获取视频信息失败";
@@ -86,77 +86,94 @@ onMounted(async () => {
   }
 });
 
+function collectBvidCids(): { bvid: string; cid: number }[] {
+  const pairs: { bvid: string; cid: number }[] = [];
+  sectionTrees.value.forEach((tree) => {
+    tree.forEach((node) => {
+      (node.children ?? []).forEach((p) => {
+        if (p.data.type === "page" && p.data.page) {
+          pairs.push({ bvid: videoInfo.value!.bvid, cid: p.data.page.cid });
+        }
+      });
+    });
+  });
+  return pairs;
+}
+
+function markEnqueued(records: { bvid: string; cid: number; status: string; createdAt: string }[]) {
+  sectionTrees.value.forEach((tree) => {
+    tree.forEach((node) => {
+      (node.children ?? []).forEach((p) => {
+        if (p.data.type !== "page" || !p.data.page) return;
+        const rec = records.find((r) => r.bvid === videoInfo.value!.bvid && r.cid === p.data.page!.cid);
+        if (!rec) return;
+        const isOldSuccess =
+          rec.status === "success" &&
+          Date.now() - new Date(rec.createdAt).getTime() > 24 * 60 * 60 * 1000;
+        if (!isOldSuccess) p.data.enqueued = true;
+      });
+    });
+  });
+}
+
 function buildEpisodeTree(section: UgcSection): TreeNode[] {
   return section.episodes.map((ep) => ({
     key: `${section.id}-${ep.cid}`,
-    data: {
-      type: "episode" as const,
-      episode: ep,
-      resolved: false,
-    },
+    data: { type: "episode" as const, episode: ep, resolved: false, enqueued: false },
     children: ep.pages.map((p) => ({
       key: `${section.id}-${ep.cid}-${p.cid}`,
-      data: {
-        type: "page" as const,
-        page: p,
-        resolved: false,
-      },
+      data: { type: "page" as const, page: p, resolved: false, enqueued: false },
     })),
   }));
 }
 
-/** 无合集时构建 mock 树：一个 episode 节点，其 children 为视频的所有分P */
 function buildMockVideoNode(info: VideoInfo): TreeNode {
   return {
     key: `video-${info.bvid}`,
     data: {
       type: "episode" as const,
-      episode: {
-        aid: info.videoInfo.avid,
-        bvid: info.bvid,
-        cid: info.pages[0]?.cid ?? 0,
-        title: info.title,
-        pages: info.pages,
-      },
+      episode: { aid: info.videoInfo.avid, bvid: info.bvid, cid: info.pages[0]?.cid ?? 0, title: info.title, pages: info.pages },
       resolved: false,
+      enqueued: false,
     },
     children: info.pages.map((p) => ({
       key: `video-${info.bvid}-${p.cid}`,
-      data: {
-        type: "page" as const,
-        page: p,
-        resolved: false,
-      },
+      data: { type: "page" as const, page: p, resolved: false, enqueued: false },
     })),
   };
 }
 
-function sanitize(name: string): string {
-  return name.replace(/[<>:"/\\|?*]/g, "_");
-}
+const currentTree = computed(() => sectionTrees.value.get(selectedSectionId.value) ?? []);
 
-// 选中统计
+const currentSectionTitle = computed(() => {
+  if (!videoInfo.value?.ugcSeason?.sections) return "";
+  return videoInfo.value.ugcSeason.sections.find((s) => s.id === selectedSectionId.value)?.title ?? "";
+});
+
+const currentSectionDefaultPath = computed(() => {
+  if (!videoInfo.value) return "";
+  return videoInfo.value.ugcSeason?.title
+    ? `${videoInfo.value.ugcSeason.title}/${currentSectionTitle.value}`
+    : videoInfo.value.title;
+});
+
 const allSelectedCount = computed(() => selectedKeys.value.size);
 
-// Section 全选（选择/取消该 section 下所有分 P）
-function toggleSection(sectionId: number) {
-  const tree = sectionTrees.value.get(sectionId);
+function toggleSection() {
+  const tree = currentTree.value;
   if (!tree) return;
-  const allSel = tree.every((ep) =>
-    (ep.children ?? []).every((p) => isPageSelected(p.key)),
-  );
+  const allSel = tree.every((ep) => (ep.children ?? []).every((p) => isPageSelected(p.key)));
   tree.forEach((ep) => {
     (ep.children ?? []).forEach((p) => {
-      setPageSelected(p.key, !allSel);
+      if (!p.data.enqueued) setPageSelected(p.key, !allSel);
     });
   });
 }
 
-function sectionSelectState(sectionId: number): boolean | null {
-  const tree = sectionTrees.value.get(sectionId);
+function sectionSelectState(): boolean | null {
+  const tree = currentTree.value;
   if (!tree || tree.length === 0) return false;
-  let allPages = 0;
-  let selPages = 0;
+  let allPages = 0, selPages = 0;
   tree.forEach((ep) => {
     (ep.children ?? []).forEach((p) => {
       allPages++;
@@ -169,12 +186,13 @@ function sectionSelectState(sectionId: number): boolean | null {
   return null;
 }
 
-// Episode 全选其下所有分 P
 function toggleEpisode(node: TreeNode) {
   const pages = node.children ?? [];
   if (pages.length === 0) return;
   const allSel = pages.every((p) => isPageSelected(p.key));
-  pages.forEach((p) => { setPageSelected(p.key, !allSel); });
+  pages.forEach((p) => {
+    if (!p.data.enqueued) setPageSelected(p.key, !allSel);
+  });
 }
 
 function episodeSelectState(node: TreeNode): boolean | null {
@@ -185,21 +203,19 @@ function episodeSelectState(node: TreeNode): boolean | null {
   return allSel ? true : noneSel ? false : null;
 }
 
-// 解析画质（按分 P 解析）
 const parsing = ref(false);
 
-async function parseSelected() {
+async function parseAllInSection() {
   if (!videoInfo.value) return;
   parsing.value = true;
   try {
     const unresolvedPages: { bvid: string; cid: number }[] = [];
-    sectionTrees.value.forEach((tree) => {
-      tree.forEach((node) => {
-        (node.children ?? []).forEach((p) => {
-          if (p.data.type === "page" && isPageSelected(p.key) && !p.data.resolved && p.data.page) {
-            unresolvedPages.push({ bvid: videoInfo.value!.bvid, cid: p.data.page.cid });
-          }
-        });
+    const tree = currentTree.value;
+    tree.forEach((node) => {
+      (node.children ?? []).forEach((p) => {
+        if (p.data.type === "page" && !p.data.resolved && p.data.page) {
+          unresolvedPages.push({ bvid: videoInfo.value!.bvid, cid: p.data.page.cid });
+        }
       });
     });
     if (unresolvedPages.length === 0) return;
@@ -207,18 +223,16 @@ async function parseSelected() {
     const cids = unresolvedPages.map((e) => e.cid);
     const results = await api.parseAllVideos(videoInfo.value.bvid, cids);
     for (const result of results) {
-      sectionTrees.value.forEach((tree) => {
-        tree.forEach((node) => {
-          (node.children ?? []).forEach((p) => {
-            if (p.data.type === "page" && p.data.page?.cid === result.cid) {
-              p.data.resolved = true;
-              p.data.qualityList = result.videoQualityList;
-              p.data.audioQualityList = result.audioQualityList;
-              p.data.selectedQuality = result.videoQualityList[0]?.id ?? settingsStore.settings.defaultQuality;
-              p.data.selectedCodec = result.videoQualityList[0]?.codecList[0] ?? "AVC";
-              p.data.selectedAudio = result.audioQualityList[0] ?? settingsStore.settings.defaultAudioQuality;
-            }
-          });
+      tree.forEach((node) => {
+        (node.children ?? []).forEach((p) => {
+          if (p.data.type === "page" && p.data.page?.cid === result.cid) {
+            p.data.resolved = true;
+            p.data.qualityList = result.videoQualityList;
+            p.data.audioQualityList = result.audioQualityList;
+            p.data.selectedQuality = result.videoQualityList[0]?.id ?? settingsStore.settings.defaultQuality;
+            p.data.selectedCodec = result.videoQualityList[0]?.codecList[0] ?? "AVC";
+            p.data.selectedAudio = result.audioQualityList[0] ?? settingsStore.settings.defaultAudioQuality;
+          }
         });
       });
     }
@@ -229,48 +243,67 @@ async function parseSelected() {
   }
 }
 
-// 加入下载队列（每个选中的分 P 独立创建下载任务）
+const showDirDialog = ref(false);
+const dirDialogValue = ref("");
+
+function openDirDialog() {
+  dirDialogValue.value = currentSectionDefaultPath.value;
+  showDirDialog.value = true;
+}
+
+function confirmDirDialog() {
+  if (!dirDialogValue.value.trim()) return;
+  showDirDialog.value = false;
+  doAddToQueue(dirDialogValue.value);
+}
+
 async function addToQueue() {
+  openDirDialog();
+}
+
+async function doAddToQueue(outputPath: string) {
   if (!videoInfo.value) return;
-  const downloadTasks: Array<Promise<{
-    id: number;
-    message: string;
-}>> = [];
-  sectionTrees.value.forEach((tree, sectionId) => {
-    // 查找 section 名称（用于下载路径）
-    const section = videoInfo.value?.ugcSeason?.sections?.find((s) => s.id === sectionId);
+  const downloadTasks: Array<Promise<{ id: number; message: string }>> = [];
+  const tree = currentTree.value;
+
+  tree.forEach((node) => {
+    const episodeTitle = node.data.episode?.title ?? "";
+    (node.children ?? []).forEach((p) => {
+      if (p.data.type === "page" && isPageSelected(p.key) && p.data.page && !p.data.enqueued) {
+        const pg = p.data.page;
+        const vq = p.data.selectedQuality ?? settingsStore.settings.defaultQuality;
+        const codec = p.data.selectedCodec || settingsStore.settings.defaultCodec || undefined;
+        const task = api.createDownload({
+          bvid: videoInfo.value!.bvid,
+          cid: pg.cid,
+          title: episodeTitle + " - P" + pg.page + " " + pg.title,
+          quality: vq,
+          codec,
+          outputPath,
+        });
+        downloadTasks.push(task);
+      }
+    });
+  });
+
+  try {
+    const responses = await Promise.all(
+      downloadTasks.map((p) => p.catch(() => ({ id: -1, message: "" }))),
+    );
+    const successArr = responses.filter((r) => r.id !== -1).map((r) => r.id);
+    queueStore.addTaskIds(successArr);
 
     tree.forEach((node) => {
-      const episodeTitle = node.data.episode?.title ?? "";
-
-      (node.children ?? []).map((p) => {
+      (node.children ?? []).forEach((p) => {
         if (p.data.type === "page" && isPageSelected(p.key) && p.data.page) {
-          const pg = p.data.page;
-          const vq = p.data.selectedQuality ?? settingsStore.settings.defaultQuality;
-          const codec = p.data.selectedCodec || settingsStore.settings.defaultCodec || undefined;
-
-          const bg = videoInfo.value!;
-
-          const task = api.createDownload({
-            bvid: bg.bvid,
-            cid: pg.cid,
-            title: episodeTitle + " - P" + pg.page + " " + pg.title,
-            quality: vq,
-            codec,
-            outputPath: `${videoInfo.value?.ugcSeason?.title ?? ''}/${section?.title}`,
-          })
-          downloadTasks.push(task);
+          p.data.enqueued = true;
+          setPageSelected(p.key, false);
         }
       });
     });
-  });
-  Promise.all(downloadTasks.map(p => p.catch(err => {return {id: -1}}))).then(responses => {
-    const successArr = responses.filter(r => r.id !== -1).map(r => r.id);
-    queueStore.addTaskIds(successArr);
-    // 还是得处理err的 TODO
-  }).finally(() => {
-    router.push("/downloading");
-  })
+  } catch (e: any) {
+    error.value = e.message || "加入队列失败";
+  }
 }
 
 function formatDuration(seconds: number): string {
@@ -279,15 +312,10 @@ function formatDuration(seconds: number): string {
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
-
-function toggleExpandSection(sectionId: number) {
-  expandedSections.value[sectionId] = !expandedSections.value[sectionId];
-}
 </script>
 
 <template>
   <div class="space-y-6">
-    <!-- Loading / Error -->
     <div v-if="loading" class="flex items-center justify-center py-20 text-zinc-500">正在加载...</div>
 
     <div v-else-if="error" class="rounded-lg border border-red-800 bg-red-950/50 p-6">
@@ -296,14 +324,9 @@ function toggleExpandSection(sectionId: number) {
     </div>
 
     <template v-else-if="videoInfo">
-      <!-- 视频信息卡片 -->
       <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-5 flex gap-5">
         <div v-if="videoInfo.videoInfo.coverUrl" class="w-48 h-28 bg-zinc-800 rounded overflow-hidden shrink-0">
-          <img
-            :src="'/api/video/cover?url=' + encodeURIComponent(videoInfo.videoInfo.coverUrl)"
-            :alt="videoInfo.title"
-            class="w-full h-full object-cover"
-          />
+          <img :src="'/api/video/cover?url=' + encodeURIComponent(videoInfo.videoInfo.coverUrl)" :alt="videoInfo.title" class="w-full h-full object-cover" />
         </div>
         <div class="min-w-0 flex-1">
           <h2 class="text-lg font-semibold text-zinc-100">{{ videoInfo.title }}</h2>
@@ -315,119 +338,85 @@ function toggleExpandSection(sectionId: number) {
         </div>
       </div>
 
-      <!-- 全局操作栏 -->
+      <div v-if="videoInfo.ugcSeason?.sections" class="flex flex-wrap gap-2">
+        <button
+          v-for="sec in videoInfo.ugcSeason.sections"
+          :key="sec.id"
+          class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+          :class="selectedSectionId === sec.id ? 'bg-rose-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+          @click="selectedSectionId = sec.id"
+        >
+          {{ sec.title }}
+        </button>
+      </div>
+
       <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 flex items-center justify-between gap-4 flex-wrap">
         <div class="flex gap-2">
-          <Button
-            label="解析选中"
-            severity="danger"
-            size="small"
-            :disabled="allSelectedCount === 0 || parsing"
-            :loading="parsing"
-            @click="parseSelected"
-          />
-          <Button
-            label="加入下载队列"
-            severity="success"
-            size="small"
-            :disabled="allSelectedCount === 0"
-            @click="addToQueue"
-          />
+          <Button label="解析当前页所有视频" severity="danger" size="small" :disabled="parsing" :loading="parsing" @click="parseAllInSection" />
+          <Button label="加入下载队列" severity="success" size="small" :disabled="allSelectedCount === 0" @click="addToQueue" />
         </div>
         <span class="text-sm text-zinc-500">已选中 {{ allSelectedCount }} 个分P</span>
       </div>
 
-      <!-- Section 块 -->
-      <div v-for="[sectionId, tree] in sectionTrees" :key="sectionId" class="rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden">
-        <!-- Section 头部 -->
-        <div
-          class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 cursor-pointer hover:bg-zinc-800/30"
-          @click="toggleExpandSection(sectionId)"
-        >
-          <component :is="expandedSections[sectionId] ? ChevronDownIcon : ChevronRightIcon" class="w-4 h-4 text-zinc-500" />
-          <Checkbox
-            :modelValue="sectionSelectState(sectionId)"
-            :binary="true"
-            @update:modelValue="toggleSection(sectionId)"
-          />
-          <span class="text-sm font-medium text-zinc-200">
-            {{ videoInfo?.ugcSeason?.sections?.find((s) => s.id === sectionId)?.title ?? '视频分P' }}
-          </span>
-          <span class="text-xs text-zinc-500 ml-auto">{{ tree.length }} 个视频</span>
+      <div class="rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden">
+        <div class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
+          <Checkbox :modelValue="sectionSelectState()" :binary="true" @update:modelValue="toggleSection()" />
+          <span class="text-sm font-medium text-zinc-200">{{ currentSectionTitle || '视频分P' }}</span>
+          <span class="text-xs text-zinc-500 ml-auto">{{ currentTree.length }} 个视频</span>
         </div>
 
-        <!-- Section 内容: TreeTable -->
-        <div v-if="expandedSections[sectionId]">
-          <TreeTable :value="tree" class="w-full text-sm" tableStyle="min-width: 100%">
-            <Column header="选" class="w-12">
-              <template #body="{ node }">
-                <!-- Episode 级别：全选其下所有分 P -->
-                <Checkbox
-                  v-if="node.data.type === 'episode'"
-                  :modelValue="episodeSelectState(node)"
-                  :binary="true"
-                  @update:modelValue="toggleEpisode(node)"
-                />
-                <!-- Page 级别：单个分 P 的勾选 -->
-                <Checkbox
-                  v-else-if="node.data.type === 'page'"
-                  :modelValue="isPageSelected(node.key)"
-                  :binary="true"
-                  @update:modelValue="(val: boolean) => setPageSelected(node.key, val)"
-                />
+        <TreeTable :value="currentTree" class="w-full text-sm" tableStyle="min-width: 100%">
+          <Column header="选择" class="w-14">
+            <template #body="{ node }">
+              <Checkbox v-if="node.data.type === 'episode'" :modelValue="episodeSelectState(node)" :binary="true" @update:modelValue="toggleEpisode(node)" />
+              <Checkbox v-else-if="node.data.type === 'page'" :modelValue="isPageSelected(node.key)" :disabled="node.data.enqueued" :binary="true" @update:modelValue="(val: boolean) => setPageSelected(node.key, val)" />
+            </template>
+          </Column>
+          <Column header="名称" :expander="true">
+            <template #body="{ node }">
+              <span v-if="node.data.type === 'episode'" class="text-zinc-200 font-medium">{{ node.data.episode?.title }}</span>
+              <span v-else class="text-zinc-400 pl-4 text-xs">
+                P{{ node.data.page?.page }} {{ node.data.page?.title }}
+                <span v-if="node.data.enqueued" class="ml-2 text-green-500">已入队</span>
+              </span>
+            </template>
+          </Column>
+          <Column header="时长" class="w-20">
+            <template #body="{ node }">
+              <span class="text-zinc-500 text-xs">{{ node.data.type === 'page' ? formatDuration(node.data.page?.duration ?? 0) : '' }}</span>
+            </template>
+          </Column>
+          <Column header="画质" class="w-32">
+            <template #body="{ node }">
+              <template v-if="node.data.type === 'page'">
+                <Select v-if="node.data.qualityList?.length" v-model="node.data.selectedQuality" :options="node.data.qualityList" optionLabel="name" optionValue="id" size="small" class="w-full" />
+                <span v-else-if="!node.data.resolved" class="text-xs text-amber-500">待解析</span>
+                <span v-else class="text-xs text-zinc-600">-</span>
               </template>
-            </Column>
-            <Column header="名称" :expander="true">
-              <template #body="{ node }">
-                <span v-if="node.data.type === 'episode'" class="text-zinc-200 font-medium">
-                  {{ (videoInfo?.ugcSeason?.sections?.find(s => s.id === sectionId)?.title ?? '') + (videoInfo?.ugcSeason ? ' · ' : '') }}{{ node.data.episode?.title }}
-                </span>
-                <span v-else class="text-zinc-400 pl-4 text-xs">
-                  P{{ node.data.page?.page }} {{ node.data.page?.title }}
-                </span>
+            </template>
+          </Column>
+          <Column header="编码" class="w-24">
+            <template #body="{ node }">
+              <template v-if="node.data.type === 'page'">
+                <Select v-if="node.data.qualityList?.length" v-model="node.data.selectedCodec" :options="node.data.qualityList?.find((q: any) => q.id === node.data.selectedQuality)?.codecList ?? []" size="small" class="w-full" />
+                <span v-else class="text-xs text-zinc-600">-</span>
               </template>
-            </Column>
-            <Column header="时长" class="w-20">
-              <template #body="{ node }">
-                <span class="text-zinc-500 text-xs">
-                  {{ node.data.type === 'page' ? formatDuration(node.data.page?.duration ?? 0) : '' }}
-                </span>
-              </template>
-            </Column>
-            <Column header="画质" class="w-32">
-              <template #body="{ node }">
-                <template v-if="node.data.type === 'page'">
-                  <Select
-                    v-if="node.data.qualityList?.length"
-                    v-model="node.data.selectedQuality"
-                    :options="node.data.qualityList"
-                    optionLabel="name"
-                    optionValue="id"
-                    size="small"
-                    class="w-full"
-                  />
-                  <span v-else-if="!node.data.resolved && isPageSelected(node.key)" class="text-xs text-amber-500">待解析</span>
-                  <span v-else class="text-xs text-zinc-600">-</span>
-                </template>
-              </template>
-            </Column>
-            <Column header="编码" class="w-24">
-              <template #body="{ node }">
-                <template v-if="node.data.type === 'page'">
-                  <Select
-                    v-if="node.data.qualityList?.length"
-                    v-model="node.data.selectedCodec"
-                    :options="node.data.qualityList?.find((q: any) => q.id === node.data.selectedQuality)?.codecList ?? []"
-                    size="small"
-                    class="w-full"
-                  />
-                  <span v-else class="text-xs text-zinc-600">-</span>
-                </template>
-              </template>
-            </Column>
-          </TreeTable>
-        </div>
+            </template>
+          </Column>
+        </TreeTable>
       </div>
     </template>
+
+    <Dialog v-model:visible="showDirDialog" header="确认下载目录" :modal="true" :closable="true" :style="{ width: '450px' }">
+      <div class="flex flex-col gap-3">
+        <label class="text-sm text-zinc-400">请确认或修改下载目录：</label>
+        <InputText v-model="dirDialogValue" class="w-full" placeholder="请输入下载目录" />
+        <p v-if="!dirDialogValue.trim()" class="text-xs text-red-400">目录不能为空</p>
+      </div>
+      <template #footer>
+        <Button label="取消" severity="secondary" size="small" @click="showDirDialog = false" />
+        <Button label="确认" severity="success" size="small" :disabled="!dirDialogValue.trim()" @click="confirmDirDialog" />
+      </template>
+    </Dialog>
   </div>
 </template>

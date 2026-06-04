@@ -73,6 +73,7 @@ export class DatabaseService {
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_task_status ON task(status);
       CREATE INDEX IF NOT EXISTS idx_task_created ON task(createdAt);
+      CREATE INDEX IF NOT EXISTS idx_task_bvid_cid ON task(bvid, cid);
     `);
   }
 
@@ -204,5 +205,34 @@ export class DatabaseService {
   /** 关闭数据库连接 */
   close(): void {
     this.db.close();
+  }
+
+  /** 按 bvid+cid 批量查询最新任务（用于前端入队去重判定） */
+  findTasksByBvidsAndCids(
+    pairs: { bvid: string; cid: number }[],
+  ): Pick<TaskRecord, "bvid" | "cid" | "status" | "createdAt">[] {
+    if (pairs.length === 0) return [];
+    const placeholders = pairs.map(() => "(?, ?)").join(", ");
+    const params = pairs.flatMap((p) => [p.bvid, p.cid]);
+    return (
+      this.db
+        .prepare(
+          `SELECT bvid, cid, status, createdAt FROM task
+           WHERE (bvid, cid) IN (${placeholders})
+           ORDER BY createdAt DESC`,
+        )
+        .all(...params) as Pick<
+        TaskRecord,
+        "bvid" | "cid" | "status" | "createdAt"
+      >[]
+    ).reduce(
+      (acc, row) => {
+        if (!acc.some((r) => r.bvid === row.bvid && r.cid === row.cid)) {
+          acc.push(row);
+        }
+        return acc;
+      },
+      [] as Pick<TaskRecord, "bvid" | "cid" | "status" | "createdAt">[],
+    );
   }
 }

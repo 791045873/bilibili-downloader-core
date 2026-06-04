@@ -38,6 +38,7 @@ Check for:
 - unowned leftovers
 - plan scope that still depends on unresolved requirements
 - missing proof strategy for each acceptance criterion
+- missing corresponding `docs/testing/` document, or testing directions that focus on implementation details instead of requirement-level states and anti-states
 - misuse of the micro-plan exception for work that touches contracts, data/model, auth, permissions, integrations, deployment, multiple modules, more than 5 total files, or more than roughly 200 changed lines
 
 ## Closure Audit
@@ -50,6 +51,7 @@ Check for:
 - docs are aligned
 - claimed proof actually exists
 - plan closure gates are truly satisfied
+- every testing direction in the plan's corresponding `docs/testing/` document is confirmed passed, or explicitly adjudicated out of scope with a reason
 - no in-scope item was downgraded to a vague follow-up
 - verification failures are not being treated as non-blocking without explicit adjudication
 

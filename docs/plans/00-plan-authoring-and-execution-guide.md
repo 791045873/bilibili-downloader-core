@@ -53,13 +53,15 @@ Before closure, compare the real diff against the micro-plan conditions. If the 
 3. **Use checkboxes for execution and closure.** Unchecked items mean unfinished work until closure.
 4. **One plan, one result surface.** If the plan needs multiple independent closure criteria, it is too wide. Split it. Multi-module extraction or migration that shares the same behavioral contract and closure criteria is still ONE result surface — do not over-split.
 5. **Proof before closure.** Do not mark a plan complete until the repo contains verifiable proof for every exit criterion.
-6. **No code-design dumps.** The plan captures scope, proof, and closure logic, not low-level implementation detail. Exception: refactoring and extraction plans MUST include the interface contracts between extracted modules — these are structural boundary definitions, not implementation pseudocode.
-7. **Tag items with types.** Each execution item must be `Fix`, `Add`, `Decision`, `Proof`, or `Follow-up`. `Fix` covers defect repairs; `Add` covers net-new code or config. An item may carry multiple types (e.g., `Decision | Add`); when it does, all implied obligations apply. A confirmed live defect or contract drift must be `Fix`, not `Follow-up`. When 80%+ of items in a phase share one type, declare the uniform type at the phase level instead of per-item (e.g., `Phase 1 — Fix-heavy (8/10 items tagged Fix)`).
-8. **Record Decisions with rationale.** Every `Decision` item must document the choice, the alternatives considered, and the residual risk if any. Write the rationale into the plan or a referenced doc. If a decision requires prototyping or exploration before committing, add a temporary `Explore` item that must conclude before the `Decision` resolves. Framework-forced or obvious choices (e.g., "must match existing framework pattern") can be noted as constrained without full alternatives analysis.
-9. **Checklist integrity before closure.** Before marking a plan complete, no in-scope checklist item may remain unchecked. Either complete it or explicitly move it out of scope with a written reason. Scope narrowing after plan approval is a scope change and must be recorded with rationale; silently removing items from scope is a violation.
-10. **Text consistency before closure.** Before closing, verify that `Plan Status`, every phase `Status`, every phase `Exit Criteria`, `Closure Gates`, and the `docs/logs/` entry all agree. No `completed` at the top while a phase inside still says `planned`.
-11. **Independent plan and closure audit.** Do not implement a created plan until it has passed plan audit, and do not mark it complete as a side effect of finishing the last implementation slice. Use a separate review pass. If no second person or subagent is available, substitute a cold replay only for non-protected, non-high-risk plans: replay the plan's proof and exit criteria as if you were a reviewer seeing it for the first time — no memory of decisions made during execution. Document the evidence. Protected areas, unresolved product risk, and source-of-truth conflicts require human/subagent review or stay open. This rule may be skipped only under the micro-plan exception above.
-12. **Non-degradable items** cannot be downgraded to non-blocking follow-ups: confirmed live defects, confirmed contract drift, confirmed owner-doc drift, and CI/lint rules already fixed in the repo.
+6. **Testing directions at plan time.** When a plan is authored, create or update its corresponding `docs/testing/` document before implementation. For each new requirement or change in the plan, the testing document must describe the requirement-level states to observe: what should be true for users or system behavior, and what should not be true. This document is not unit test code, not a detailed script, and must not focus on implementation details.
+7. **No code-design dumps.** The plan captures scope, proof, and closure logic, not low-level implementation detail. Exception: refactoring and extraction plans MUST include the interface contracts between extracted modules — these are structural boundary definitions, not implementation pseudocode.
+8. **Tag items with types.** Each execution item must be `Fix`, `Add`, `Decision`, `Proof`, or `Follow-up`. `Fix` covers defect repairs; `Add` covers net-new code or config. An item may carry multiple types (e.g., `Decision | Add`); when it does, all implied obligations apply. A confirmed live defect or contract drift must be `Fix`, not `Follow-up`. When 80%+ of items in a phase share one type, declare the uniform type at the phase level instead of per-item (e.g., `Phase 1 — Fix-heavy (8/10 items tagged Fix)`).
+9. **Record Decisions with rationale.** Every `Decision` item must document the choice, the alternatives considered, and the residual risk if any. Write the rationale into the plan or a referenced doc. If a decision requires prototyping or exploration before committing, add a temporary `Explore` item that must conclude before the `Decision` resolves. Framework-forced or obvious choices (e.g., "must match existing framework pattern") can be noted as constrained without full alternatives analysis.
+10. **Checklist integrity before closure.** Before marking a plan complete, no in-scope checklist item may remain unchecked. Either complete it or explicitly move it out of scope with a written reason. Scope narrowing after plan approval is a scope change and must be recorded with rationale; silently removing items from scope is a violation.
+11. **Testing direction closure.** Before closure audit, every testing direction in the corresponding `docs/testing/` document must be confirmed as passed, or explicitly adjudicated as out of scope with a recorded reason. Plan acceptance criteria prove implementation obligations; testing directions prove requirement-level observable states and anti-states.
+12. **Text consistency before closure.** Before closing, verify that `Plan Status`, every phase `Status`, every phase `Exit Criteria`, `Closure Gates`, the corresponding `docs/testing/` document, and the `docs/logs/` entry all agree. No `completed` at the top while a phase inside still says `planned` or a required testing direction remains unconfirmed.
+13. **Independent plan and closure audit.** Do not implement a created plan until it has passed plan audit, and do not mark it complete as a side effect of finishing the last implementation slice. Use a separate review pass. If no second person or subagent is available, substitute a cold replay only for non-protected, non-high-risk plans: replay the plan's proof and exit criteria as if you were a reviewer seeing it for the first time — no memory of decisions made during execution. Document the evidence. Protected areas, unresolved product risk, and source-of-truth conflicts require human/subagent review or stay open. This rule may be skipped only under the micro-plan exception above.
+14. **Non-degradable items** cannot be downgraded to non-blocking follow-ups: confirmed live defects, confirmed contract drift, confirmed owner-doc drift, and CI/lint rules already fixed in the repo.
 
 ### Anti-Slacking Rule
 
@@ -72,12 +74,13 @@ A `Follow-up` item must name the trigger condition that would promote it into sc
 ## When Executing
 
 1. Before implementation, record plan audit evidence or the explicit micro-plan exception.
-2. When you start a slice, update its `Status` to `in progress`.
-3. When you finish a slice, update its `Status` to `completed` and check off all its execution items and exit criteria.
-4. If a slice changes the live baseline or public contract, its exit criteria must include the doc-update step. If no doc update is needed, write `No owner-doc update required` explicitly.
-5. Do not mark a slice complete because the function signature exists. Verify that the behavior, error handling, and test coverage land too.
-6. If an item cannot be completed, move it to `Deferred But Adjudicated` with classification and reason. Do not leave it unchecked in the execution list.
-7. Keep `docs/logs/` in sync with plan progress. A single aggregate log entry at plan closure is sufficient when all phases cover the same feature in one sprint; individual phase entries are required only when a phase spans a different day or a distinct deliverable.
+2. Confirm the corresponding `docs/testing/` document exists and covers each new requirement or change in the plan at requirement-state level.
+3. When you start a slice, update its `Status` to `in progress`.
+4. When you finish a slice, update its `Status` to `completed` and check off all its execution items and exit criteria.
+5. If a slice changes the live baseline or public contract, its exit criteria must include the doc-update step. If no doc update is needed, write `No owner-doc update required` explicitly.
+6. Do not mark a slice complete because the function signature exists. Verify that the behavior, error handling, and test coverage land too.
+7. If an item cannot be completed, move it to `Deferred But Adjudicated` with classification and reason. Do not leave it unchecked in the execution list.
+8. Keep `docs/logs/` in sync with plan progress. A single aggregate log entry at plan closure is sufficient when all phases cover the same feature in one sprint; individual phase entries are required only when a phase spans a different day or a distinct deliverable.
 
 ## When Closing
 
@@ -87,15 +90,16 @@ Before setting `Plan Status: completed`, do all of the following:
 
 1. Check every phase `Exit Criteria` — every one must be `[x]`.
 2. Check every `Closure Gates` item — every one must be `[x]`.
-3. Verify text consistency: top status, phase statuses, exit criteria, closure gates, and log entry all agree.
-4. Distinguish "interface exists" from "behavior is complete". Verify the actual runtime behavior with a test or demo, not just the type signature.
-5. Run the real verification commands for the repo. For plans whose primary result surface is visual, behavioral, or UX-driven, customize the verification gates with explicit justification in the plan.
-6. Perform an independent closure audit or document the micro-plan cold-replay self-check.
+3. Check the corresponding `docs/testing/` document — every testing direction must be confirmed as passed, or explicitly adjudicated out of scope with a recorded reason.
+4. Verify text consistency: top status, phase statuses, exit criteria, closure gates, testing document, and log entry all agree.
+5. Distinguish "interface exists" from "behavior is complete". Verify the actual runtime behavior with a test or demo, not just the type signature.
+6. Run the real verification commands for the repo. For plans whose primary result surface is visual, behavioral, or UX-driven, customize the verification gates with explicit justification in the plan.
+7. Perform an independent closure audit or document the micro-plan cold-replay self-check.
 
 **Full closure** (multi-session, multi-module, or high-risk plans — add these):
 
-7. Re-read the entire plan from the top, not just the most recent slice.
-8. Record independent audit evidence in the plan's `Closure` section and link any stored audit file under `docs/audits/`.
+8. Re-read the entire plan from the top, not just the most recent slice.
+9. Record independent audit evidence in the plan's `Closure` section and link any stored audit file under `docs/audits/`.
 
 If any of these fail, the plan stays open.
 
@@ -109,6 +113,7 @@ If any of these fail, the plan stays open.
 > Source: <requirement / bug / analysis / request>
 > Related: <related plans, optional>
 > Audit: <required | skipped under micro-plan exception>
+> Testing: `docs/testing/YYYY/MM-DD-topic-testing.md`
 
 ## Current Baseline
 
@@ -141,7 +146,7 @@ Targets: `<paths>`
 
 - [ ] <implementation item>
 - [ ] <Decision: record rationale and alternatives in the item or a referenced doc>
-- [ ] <Proof: specify test strategy (unit/integration/e2e) and exact verification commands>
+- [ ] <Proof: link the corresponding `docs/testing/` document and specify verification commands or manual/demo evidence>
 
 Exit Criteria:
 
@@ -160,10 +165,11 @@ Exit Criteria:
 - [ ] in-scope behavior is complete
 - [ ] relevant docs are aligned
 - [ ] verification has run (specify which commands; customize for visual/UX domains if needed)
+- [ ] corresponding `docs/testing/` document exists and every testing direction is confirmed passed or explicitly adjudicated out of scope
 - [ ] no in-scope item downgraded to deferred/follow-up
 - [ ] plan audit passed or micro-plan exception documented before implementation
 - [ ] micro-plan actual diff stayed within exception limits, or plan was reclassified and audited
-- [ ] text consistency verified: status, phases, gates, and log all agree
+- [ ] text consistency verified: status, phases, gates, testing document, and log all agree
 - [ ] closure audit was independent (or cold-replay proxy documented)
 - [ ] closure evidence exists in files
 

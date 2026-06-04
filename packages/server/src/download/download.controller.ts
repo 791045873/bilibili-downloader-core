@@ -1,13 +1,23 @@
-import { Controller, Get, Post, Delete, Body, Param } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  BadRequestException,
+} from "@nestjs/common";
 import { DownloadScheduler } from "./download-scheduler.js";
 import { DownloadService } from "./download.service.js";
 import { DownloadDto } from "./download.dto.js";
+import { DatabaseService } from "../database/database.service.js";
 
 @Controller("api")
 export class DownloadController {
   constructor(
     private readonly scheduler: DownloadScheduler,
     private readonly downloadService: DownloadService,
+    private readonly databaseService: DatabaseService,
   ) {}
 
   // ==================== 任务生命周期 ====================
@@ -15,7 +25,10 @@ export class DownloadController {
   @Post("/download")
   createDownload(@Body() dto: DownloadDto) {
     if (!dto.bvid || !dto.cid || !dto.title) {
-      return { error: "缺少 bvid / cid / title 参数" };
+      throw new BadRequestException("缺少 bvid / cid / title 参数");
+    }
+    if (!dto.outputPath || !dto.outputPath.trim()) {
+      throw new BadRequestException("outputPath 不能为空");
     }
     return this.scheduler.createDownload(dto);
   }
@@ -60,5 +73,12 @@ export class DownloadController {
   @Post("/tasks/clear")
   clearTasks() {
     return this.downloadService.clearTasks();
+  }
+
+  // ==================== 任务状态查询（入队去重） ====================
+
+  @Post("/tasks/check")
+  checkTasks(@Body() body: { items: { bvid: string; cid: number }[] }) {
+    return this.databaseService.findTasksByBvidsAndCids(body.items ?? []);
   }
 }

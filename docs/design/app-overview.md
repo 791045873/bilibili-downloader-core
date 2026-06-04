@@ -8,13 +8,13 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 
 | Surface      | Description                                                                 | Runtime                |
 | ------------ | --------------------------------------------------------------------------- | ---------------------- |
-| Web Frontend | 视频链接输入、下载列表查看、设置管理                                           | Vue 3 SPA（浏览器）       |
+| Web Frontend | 视频链接输入、Section 选择器、视频解析、下载列表查看、设置管理                  | Vue 3 SPA（浏览器）       |
 | CLI          | 命令行下载单个视频，参数包括输入、输出目录、清晰度偏好（当前不可用，待修复）       | Node.js 终端              |
 | Docker       | 容器化部署，Server + Frontend 打包为单镜像，通过挂载 volume 管理下载文件          | Docker 容器              |
 
 ## Primary Navigation Model
 
-- Web 前端：单页应用（SPA），不使用路由，所有功能在同一页面展示
+- Web 前端：单页应用（SPA），使用 vue-router 管理页面路由
 
 ## Main User Roles
 
@@ -25,11 +25,12 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 ### 单视频下载（Web）
 
 1. 用户在输入区域粘贴 B站视频链接（BV/AV/URL）
-2. 点击解析，获取视频详情和可用清晰度
-3. 选择视频清晰度和编码
-4. 点击"加入下载队列"
-5. 下载任务在队列中依次执行：下载音频流 + 视频流 → FFmpeg 合并 → 输出到下载目录
-6. 用户可在下载列表中查看进度和结果
+2. 跳转到视频解析页面，通过 Section 选择器胶囊按钮切换合集/分P
+3. 点击"解析当前页所有视频"一键解析当前 section 内所有视频的清晰度和编码
+4. 选择视频清晰度和编码，勾选分P
+5. 点击"加入下载队列"，弹出目录确认/修改弹框，确认后加入下载队列，停留在当前页面不跳转
+6. 下载任务在队列中依次执行：下载音频流 + 视频流 → FFmpeg 合并 → 输出到下载目录
+7. 用户可在下载列表中查看进度和结果
 
 ### 单视频下载（CLI）
 
@@ -51,6 +52,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | Bilibili API | 获取视频信息、播放流地址                | `packages/adapters/src/bilibili/` |
 | FFmpeg      | 音视频合并                             | 系统依赖（容器内置或宿主机安装）     |
 | SQLite      | 下载任务持久化                          | `packages/server/src/`           |
+| POST /api/tasks/check | 按 bvid + cid 批量查询任务状态（入队去重） | `packages/server/src/download/download.controller.ts` |
 
 ## Rule
 

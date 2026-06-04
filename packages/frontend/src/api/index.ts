@@ -80,6 +80,17 @@ export async function clearTasks(): Promise<void> {
   await request("/tasks/clear", { method: "POST" });
 }
 
+// ==================== 任务检查（入队去重） ====================
+
+export async function checkTasks(
+  items: { bvid: string; cid: number }[],
+): Promise<{ bvid: string; cid: number; status: string; createdAt: string }[]> {
+  return request("/tasks/check", {
+    method: "POST",
+    body: JSON.stringify({ items }),
+  });
+}
+
 // ==================== 认证 ====================
 
 export async function getQrCode(): Promise<{ qrcodeKey: string; url: string }> {
