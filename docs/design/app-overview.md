@@ -53,6 +53,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | FFmpeg      | 音视频合并                             | 系统依赖（容器内置或宿主机安装）     |
 | SQLite      | 下载任务持久化                          | `packages/server/src/`           |
 | POST /api/tasks/check | 按 bvid + cid 批量查询任务状态（入队去重） | `packages/server/src/download/download.controller.ts` |
+| POST /api/download | 创建下载任务，必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException） | `packages/server/src/download/download.controller.ts` |
 
 ## Rule
 

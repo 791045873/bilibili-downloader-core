@@ -10,7 +10,7 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 
 | Priority | Item | Requirement | Owner Doc | Plan | Status | AI Autonomy | Blocker | Last Checked |
 |----------|------|-------------|-----------|------|--------|-------------|---------|--------------|
-| P0 | 视频解析页面优化 | `docs/requirements/2026-06-02-video-detail-page-improvement.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-03-video-detail-page-improvement-plan.md` | `in-progress` | `plan-first` | `plan audit passed，可以开始实施` | 2026-06-03 |
+| P0 | 视频解析页面优化 | `docs/requirements/2026-06-02-video-detail-page-improvement.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-03-video-detail-page-improvement-plan.md` | `done` | `implement` | `none` | 2026-06-09 |
 | P0 | UI 界面优化 | `docs/requirements/2026-06-02-ui-improvement.md`（deprecated） | `docs/design/app-overview.md` | `none` | `blocked` | `blocked` | `需求已废弃：范围涉及交互调整和后端接口修改，需重写需求` | 2026-06-02 |
 | P1 | 批量添加待下载视频（延迟解析） | `none` | `docs/design/app-overview.md` | `none` | `needs-requirement` | `blocked` | `需求文档未创建` | 2026-06-02 |
 | P1 | 下载目录指定与查看 | `none` | `docs/design/app-overview.md` | `none` | `needs-requirement` | `blocked` | `需求文档未创建` | 2026-06-02 |
