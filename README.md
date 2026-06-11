@@ -28,7 +28,11 @@ Docker 是将下载器的前后端代码一起打包为镜像文件的 Dockerfil
 
 CLI 是将该功能暴露在命令行中的一个包，但是当前处于不可用的状态。
 
-如果想要通过源码进行本地调试或者本地启动服务使用，可以直接运行 dev:server 命令和 frontend:dev 命令，然后在本地访问前端页面即可。
+如果想要通过源码进行本地调试，先执行 `pnpm install`，再运行 `pnpm dev:server`。该命令会先构建 `core` 与 `adapters`，然后同时启动后端开发服务（3000）和前端开发服务（5173）。启动后直接访问 `http://localhost:5173` 即可。
+
+如果需要单独排查后端，可以运行 `pnpm --filter @bilibili-downloader/server start:dev`；如果需要单独排查前端，也可以单独运行 `pnpm frontend:dev`。
+
+
 
 如果想要在 NAS 中使用的话，可以运行 docker build 命令，把 server 和 frontend 这些包打包成镜像，然后将镜像导入 NAS。
 

@@ -17,11 +17,11 @@ Update it in place. Do not create dated copies.
 ## Active Work
 
 - Active requirement: `none`
-- Active owner doc: `none`
+- Active owner doc: `docs/design/app-overview.md`
 - Active plan: `none`
 - Active backlog item: `none`
 - AI autonomy: `blocked`
-- Current blocker: `all done items completed; next item needs requirement creation`
+- Current blocker: `none`
 
 Rule:
 
@@ -38,17 +38,18 @@ Rule:
 
 ## Verification Commands
 
-| Purpose                   | Command                                                     |
-| ------------------------- | ----------------------------------------------------------- |
-| Install dependencies      | `pnpm install`                                              |
-| Run app locally (server)  | `pnpm --filter @bilibili-downloader/server start:dev`       |
-| Run app locally (frontend)| `pnpm frontend:dev`                                         |
-| Typecheck / compile check | `pnpm typecheck`                                            |
-| Build                     | `pnpm build`                                                |
-| Lint / static check       | `none`                                                      |
-| Unit tests                | `none`                                                      |
-| E2E / integration tests   | `none`                                                      |
-| Docker build              | `pnpm docker:build`                                         |
+| Purpose                    | Command                                               |
+| -------------------------- | ----------------------------------------------------- |
+| Install dependencies       | `pnpm install`                                        |
+| Run app locally (server)   | `pnpm --filter @bilibili-downloader/server start:dev` |
+| Run app locally (frontend) | `pnpm frontend:dev`                                   |
+| Run app locally (both)     | `pnpm dev:server`                                     |
+| Typecheck / compile check  | `pnpm typecheck`                                      |
+| Build                      | `pnpm build`                                          |
+| Lint / static check        | `none`                                                |
+| Unit tests                 | `none`                                                |
+| E2E / integration tests    | `none`                                                |
+| Docker build               | `pnpm docker:build`                                   |
 
 ## Optional Layers Currently In Use
 

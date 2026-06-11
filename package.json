@@ -9,8 +9,6 @@
   "scripts": {
     "postinstall": "node scripts/check-ffmpeg.mjs",
     "build": "pnpm -r build",
-    "clean": "pnpm -r clean",
-    "dev": "pnpm -r dev",
     "typecheck": "pnpm -r typecheck",
     "download": "pnpm --filter @bilibili-downloader/cli start:download",
     "login-bili": "pnpm --filter @bilibili-downloader/cli start:login",
@@ -18,12 +16,10 @@
     "setup": "pnpm --filter @bilibili-downloader/cli start:install",
     "docker:build": "pnpm --filter @bilibili-downloader/docker docker:build",
     "docker:run": "pnpm --filter @bilibili-downloader/docker docker:run",
-    "server:start": "pnpm --filter @bilibili-downloader/server start",
     "frontend:dev": "pnpm --filter @bilibili-downloader/frontend dev",
     "frontend:build": "pnpm --filter @bilibili-downloader/frontend build",
-    "dev:server": "pnpm build:deps && concurrently -n server,frontend -c blue,green \"pnpm --filter @bilibili-downloader/server start:dev\"",
-    "dev:deps": "pnpm --filter @bilibili-downloader/core --filter @bilibili-downloader/adapters --filter @bilibili-downloader/cli --filter @bilibili-downloader/server build",
-    "build:deps": "pnpm --filter @bilibili-downloader/core --filter @bilibili-downloader/adapters build"
+    "build:deps": "pnpm --filter @bilibili-downloader/core --filter @bilibili-downloader/adapters build",
+    "dev:server": "pnpm build:deps && concurrently --kill-others -n server,frontend -c blue,green \"pnpm --filter @bilibili-downloader/server start:dev\" \"pnpm --filter @bilibili-downloader/frontend dev\""
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
