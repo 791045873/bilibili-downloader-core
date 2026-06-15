@@ -2,9 +2,10 @@
   "name": "bilibili-downloader-core",
   "private": true,
   "description": "Bilibili 下载引擎 - 可嵌入多种运行形态的核心下载能力",
+  "packageManager": "pnpm@10.34.3",
   "engines": {
-    "node": ">=18.0.0",
-    "pnpm": ">=8.0.0"
+    "node": "24.16.0",
+    "pnpm": ">=10.34.3"
   },
   "scripts": {
     "postinstall": "node scripts/check-ffmpeg.mjs",
@@ -24,5 +25,8 @@
   "devDependencies": {
     "concurrently": "^9.2.1",
     "cross-var": "^1.1.0"
+  },
+  "volta": {
+    "node": "24.16.0"
   }
 }
