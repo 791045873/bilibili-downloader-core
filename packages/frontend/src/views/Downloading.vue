@@ -210,6 +210,10 @@ function formatBytes(bytes: number): string {
               </span>
               <span class="text-sm text-zinc-200 truncate">{{ task.title || "(无标题)" }}</span>
             </div>
+            <div v-if="task.outputFile" class="mt-2 text-xs text-zinc-500">
+              <span class="text-zinc-600">输出文件：</span>
+              <code class="break-all text-zinc-400">{{ task.outputFile }}</code>
+            </div>
             <div v-if="task.status === 'downloading'" class="mt-2">
               <ProgressBar :value="task.progress ?? 0" />
             </div>

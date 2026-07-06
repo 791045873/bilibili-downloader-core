@@ -1,16 +1,42 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useSettingsStore } from "../stores/settings";
+import * as api from "../api";
+import type { DownloadConfig } from "../types";
 
 const settingsStore = useSettingsStore();
 const saved = ref(false);
+const downloadConfig = ref<DownloadConfig | null>(null);
+const downloadConfigError = ref("");
+const copied = ref(false);
+const copyError = ref(false);
 
-onMounted(() => settingsStore.load());
+onMounted(async () => {
+  settingsStore.load();
+  try {
+    downloadConfig.value = await api.getDownloadConfig();
+  } catch (error) {
+    downloadConfigError.value = error instanceof Error ? error.message : "读取下载目录失败";
+  }
+});
 
 async function handleSave() {
   await settingsStore.save();
   saved.value = true;
   setTimeout(() => (saved.value = false), 2000);
+}
+
+async function copyOutputDir() {
+  if (!downloadConfig.value?.outputDir) return;
+  try {
+    await navigator.clipboard.writeText(downloadConfig.value.outputDir);
+    copied.value = true;
+    copyError.value = false;
+    setTimeout(() => (copied.value = false), 2000);
+  } catch {
+    copied.value = false;
+    copyError.value = true;
+  }
 }
 </script>
 
@@ -18,6 +44,35 @@ async function handleSave() {
   <div class="space-y-6">
     <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
       <h2 class="text-lg font-semibold text-rose-400 mb-6">下载设置</h2>
+
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">下载目录</h3>
+        <div class="rounded-md border border-zinc-800 bg-zinc-950 p-4">
+          <div v-if="downloadConfig" class="space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm text-zinc-300">服务端下载根目录</span>
+              <span class="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400">
+                {{ downloadConfig.source === "env" ? "环境变量" : "默认目录" }}
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <code class="min-w-0 flex-1 break-all rounded bg-zinc-900 px-3 py-2 text-xs text-zinc-300">
+                {{ downloadConfig.outputDir }}
+              </code>
+              <button
+                class="shrink-0 rounded-md border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:border-rose-500 hover:text-rose-300 transition-colors"
+                @click="copyOutputDir"
+              >
+                {{ copied ? "已复制" : "复制" }}
+              </button>
+            </div>
+            <p v-if="copyError" class="text-xs text-amber-400">复制失败，请手动选择路径文本。</p>
+            <p class="text-xs text-zinc-500">入队时填写的是该目录下的相对子目录。</p>
+          </div>
+          <p v-else-if="downloadConfigError" class="text-sm text-red-400">{{ downloadConfigError }}</p>
+          <p v-else class="text-sm text-zinc-500">正在读取下载目录...</p>
+        </div>
+      </div>
 
       <!-- 自动操作 -->
       <div class="mb-6">

@@ -1,4 +1,10 @@
-import type { VideoInfo, ParseResultItem, TaskEntry, UserInfo } from "../types";
+import type {
+  DownloadConfig,
+  VideoInfo,
+  ParseResultItem,
+  TaskEntry,
+  UserInfo,
+} from "../types";
 
 const BASE = "/api";
 
@@ -38,6 +44,12 @@ export async function parseAllVideos(
     method: "POST",
     body: JSON.stringify({ bvid, cids }),
   });
+}
+
+// ==================== 下载配置 ====================
+
+export async function getDownloadConfig(): Promise<DownloadConfig> {
+  return request("/download/config");
 }
 
 // ==================== 下载任务 ====================

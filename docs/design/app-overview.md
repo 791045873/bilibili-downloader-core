@@ -28,9 +28,9 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 2. 跳转到视频解析页面，通过 Section 选择器胶囊按钮切换合集/分P
 3. 点击"解析当前页所有视频"一键解析当前 section 内所有视频的清晰度和编码
 4. 选择视频清晰度和编码，勾选分P
-5. 点击"加入下载队列"，弹出目录确认/修改弹框，确认后加入下载队列，停留在当前页面不跳转
-6. 下载任务在队列中依次执行：下载音频流 + 视频流 → FFmpeg 合并 → 输出到下载目录
-7. 用户可在下载列表中查看进度和结果
+5. 点击"加入下载队列"，弹出下载子目录确认/修改弹框，确认后加入下载队列，停留在当前页面不跳转
+6. 下载任务在队列中依次执行：下载音频流 + 视频流 → FFmpeg 合并 → 输出到服务端下载根目录下的相对子目录
+7. 用户可在下载列表中查看进度、结果和完成任务的实际输出文件路径
 
 ### 单视频下载（CLI）
 
@@ -53,7 +53,8 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | FFmpeg      | 音视频合并                             | 系统依赖（容器内置或宿主机安装）     |
 | SQLite      | 下载任务持久化                          | `packages/server/src/`           |
 | POST /api/tasks/check | 按 bvid + cid 批量查询任务状态（入队去重） | `packages/server/src/download/download.controller.ts` |
-| POST /api/download | 创建下载任务，必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException） | `packages/server/src/download/download.controller.ts` |
+| POST /api/download | 创建下载任务，必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts` |
+| GET /api/download/config | 返回当前服务端下载根目录及来源（环境变量或默认目录） | `packages/server/src/download/download.controller.ts` |
 
 ## Rule
 

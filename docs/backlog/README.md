@@ -14,7 +14,7 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 | P0 | 视频解析页面优化 | `docs/requirements/2026-06-02-video-detail-page-improvement.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-03-video-detail-page-improvement-plan.md` | `done` | `implement` | `none` | 2026-06-09 |
 | P0 | UI 界面优化 | `docs/requirements/2026-06-02-ui-improvement.md`（deprecated） | `docs/design/app-overview.md` | `none` | `blocked` | `blocked` | `需求已废弃：范围涉及交互调整和后端接口修改，需重写需求` | 2026-06-02 |
 | P1 | 批量添加待下载视频（延迟解析） | `none` | `docs/design/app-overview.md` | `none` | `needs-requirement` | `blocked` | `需求文档未创建` | 2026-06-02 |
-| P1 | 下载目录指定与查看 | `none` | `docs/design/app-overview.md` | `none` | `needs-requirement` | `blocked` | `需求文档未创建` | 2026-06-02 |
+| P1 | 下载目录指定与查看 | `docs/requirements/2026-06-15-download-directory-view.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-15-download-directory-view-plan.md` | `done` | `implement` | `none` | 2026-06-15 |
 | P2 | 浏览器插件（Agent 功能） | `none` | `docs/design/app-overview.md` | `none` | `idea` | `blocked` | `需求文档未创建` | 2026-06-02 |
 | P2 | 任务队列优化（不跳转、参数校验） | `none` | `docs/design/app-overview.md` | `none` | `needs-requirement` | `blocked` | `需求文档未创建` | 2026-06-02 |
 

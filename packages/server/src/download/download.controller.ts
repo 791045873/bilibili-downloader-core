@@ -22,6 +22,11 @@ export class DownloadController {
 
   // ==================== 任务生命周期 ====================
 
+  @Get("/download/config")
+  getDownloadConfig() {
+    return this.downloadService.getDownloadConfig();
+  }
+
   @Post("/download")
   createDownload(@Body() dto: DownloadDto) {
     if (!dto.bvid || !dto.cid || !dto.title) {

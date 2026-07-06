@@ -75,6 +75,11 @@ export interface ParseResultItem {
 // ---- 下载相关 ----
 
 /** 服务端任务记录 */
+export interface DownloadConfig {
+  outputDir: string;
+  source: "env" | "default";
+}
+
 export interface TaskEntry {
   id: number;
   status: string;

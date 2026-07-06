@@ -15,7 +15,7 @@ import type { VideoInfo, UserInfo } from "@bilibili-downloader/core/ports";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { DownloadEventType } from "@bilibili-downloader/core/events";
 import type { ResolvedVideo } from "@bilibili-downloader/core/domain";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   DatabaseService,
   type TaskRecord,
@@ -76,6 +76,13 @@ export class DownloadService implements OnModuleInit {
     this.outputDir = process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads");
     this.cookieFile =
       process.env.COOKIE_FILE || join(this.outputDir, ".cookies.json");
+  }
+
+  getDownloadConfig(): { outputDir: string; source: "env" | "default" } {
+    return {
+      outputDir: resolve(this.outputDir),
+      source: process.env.OUTPUT_DIR ? "env" : "default",
+    };
   }
 
   async onModuleInit(): Promise<void> {

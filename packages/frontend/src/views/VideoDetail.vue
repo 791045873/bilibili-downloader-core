@@ -407,10 +407,11 @@ function formatDuration(seconds: number): string {
       </div>
     </template>
 
-    <Dialog v-model:visible="showDirDialog" header="确认下载目录" :modal="true" :closable="true" :style="{ width: '450px' }">
+    <Dialog v-model:visible="showDirDialog" header="确认下载子目录" :modal="true" :closable="true" :style="{ width: '450px' }">
       <div class="flex flex-col gap-3">
-        <label class="text-sm text-zinc-400">请确认或修改下载目录：</label>
-        <InputText v-model="dirDialogValue" class="w-full" placeholder="请输入下载目录" />
+        <label class="text-sm text-zinc-400">请确认或修改下载根目录下的相对子目录：</label>
+        <InputText v-model="dirDialogValue" class="w-full" placeholder="例如：合集标题/分区标题" />
+        <p class="text-xs text-zinc-500">最终文件会保存到服务端下载根目录下的该子目录中。</p>
         <p v-if="!dirDialogValue.trim()" class="text-xs text-red-400">目录不能为空</p>
       </div>
       <template #footer>
