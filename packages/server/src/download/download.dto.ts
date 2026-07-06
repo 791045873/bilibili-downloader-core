@@ -9,6 +9,8 @@ export class DownloadDto {
   codec?: string;
   /** 下载文件存放的子路径，用于构建下载路径 */
   outputPath?: string;
+  /** 字幕语言选择: "none"|"zh"|"en"|"all" */
+  subtitleLang?: string;
 }
 
 /** 独立单视频下载请求（流已选好） */

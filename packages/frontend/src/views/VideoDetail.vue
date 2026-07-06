@@ -11,7 +11,7 @@ import InputText from "primevue/inputtext";
 import { useSettingsStore } from "../stores/settings";
 import { useDownloadQueueStore } from "../stores/useDownloadQueueStore";
 import * as api from "../api";
-import type { VideoInfo, VideoPage, UgcSection, UgcEpisode } from "../types";
+import type { VideoInfo, VideoPage, UgcSection, UgcEpisode, SubtitleLang } from "../types";
 
 const route = useRoute();
 const router = useRouter();
@@ -38,6 +38,7 @@ interface TreeNode {
     selectedQuality?: number;
     selectedCodec?: string;
     selectedAudio?: string;
+    selectedSubtitleLang: SubtitleLang;
   };
   children?: TreeNode[];
 }
@@ -119,10 +120,10 @@ function markEnqueued(records: { bvid: string; cid: number; status: string; crea
 function buildEpisodeTree(section: UgcSection): TreeNode[] {
   return section.episodes.map((ep) => ({
     key: `${section.id}-${ep.cid}`,
-    data: { type: "episode" as const, episode: ep, resolved: false, enqueued: false },
+    data: { type: "episode" as const, episode: ep, resolved: false, enqueued: false, selectedSubtitleLang: "none" as const },
     children: ep.pages.map((p) => ({
       key: `${section.id}-${ep.cid}-${p.cid}`,
-      data: { type: "page" as const, page: p, resolved: false, enqueued: false },
+      data: { type: "page" as const, page: p, resolved: false, enqueued: false, selectedSubtitleLang: "none" as const },
     })),
   }));
 }
@@ -135,10 +136,11 @@ function buildMockVideoNode(info: VideoInfo): TreeNode {
       episode: { aid: info.videoInfo.avid, bvid: info.bvid, cid: info.pages[0]?.cid ?? 0, title: info.title, pages: info.pages },
       resolved: false,
       enqueued: false,
+      selectedSubtitleLang: "none",
     },
     children: info.pages.map((p) => ({
       key: `video-${info.bvid}-${p.cid}`,
-      data: { type: "page" as const, page: p, resolved: false, enqueued: false },
+      data: { type: "page" as const, page: p, resolved: false, enqueued: false, selectedSubtitleLang: "none" as const },
     })),
   };
 }
@@ -232,6 +234,7 @@ async function parseAllInSection() {
             p.data.selectedQuality = result.videoQualityList[0]?.id ?? settingsStore.settings.defaultQuality;
             p.data.selectedCodec = result.videoQualityList[0]?.codecList[0] ?? "AVC";
             p.data.selectedAudio = result.audioQualityList[0] ?? settingsStore.settings.defaultAudioQuality;
+            p.data.selectedSubtitleLang = "none";
           }
         });
       });
@@ -273,6 +276,7 @@ async function doAddToQueue(outputPath: string) {
         const pg = p.data.page;
         const vq = p.data.selectedQuality ?? settingsStore.settings.defaultQuality;
         const codec = p.data.selectedCodec || settingsStore.settings.defaultCodec || undefined;
+        const subtitleLang = p.data.selectedSubtitleLang || "none";
         const task = api.createDownload({
           bvid: videoInfo.value!.bvid,
           cid: pg.cid,
@@ -280,6 +284,7 @@ async function doAddToQueue(outputPath: string) {
           quality: vq,
           codec,
           outputPath,
+          subtitleLang,
         });
         downloadTasks.push(task);
       }
@@ -312,6 +317,13 @@ function formatDuration(seconds: number): string {
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+const subtitleOptions = [
+  { label: "不下载", value: "none" },
+  { label: "中文", value: "zh" },
+  { label: "英文", value: "en" },
+  { label: "全部字幕", value: "all" },
+];
 </script>
 
 <template>
@@ -400,6 +412,14 @@ function formatDuration(seconds: number): string {
               <template v-if="node.data.type === 'page'">
                 <Select v-if="node.data.qualityList?.length" v-model="node.data.selectedCodec" :options="node.data.qualityList?.find((q: any) => q.id === node.data.selectedQuality)?.codecList ?? []" size="small" class="w-full" />
                 <span v-else class="text-xs text-zinc-600">-</span>
+              </template>
+            </template>
+          </Column>
+          <Column header="字幕" class="w-28">
+            <template #body="{ node }">
+              <template v-if="node.data.type === 'page'">
+                <Select v-if="node.data.resolved" v-model="node.data.selectedSubtitleLang" :options="subtitleOptions" size="small" class="w-full" />
+                <span v-else class="text-xs text-amber-500">待解析</span>
               </template>
             </template>
           </Column>

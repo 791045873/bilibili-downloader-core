@@ -36,7 +36,8 @@ export interface DownloadExecutionRequest {
   /** 适配层已选好的音频流 */
   audioStream: MediaStreamInfo;
   cookieString?: string;
-  downloadSubtitle?: boolean;
+  /** 字幕语言选择: "none"-不下载 "all"-全部 string[]-指定语言 */
+  subtitleLanguages?: "none" | "all" | string[];
   keepTempOnFailure?: boolean;
 }
 
@@ -133,7 +134,7 @@ export class DownloadExecutionUseCase extends EventEmitter {
       mergeMs = Date.now() - mergeStart;
 
       // --- 字幕下载（可选） ---
-      if (request.downloadSubtitle && this.deps.subtitleProvider) {
+      if (request.subtitleLanguages !== "none" && this.deps.subtitleProvider) {
         try {
           const subtitles = await this.deps.subtitleProvider.fetchSubtitles(
             request.bvid,
@@ -143,11 +144,18 @@ export class DownloadExecutionUseCase extends EventEmitter {
           if (subtitles.length > 0) {
             const { writeFile } = await import("node:fs/promises");
             for (const sub of subtitles) {
-              const srtFile = request.outputFile.replace(
-                /\.mp4$/,
-                `.${sub.langKey}.srt`,
-              );
-              await writeFile(srtFile, sub.srtContent, "utf-8");
+              // 语言筛选
+              if (
+                request.subtitleLanguages === "all" ||
+                (Array.isArray(request.subtitleLanguages) &&
+                  request.subtitleLanguages.includes(sub.langKey))
+              ) {
+                const srtFile = request.outputFile.replace(
+                  /\.mp4$/,
+                  `.${sub.langKey}.srt`,
+                );
+                await writeFile(srtFile, sub.srtContent, "utf-8");
+              }
             }
           }
         } catch {

@@ -116,4 +116,6 @@ export interface UserInfo {
   isLogin: boolean;
 }
 
+export type SubtitleLang = "none" | "zh" | "en" | "all";
+
 export type LoginStatus = "pending" | "scanned" | "confirmed" | "expired";

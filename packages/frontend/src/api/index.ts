@@ -61,6 +61,7 @@ export async function createDownload(req: {
   quality?: number;
   codec?: string;
   outputPath?: string;
+  subtitleLang?: string;
 }): Promise<{ id: number; message: string }> {
   return request("/download", {
     method: "POST",

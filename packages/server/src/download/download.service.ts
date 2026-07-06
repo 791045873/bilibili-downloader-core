@@ -6,6 +6,7 @@ import { BilibiliAuthProvider } from "@bilibili-downloader/adapters/bilibili-aut
 import { HttpDownloader } from "@bilibili-downloader/adapters/downloader";
 import { FfmpegMerger } from "@bilibili-downloader/adapters/ffmpeg";
 import { NodeFileStore } from "@bilibili-downloader/adapters/fs";
+import { BilibiliSubtitleProvider } from "@bilibili-downloader/adapters/bilibili";
 import {
   ResolutionService,
   DownloadExecutionUseCase,
@@ -113,7 +114,7 @@ export class DownloadService implements OnModuleInit {
       mediaDownloader: new HttpDownloader(),
       mediaMerger: this.merger,
       fileStore: this.fileStore,
-      subtitleProvider: undefined,
+      subtitleProvider: new BilibiliSubtitleProvider(this.webClient),
     };
   }
 
@@ -190,6 +191,7 @@ export class DownloadService implements OnModuleInit {
       quality: dto.quality,
       codec: dto.codec,
       outputPath: dto.outputPath,
+      subtitleLang: dto.subtitleLang,
       status: TaskStatus.Created,
       createdAt: now,
     });
@@ -283,6 +285,7 @@ export class DownloadService implements OnModuleInit {
         videoStream,
         audioStream,
         cookieString,
+        subtitleLanguages: toSubtitleLanguages(task.subtitleLang),
       };
 
       const result = await executionUseCase.execute(request);
@@ -488,4 +491,21 @@ function sanitizeOutputPath(path: string): string {
     .map((seg) => seg.replace(/[<>:"|?*]/g, "_").replace(/^[. ]+|[. ]+$/g, ""))
     .filter(Boolean)
     .join(sep);
+}
+
+/**
+ * 将数据库中存储的字幕语言选择转换为 Core 层 subtitleLanguages
+ * "none" | "zh" | "en" | "all" → "none" | "all" | string[]
+ */
+function toSubtitleLanguages(
+  lang: string | null | undefined,
+): "none" | "all" | string[] {
+  if (!lang) return "none";
+  switch (lang) {
+    case "none": return "none";
+    case "all": return "all";
+    case "zh": return ["zh-CN"];
+    case "en": return ["en-US"];
+    default: return "none";
+  }
 }

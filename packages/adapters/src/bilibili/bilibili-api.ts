@@ -5,11 +5,13 @@
 import { createBilibiliWebClient, type BilibiliWebClient } from "./web-client.js";
 import { BilibiliResourceParser } from "./resource-parser.js";
 import { BilibiliStreamProvider } from "./stream-provider.js";
+import { BilibiliSubtitleProvider } from "./subtitle-provider.js";
 
 export interface BilibiliApiAdapter {
   webClient: BilibiliWebClient;
   resourceParser: BilibiliResourceParser;
   streamProvider: BilibiliStreamProvider;
+  subtitleProvider: BilibiliSubtitleProvider;
 }
 
 /**
@@ -24,5 +26,6 @@ export function createBilibiliApiAdapter(
     webClient,
     resourceParser: new BilibiliResourceParser(webClient),
     streamProvider: new BilibiliStreamProvider(webClient),
+    subtitleProvider: new BilibiliSubtitleProvider(webClient),
   };
 }

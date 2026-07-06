@@ -8,8 +8,8 @@ export interface DownloadRequest {
   /** 下载指定分 P (1-based)，不指定则下载第 1P */
   page?: number;
 
-  /** 是否下载字幕 */
-  downloadSubtitle?: boolean;
+  /** 字幕语言选择: "none"-不下载 "all"-全部 string[]-指定语言 (如 ["zh-CN","en-US"]) */
+  subtitleLanguages?: "none" | "all" | string[];
 
   /** 是否跳过已存在的输出文件，默认 true */
   skipExisting?: boolean;

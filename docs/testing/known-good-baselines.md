@@ -11,6 +11,7 @@ This file is lightweight. Record only meaningful baselines, not every local comm
 | Date       | Source | Git State  | Scope | Commands Passed           | Known Failures                | Evidence                    | Notes                                |
 | ---------- | ------ | ---------- | ----- | ------------------------- | ----------------------------- | --------------------------- | ------------------------------------ |
 | 2026-06-02 | local  | `212ab9f`  | partial | `pnpm install`, `pnpm typecheck` | `none`（无测试框架，无 lint）    | 见 `docs/logs/2026/06-02.md` | AGE 文档体系改造后首次基线            |
+| 2026-06-15 | local  | dirty      | full    | `pnpm typecheck`, `pnpm build`   | `none`                            | 见 `docs/plans/2026-06-15-subtitle-download-implementation-plan.md` | 字幕下载功能实现后全量验证        |
 
 ## When To Update
 

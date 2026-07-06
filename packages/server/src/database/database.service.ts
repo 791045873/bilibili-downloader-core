@@ -13,6 +13,7 @@ export interface TaskRecord {
   quality?: number;
   codec?: string;
   outputPath?: string;
+  subtitleLang?: string;
   status: string;
   progress?: number;
   speed?: string;
@@ -57,6 +58,7 @@ export class DatabaseService {
         quality INTEGER,
         codec TEXT,
         outputPath TEXT,
+        subtitle_lang TEXT,
         status TEXT NOT NULL DEFAULT 'created',
         progress REAL DEFAULT 0,
         speed TEXT,
@@ -75,6 +77,13 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_task_created ON task(createdAt);
       CREATE INDEX IF NOT EXISTS idx_task_bvid_cid ON task(bvid, cid);
     `);
+
+    // 已有数据库升级: 补充 subtitle_lang 列
+    try {
+      this.db.exec(`ALTER TABLE task ADD COLUMN subtitle_lang TEXT`);
+    } catch {
+      // 列已存在的忽略
+    }
   }
 
   // ==================== CRUD ====================
@@ -83,10 +92,10 @@ export class DatabaseService {
   insertTask(record: TaskRecord): number {
     const now = new Date().toISOString();
     const stmt = this.db.prepare(`
-      INSERT INTO task (bvid, cid, title, quality, codec, outputPath, status, progress, speed,
+      INSERT INTO task (bvid, cid, title, quality, codec, outputPath, subtitle_lang, status, progress, speed,
                         outputFile, fileSize, errorCode, errorMessage, durationMs,
                         createdAt, updatedAt, completedAt)
-      VALUES (@bvid, @cid, @title, @quality, @codec, @outputPath, @status, @progress, @speed,
+      VALUES (@bvid, @cid, @title, @quality, @codec, @outputPath, @subtitleLang, @status, @progress, @speed,
               @outputFile, @fileSize, @errorCode, @errorMessage, @durationMs,
               @createdAt, @updatedAt, @completedAt)
     `);
@@ -97,6 +106,7 @@ export class DatabaseService {
       quality: record.quality ?? null,
       codec: record.codec ?? null,
       outputPath: record.outputPath ?? null,
+      subtitleLang: record.subtitleLang ?? null,
       status: record.status ?? "created",
       progress: record.progress ?? 0,
       speed: record.speed ?? null,
