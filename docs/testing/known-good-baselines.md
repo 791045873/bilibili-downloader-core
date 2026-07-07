@@ -12,6 +12,7 @@ This file is lightweight. Record only meaningful baselines, not every local comm
 | ---------- | ------ | ---------- | ----- | ------------------------- | ----------------------------- | --------------------------- | ------------------------------------ |
 | 2026-06-02 | local  | `212ab9f`  | partial | `pnpm install`, `pnpm typecheck` | `none`（无测试框架，无 lint）    | 见 `docs/logs/2026/06-02.md` | AGE 文档体系改造后首次基线            |
 | 2026-06-15 | local  | dirty      | full    | `pnpm typecheck`, `pnpm build`   | `none`                            | 见 `docs/plans/2026-06-15-subtitle-download-implementation-plan.md` | 字幕下载功能实现后全量验证        |
+| 2026-07-07 | local  | dirty      | full    | `pnpm typecheck`, `pnpm build`   | `none`                            | 当前会话命令输出 | 视频分析核心链路改为 COS 临时签名 URL 传图并清理临时对象 |
 
 ## When To Update
 

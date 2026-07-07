@@ -16,6 +16,7 @@
     "@bilibili-downloader/adapters": "workspace:*",
     "@bilibili-downloader/core": "workspace:*",
     "@nestjs/common": "^11.0.0",
+    "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "better-sqlite3": "^12.10.0",

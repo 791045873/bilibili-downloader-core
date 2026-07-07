@@ -30,6 +30,18 @@
       "import": "./dist/fs/index.js",
       "types": "./dist/fs/index.d.ts"
     },
+    "./llm": {
+      "import": "./dist/llm/index.js",
+      "types": "./dist/llm/index.d.ts"
+    },
+    "./parser": {
+      "import": "./dist/parser/index.js",
+      "types": "./dist/parser/index.d.ts"
+    },
+    "./cos": {
+      "import": "./dist/cos/index.js",
+      "types": "./dist/cos/index.d.ts"
+    },
     "./logger": {
       "import": "./dist/logger.js",
       "types": "./dist/logger.d.ts"
@@ -46,7 +58,8 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@bilibili-downloader/core": "workspace:*"
+    "@bilibili-downloader/core": "workspace:*",
+    "cos-nodejs-sdk-v5": "2.15.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

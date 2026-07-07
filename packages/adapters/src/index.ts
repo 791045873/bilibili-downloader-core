@@ -6,5 +6,8 @@ export * from "./bilibili-auth/index.js";
 export * from "./downloader/index.js";
 export * from "./ffmpeg/index.js";
 export * from "./fs/index.js";
+export * from "./llm/index.js";
+export * from "./parser/index.js";
+export * from "./cos/index.js";
 export { Logger, LogLevel, logger, type LoggerOptions } from "./logger.js";
 export { TaskStore, type TaskRecord } from "./task-store.js";
