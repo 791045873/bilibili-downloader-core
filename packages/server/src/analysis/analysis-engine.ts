@@ -153,7 +153,8 @@ export class AnalysisEngine {
         return await this.writeEmptySummary(input, screenshots);
       }
 
-      if (!this.tempImageStore) {
+      const useVisionProxy = this.llmClient.usesVisionProxy();
+      if (!useVisionProxy && !this.tempImageStore) {
         throw new Error("COS 临时图片存储未配置，无法向远端多模态模型提供截图 URL");
       }
 
@@ -191,22 +192,29 @@ export class AnalysisEngine {
           continue;
         }
 
-        let uploadedImages: Awaited<ReturnType<TempImageStore["uploadImages"]>> = [];
-        try {
-          uploadedImages = await this.tempImageStore.uploadImages({
-            files: segScreenshots,
-            keyPrefix: `${tempRunPrefix}/segment-${si}`,
-          });
-          tempImageKeys.push(...uploadedImages.map((image) => image.key));
-        } catch (err) {
-          console.error(`段落 ${si} 上传临时截图失败: ${(err as Error).message}`);
-          continue;
-        }
-
-        const imageContents = uploadedImages.map((image) => ({
+        let imageContents = segScreenshots.map((file) => ({
           type: "image_url" as const,
-          image_url: { url: image.url },
+          image_url: { url: file },
         }));
+
+        if (!useVisionProxy) {
+          let uploadedImages: Awaited<ReturnType<TempImageStore["uploadImages"]>> = [];
+          try {
+            uploadedImages = await this.tempImageStore!.uploadImages({
+              files: segScreenshots,
+              keyPrefix: `${tempRunPrefix}/segment-${si}`,
+            });
+            tempImageKeys.push(...uploadedImages.map((image) => image.key));
+          } catch (err) {
+            console.error(`段落 ${si} 上传临时截图失败: ${(err as Error).message}`);
+            continue;
+          }
+
+          imageContents = uploadedImages.map((image) => ({
+            type: "image_url" as const,
+            image_url: { url: image.url },
+          }));
+        }
 
         if (imageContents.length === 0) continue;
 

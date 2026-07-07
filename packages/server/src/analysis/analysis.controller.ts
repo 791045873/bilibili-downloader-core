@@ -41,6 +41,8 @@ export class AnalysisController {
     const apiKey = process.env.QWEN_API_KEY;
     const baseUrl = process.env.QWEN_API_BASE;
     const modelName = process.env.QWEN_MODEL;
+    const visionProxyUrl = process.env.QWEN_VISION_PROXY_URL;
+    const visionModelName = process.env.QWEN_VISION_MODEL;
 
     if (!apiKey) {
       throw new BadRequestException("缺少环境变量 QWEN_API_KEY");
@@ -52,7 +54,13 @@ export class AnalysisController {
       throw new BadRequestException("缺少环境变量 QWEN_MODEL");
     }
 
-    return { apiKey, baseUrl, modelName };
+    return {
+      apiKey,
+      baseUrl,
+      modelName,
+      visionProxyUrl,
+      visionModelName,
+    };
   }
 }
 

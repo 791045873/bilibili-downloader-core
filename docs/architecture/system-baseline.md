@@ -29,6 +29,7 @@ packages/
 
 - NestJS + TypeScript
 - SQLite（better-sqlite3）
+- 可选 Python 薄代理：仅用于 DashScope 视觉模型读取本地图片路径，Node server 保持业务编排主体
 
 ## State Management Approach
 
@@ -62,7 +63,9 @@ packages/
 ## External Platforms
 
 - Bilibili API：无需登录即可获取视频基本信息、播放流地址
-- FFmpeg：音视频合并（作为外部依赖，需系统预装或容器内置）
+- FFmpeg / ffprobe：音视频合并与视频截图（作为外部依赖，需系统预装或容器内置）
+- 阿里云百炼 / DashScope：视频分析总结功能使用 Qwen 文本与视觉理解模型；视觉本地文件输入通过可选 Python 薄代理接入 DashScope Python SDK
+- 腾讯云 COS：未启用 Python 薄代理时，可作为多模态图片公网 URL 的备用临时存储路径
 
 ## Stable Rules
 

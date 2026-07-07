@@ -13,7 +13,8 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | Core         | `packages/core/src/`          | 下载领域模型、用例编排、ports 接口                | 2026-06-02    | high       |
 | Adapters     | `packages/adapters/src/`      | B站 API、HTTP 下载器、FFmpeg、文件系统适配       | 2026-06-02    | high       |
 | CLI          | `packages/cli/src/`           | 命令行入口，参数到 DownloadRequest 的转换        | 2026-06-02    | high       |
-| Server       | `packages/server/src/`        | NestJS 后端 API，下载任务管理                    | 2026-06-02    | high       |
+| Server       | `packages/server/src/`        | NestJS 后端 API，下载任务管理、视频分析编排        | 2026-07-07    | high       |
+| Vision Proxy | `packages/server/python/`     | 可选 Python 薄代理，仅负责 DashScope 本地视觉文件调用 | 2026-07-07    | medium     |
 | Frontend     | `packages/frontend/src/`      | Vue 3 前端，视频输入、下载列表、设置              | 2026-06-02    | high       |
 | Docker       | `packages/docker/`            | Dockerfile 与构建脚本                            | 2026-06-02    | high       |
 | Config       | `tsconfig.base.json`, `pnpm-workspace.yaml`, `package.json` | 项目配置                          | 2026-06-02    | high       |
@@ -25,6 +26,7 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | ------------------- | ----------------------------- | ----------------------------------------- | ------------------------------- | ------------- | ---------- |
 | 新增下载能力         | `packages/core/src/`          | `packages/adapters/src/`                  | `pnpm typecheck`                | 2026-06-02    | high       |
 | 新增 API 端点        | `packages/server/src/`        | `packages/core/src/` (usecase)            | `pnpm typecheck`                | 2026-06-02    | high       |
+| 修改视频分析能力      | `packages/server/src/analysis/` | `packages/adapters/src/llm/`, `packages/adapters/src/ffmpeg/`, `packages/server/python/` | `pnpm typecheck`, `pnpm build` | 2026-07-07    | high       |
 | 新增 UI 页面         | `packages/frontend/src/`      | `packages/server/src/` (API)              | `pnpm typecheck`                | 2026-06-02    | high       |
 | 修改下载器行为        | `packages/adapters/src/`      | `packages/core/src/` (ports)              | `pnpm typecheck`                | 2026-06-02    | high       |
 | 修改 B站 API 适配     | `packages/adapters/src/bilibili/` | `packages/core/src/` (domain models)  | `pnpm typecheck`                | 2026-06-02    | high       |
@@ -38,6 +40,8 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | `packages/core/src/`                  | 核心编排逻辑，改动需谨慎             | 优先阅读现有 usecase 和 port 接口，理解领域模型后再修改    |
 | `packages/adapters/src/bilibili/`     | B站 API 适配，外部 API 变更敏感      | 关注 B站接口稳定性，变更时保留向后兼容                    |
 | `packages/server/src/`                | NestJS 模块装配，依赖注入复杂度高     | 新增 API 遵循现有 controller/service 模式               |
+| `packages/server/src/analysis/`       | 视频分析编排横跨 LLM、字幕、截图、文档生成 | 保持 Node.js 作为业务编排主体，Python 只做本地视觉文件薄代理 |
+| `packages/server/python/`             | Python 依赖与本地文件路径能力，容易和 Node 编排漂移 | 仅透传 Node 指定的多模态请求，不加入业务语义 |
 
 ## Project-Specific Search Hints
 

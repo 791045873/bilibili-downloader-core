@@ -6,3 +6,5 @@ dist/
 downloads
 test_assets
 summaryDir
+__pycache__/
+.venv/
