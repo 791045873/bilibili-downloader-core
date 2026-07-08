@@ -2,7 +2,7 @@
 Qwen vision thin proxy.
 
 Node.js owns the full analysis orchestration and sends an OpenAI-style
-multimodal request here. This proxy only converts local image paths to the
+multimodal request here. This proxy only converts local media paths to the
 DashScope Python SDK message format, calls the model, and returns an
 OpenAI-style response body.
 """
@@ -12,21 +12,26 @@ from __future__ import annotations
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, unquote
 
 import dashscope
 from dashscope import MultiModalConversation
+from dotenv import load_dotenv
+
+SERVER_DIR = Path(__file__).resolve().parents[1]
+load_dotenv(SERVER_DIR / ".env")
 
 HOST = os.getenv("QWEN_VISION_PROXY_HOST", "127.0.0.1")
 PORT = int(os.getenv("QWEN_VISION_PROXY_PORT", "8765"))
 
 
-def normalize_image_url(value: str) -> str:
+def normalize_media_url(value: str) -> str:
     if value.startswith("file://"):
         return value
     if value.startswith("data:") or ";base64," in value.lower():
-        raise ValueError("Base64 image input is not allowed")
+        raise ValueError("Base64 media input is not allowed")
     parsed = urlparse(value)
     if parsed.scheme in ("http", "https"):
         return value
@@ -52,7 +57,12 @@ def convert_content(content: Any) -> list[dict[str, Any]]:
 
         if item_type == "image_url":
             image_url = item.get("image_url") or {}
-            converted.append({"image": normalize_image_url(str(image_url.get("url", "")))})
+            converted.append({"image": normalize_media_url(str(image_url.get("url", "")))})
+            continue
+
+        if item_type == "video_url":
+            video_url = item.get("video_url") or {}
+            converted.append({"video": normalize_media_url(str(video_url.get("url", "")))})
             continue
 
         raise ValueError(f"unsupported content item type: {item_type}")
@@ -113,6 +123,14 @@ def status_code_of(response: Any) -> int | None:
     return value if isinstance(value, int) else None
 
 
+def build_call_options(payload: dict[str, Any]) -> dict[str, Any]:
+    options: dict[str, Any] = {}
+    for key in ("stream", "enable_thinking", "response_format"):
+        if key in payload:
+            options[key] = payload[key]
+    return options
+
+
 class VisionProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if self.path != "/v1/chat/completions":
@@ -122,9 +140,9 @@ class VisionProxyHandler(BaseHTTPRequestHandler):
         try:
             content_length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
-            api_key = os.getenv("DASHSCOPE_API_KEY")
+            api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("DASH_SCOPE_API_KEY")
             if not api_key:
-                raise ValueError("missing environment variable DASHSCOPE_API_KEY")
+                raise ValueError("missing environment variable DASHSCOPE_API_KEY or DASH_SCOPE_API_KEY")
 
             base_http_api_url = os.getenv("DASHSCOPE_BASE_HTTP_API_URL")
             if base_http_api_url:
@@ -134,6 +152,7 @@ class VisionProxyHandler(BaseHTTPRequestHandler):
                 api_key=api_key,
                 model=payload.get("model"),
                 messages=convert_messages(payload.get("messages")),
+                **build_call_options(payload),
             )
 
             status_code = status_code_of(response)

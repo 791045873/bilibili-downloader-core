@@ -4,7 +4,5 @@ dist/
 .env
 *.log
 downloads
-test_assets
-summaryDir
 __pycache__/
 .venv/
