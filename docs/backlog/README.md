@@ -8,15 +8,74 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 
 ## Work Items
 
+### 已完成与历史项
+
 | Priority | Item | Requirement | Owner Doc | Plan | Status | AI Autonomy | Blocker | Last Checked |
 |----------|------|-------------|-----------|------|--------|-------------|---------|--------------|
-| P0 | 本地开发体验优化 | `docs/requirements/2026-06-11-local-dev-experience.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-11-local-dev-experience-plan.md` | `done` | `implement` | `none` | 2026-06-11 |
-| P0 | 视频解析页面优化 | `docs/requirements/2026-06-02-video-detail-page-improvement.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-03-video-detail-page-improvement-plan.md` | `done` | `implement` | `none` | 2026-06-09 |
-| P0 | UI 界面优化 | `docs/requirements/2026-06-02-ui-improvement.md`（deprecated） | `docs/design/app-overview.md` | `none` | `blocked` | `blocked` | `需求已废弃：范围涉及交互调整和后端接口修改，需重写需求` | 2026-06-02 |
-| P1 | 批量添加待下载视频（延迟解析） | `none` | `docs/design/app-overview.md` | `none` | `needs-requirement` | `blocked` | `需求文档未创建` | 2026-06-02 |
-| P1 | 下载目录指定与查看 | `docs/requirements/2026-06-15-download-directory-view.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-15-download-directory-view-plan.md` | `done` | `implement` | `none` | 2026-06-15 |
-| P2 | 浏览器插件（Agent 功能） | `none` | `docs/design/app-overview.md` | `none` | `idea` | `blocked` | `需求文档未创建` | 2026-06-02 |
-| P2 | 任务队列优化（不跳转、参数校验） | `none` | `docs/design/app-overview.md` | `none` | `needs-requirement` | `blocked` | `需求文档未创建` | 2026-06-02 |
+| P0 | 本地开发体验优化 | `docs/requirements/2026-06-11-local-dev-experience.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-11-local-dev-experience-plan.md` | `done` | `implement` | `none` | 2026-07-12 |
+| P0 | 视频解析页面优化 | `docs/requirements/2026-06-02-video-detail-page-improvement.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-03-video-detail-page-improvement-plan.md` | `done` | `implement` | `none` | 2026-07-12 |
+| P1 | 下载目录指定与查看 | `docs/requirements/2026-06-15-download-directory-view.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-15-download-directory-view-plan.md` | `done` | `implement` | `none` | 2026-07-12 |
+| — | 字幕下载（按语言选择） | `docs/requirements/2026-06-15-subtitle-download-feature.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-15-subtitle-download-implementation-plan.md` | `done` | `implement` | `none` | 2026-07-12 |
+| — | 视频分析总结（v1 调试版） | `docs/requirements/2026-07-06-video-analysis-summary.md` | `docs/design/app-overview.md` | `docs/plans/2026-07-06-video-analysis-summary-plan.md` | `done` | `implement` | `none` | 2026-07-12 |
+| P0 | UI 界面优化 | `docs/requirements/2026-06-02-ui-improvement.md`（deprecated） | `docs/design/app-overview.md` | `none` | `blocked` | `blocked` | `需求已废弃：范围涉及交互调整和后端接口修改，需重写需求` | 2026-07-12 |
+
+### 待实现：2026-07-07 视频分析增强系列（9 项，按推荐顺序）
+
+实现顺序由各 plan 头部 `> Related:` 字段的显式依赖声明推导（见下方“推荐实现顺序”）。所有项 plan 已写好但 plan audit 仍 pending，故 AI Autonomy 为 `plan-first`，实现前必须先通过独立 plan audit。
+
+| Seq | Phase | Priority | Item | Requirement | Owner Doc | Plan | Status | AI Autonomy | Blocker | Last Checked |
+|-----|-------|----------|------|-------------|-----------|------|--------|-------------|---------|--------------|
+| 1 | 1 | P0 | 视频分析-正式分析 API | `docs/requirements/2026-07-07-analysis-formal-api.md` | `docs/design/app-overview.md` | `docs/plans/2026-07-07-analysis-formal-api-plan.md` | `done` | `implement` | `none (plan audit + closure audit passed 2026-07-12)` | 2026-07-12 |
+| 2 | 1 | P0 | 视频分析-截图远端化（3a） | `docs/requirements/2026-07-07-screenshot-source-fallback-3a.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-screenshot-remote-3a-plan.md` | `ready` | `plan-first` | `plan audit pending` | 2026-07-12 |
+| 3 | 1 | P0 | 视频分析-多链接解析后端（4a） | `docs/requirements/2026-07-07-multi-link-parsing-4a.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-link-parsing-backend-4a-plan.md` | `ready` | `plan-first` | `plan audit pending` | 2026-07-12 |
+| 4 | 1 | P0 | 视频分析-AI 总结数据库（5a） | `docs/requirements/2026-07-07-ai-summary-interaction-5a.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-ai-summary-database-5a-plan.md` | `ready` | `plan-first` | `plan audit pending` | 2026-07-12 |
+| 5 | 2 | P1 | 视频分析-文档结构优化 | `docs/requirements/2026-07-07-document-structure-optimization.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-document-structure-optimization-plan.md` | `ready` | `plan-first` | `plan audit pending；依赖 Seq 1 完成` | 2026-07-12 |
+| 6 | 2 | P1 | 视频分析-截图源回退（3b） | `docs/requirements/2026-07-07-screenshot-source-fallback-3b.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-screenshot-fallback-3b-plan.md` | `ready` | `plan-first` | `plan audit pending；依赖 Seq 2 + Seq 1 完成` | 2026-07-12 |
+| 7 | 2 | P1 | 视频分析-多链接解析前端（4b） | `docs/requirements/2026-07-07-multi-link-parsing-4b.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-link-parsing-frontend-4b-plan.md` | `ready` | `plan-first` | `plan audit pending；依赖 Seq 3 完成` | 2026-07-12 |
+| 8 | 3 | P1 | 视频分析-AI 总结触发（5b） | `docs/requirements/2026-07-07-ai-summary-interaction-5b.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-ai-summary-trigger-5b-plan.md` | `ready` | `plan-first` | `plan audit pending；依赖 Seq 1/4/5/6/7 全部完成` | 2026-07-12 |
+| 9 | 4 | P2 | 视频分析-AI 总结邮件通知（5d） | `docs/requirements/2026-07-07-ai-summary-interaction-5d.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-ai-summary-email-5d-plan.md` | `ready` | `plan-first` | `plan audit pending；依赖 Seq 8 完成` | 2026-07-12 |
+
+## 推荐实现顺序（2026-07-07 视频分析增强系列）
+
+顺序依据：各 plan 文档头部 `> Related:` 字段显式声明的依赖关系（非人为排定）。
+
+### 依赖拓扑
+
+```
+Seq 1 formal-api ──► Seq 5 doc-opt ──┐
+                                     ├──► Seq 8 5b ──► Seq 9 5d
+Seq 2 3a ──► Seq 6 3b ────────────── ┤
+                                     │
+Seq 4 5a ─────────────────────────── ┤
+                                     │
+Seq 3 4a ──► Seq 7 4b ────────────── ┘
+```
+
+### 分阶段执行
+
+- **Phase 1（无前置，可并行启动）**：Seq 1 formal-api、Seq 2 3a、Seq 3 4a、Seq 4 5a
+  - formal-api 最优先：被 doc-opt、3b、5b 共 3 项依赖，是下游基础
+  - 四项互相独立，资源允许时并行推进
+- **Phase 2（依赖 Phase 1）**：Seq 5 doc-opt（←formal-api）、Seq 6 3b（←3a+formal-api）、Seq 7 4b（←4a）
+  - 三项互相独立，可并行
+- **Phase 3（汇聚）**：Seq 8 5b（←5a+formal-api+doc-opt+3b+4b）
+  - 依赖项最多，必须等 Phase 1+2 全部完成
+- **Phase 4（附加）**：Seq 9 5d（←5b）
+  - 邮件通知为附加功能，优先级最低
+
+### 前置门控
+
+每个 Seq 实现前必须：
+1. 通过独立 plan audit（当前所有 9 项 plan audit 均 pending）
+2. 同步扩展 `docs/design/app-overview.md` 与 `docs/design/feature-inventory.md` 以覆盖新接口/新表
+3. 确认 `docs/context/project-context.md` 的 active requirement 已指向对应项
+
+### 顺序非强制串行
+
+上述 Seq 编号是拓扑序的一个可行投影。实际执行中：
+- 同一 Phase 内的项可并行
+- 跨 Phase 不可乱序（依赖未就绪会导致返工）
+- 若发现 plan 实际依赖与声明不符，应先修订 plan 的 `> Related:` 字段，再调整本表 Seq
 
 ## Readiness Invariants
 

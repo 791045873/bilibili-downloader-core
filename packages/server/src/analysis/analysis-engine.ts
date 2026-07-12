@@ -6,10 +6,11 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parseSrtFile, type SrtEntry } from "@bilibili-downloader/adapters/parser";
 import { FfmpegScreenshot } from "@bilibili-downloader/adapters/ffmpeg";
-import { QwenClient, type LlmConfig } from "@bilibili-downloader/adapters/llm";
+import { QwenClient, type LlmConfig, type MultimodalContent } from "@bilibili-downloader/adapters/llm";
 import { generateMarkdown, type DocumentInput } from "./document-generator.js";
 
 function formatSubtitleEntry(entry: SrtEntry): string {
@@ -29,14 +30,27 @@ function transTimestampToSeconds(timestamp: string): number | undefined {
 }
 
 export interface AnalysisInput {
-  /** 视频文件路径 */
+  /** LLM 分析用视频文件路径（低分辨率或唯一可用分辨率） */
   videoPath: string;
-  /** SRT 字幕文件路径 */
-  subtitlePath: string;
+  /** SRT 字幕文件路径，可选（无字幕时不传） */
+  subtitlePath?: string;
   /** summary 输出目录（如 summary/{title}/） */
   summaryDir: string;
   /** 视频标题（用于文档标题） */
   videoTitle: string;
+  /** 视频元数据 */
+  metadata: {
+    /** 视频来源类型 */
+    type: "bilibili" | "local";
+    /** 视频在平台上的完整 URL；type=bilibili 时必填；type=local 时不关心 */
+    videoUrl?: string;
+    /** B 站视频 ID；type=bilibili 时必填 */
+    bvid?: string;
+    /** B 站分 P ID；type=bilibili 时必填 */
+    cid?: number;
+  };
+  /** 截图用视频路径（高分辨率）。不传时走 ScreenshotSourceResolver 降级逻辑（见 3b plan） */
+  screenshotVideoPath?: string;
 }
 
 export interface AnalysisOutput {
@@ -91,21 +105,26 @@ export class AnalysisEngine {
 
     const screenshots: string[] = [];
 
-    // 1. 解析字幕
-    const srtEntries = await parseSrtFile(input.subtitlePath);
-    if (srtEntries.length === 0) {
-      return await this.writeEmptySummary(input, screenshots);
+    // 1. 解析字幕（可选：subtitlePath 未传或文件不存在时跳过，仅传视频给 LLM）
+    let fullSubtitleText = "";
+    if (input.subtitlePath !== undefined && existsSync(input.subtitlePath)) {
+      const srtEntries = await parseSrtFile(input.subtitlePath);
+      fullSubtitleText = srtEntries.map(formatSubtitleEntry).join("\n");
     }
 
     if (!this.llmClient.usesVisionProxy()) {
-      throw new Error("视频+字幕分析需要配置 QWEN_VISION_PROXY_URL，以便通过 Python 薄代理读取本地视频文件");
+      throw new Error("视频分析需要配置 QWEN_VISION_PROXY_URL，以便通过 Python 薄代理读取本地视频文件");
     }
-
-    const fullSubtitleText = srtEntries.map(formatSubtitleEntry).join("\n");
 
     // 2. LLM: 视频 + 字幕分析，直接返回用于截图的时间戳
     let analysis: SubtitleAnalysis;
     try {
+      const userContent: MultimodalContent[] = [
+        { type: "video_url", video_url: { url: input.videoPath } },
+      ];
+      if (fullSubtitleText.length > 0) {
+        userContent.push({ type: "text", text: fullSubtitleText });
+      }
       analysis = (await this.llmClient.multimodalChat({
         model: "",
         stream: false,
@@ -115,10 +134,7 @@ export class AnalysisEngine {
           { role: "system", content: buildAnalysisSystemPrompt() },
           {
             role: "user",
-            content: [
-              { type: "video_url", video_url: { url: input.videoPath } },
-              { type: "text", text: fullSubtitleText },
-            ],
+            content: userContent,
           },
         ],
       })) as unknown as SubtitleAnalysis;

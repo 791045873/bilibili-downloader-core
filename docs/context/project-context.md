@@ -16,7 +16,7 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `none`
+- Active requirement: `none`（Seq 1 formal-api 已 done；Seq 2 待 plan audit）
 - Active owner doc: `docs/design/app-overview.md`
 - Active plan: `none`
 - Active backlog item: `none`

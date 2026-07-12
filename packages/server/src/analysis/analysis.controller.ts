@@ -1,40 +1,41 @@
-import { BadRequestException, Controller, Post } from "@nestjs/common";
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { basename, dirname, extname, join } from "node:path";
+import { BadRequestException, Body, Controller, Post } from "@nestjs/common";
+import { isAbsolute, join } from "node:path";
 import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
 import type { LlmConfig } from "@bilibili-downloader/adapters/llm";
 
-const DEBUG_VIDEO_FILENAME = "video1.mp4";
-const DEBUG_SUBTITLE_FILENAME = "video1.srt";
+interface AnalysisRequest {
+  /** LLM 分析用视频文件绝对路径（低分辨率或唯一可用分辨率） */
+  videoPath: string;
+  /** 字幕文件绝对路径，可选（无字幕时不传） */
+  subtitlePath?: string;
+  /** 视频标题 */
+  videoTitle: string;
+  /** 视频元数据 */
+  metadata: {
+    type: "bilibili" | "local";
+    videoUrl?: string;
+    bvid?: string;
+    cid?: number;
+  };
+  /** 截图用视频路径（高分辨率）。不传时走 ScreenshotSourceResolver 降级逻辑 */
+  screenshotVideoPath?: string;
+}
 
 @Controller("api/analysis")
 export class AnalysisController {
-  @Post("/debug")
-  async debugAnalyze() {
-    const input = await this.getDebugAnalysisInput();
+  @Post("/run")
+  async runAnalyze(@Body() body: AnalysisRequest) {
+    validateRequest(body);
+    const input: AnalysisInput = {
+      videoPath: body.videoPath,
+      subtitlePath: body.subtitlePath,
+      summaryDir: join(process.cwd(), "summaryDir"),
+      videoTitle: body.videoTitle,
+      metadata: body.metadata,
+      screenshotVideoPath: body.screenshotVideoPath,
+    };
     const engine = new AnalysisEngine(this.getLlmConfig());
     return engine.analyze(input);
-  }
-
-  private async getDebugAnalysisInput(): Promise<AnalysisInput> {
-    const projectRoot = findProjectRoot(process.cwd());
-    const videoPath = join(projectRoot, "test_assets", DEBUG_VIDEO_FILENAME);
-    const subtitlePath = join(projectRoot, "test_assets", DEBUG_SUBTITLE_FILENAME);
-
-    if (!existsSync(videoPath)) {
-      throw new BadRequestException(`调试视频文件不存在: ${videoPath}`);
-    }
-    if (!existsSync(subtitlePath)) {
-      throw new BadRequestException(`调试字幕文件不存在: ${subtitlePath}`);
-    }
-
-    return {
-      videoPath,
-      subtitlePath,
-      summaryDir: join(projectRoot, "summaryDir"),
-      videoTitle: await readVideoTitle(videoPath),
-    };
   }
 
   private getLlmConfig(): LlmConfig {
@@ -64,52 +65,38 @@ export class AnalysisController {
   }
 }
 
-function findProjectRoot(startDir: string): string {
-  let current = startDir;
-
-  while (true) {
-    if (existsSync(join(current, "test_assets", DEBUG_VIDEO_FILENAME))) {
-      return current;
-    }
-
-    const parent = dirname(current);
-    if (parent === current) {
-      throw new BadRequestException(
-        `无法从 ${startDir} 向上定位项目根目录下的 test_assets/${DEBUG_VIDEO_FILENAME}`,
-      );
-    }
-    current = parent;
+function validateRequest(body: AnalysisRequest): void {
+  if (typeof body.videoPath !== "string" || !isAbsolute(body.videoPath)) {
+    throw new BadRequestException("videoPath 必填且必须为绝对路径");
   }
-}
-
-function readVideoTitle(videoPath: string): Promise<string> {
-  return new Promise((resolve) => {
-    const proc = spawn("ffprobe", [
-      "-v", "error",
-      "-show_entries", "format_tags=title",
-      "-of", "default=noprint_wrappers=1:nokey=1",
-      videoPath,
-    ], {
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-
-    let stdout = "";
-    proc.stdout?.on("data", (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    proc.on("close", (code) => {
-      const title = stdout.trim();
-      if (code === 0 && title.length > 0) {
-        resolve(title);
-        return;
-      }
-
-      resolve(basename(videoPath, extname(videoPath)));
-    });
-
-    proc.on("error", () => {
-      resolve(basename(videoPath, extname(videoPath)));
-    });
-  });
+  if (typeof body.videoTitle !== "string" || body.videoTitle.trim().length === 0) {
+    throw new BadRequestException("videoTitle 必填且不能为空字符串");
+  }
+  if (body.subtitlePath !== undefined) {
+    if (typeof body.subtitlePath !== "string" || !isAbsolute(body.subtitlePath)) {
+      throw new BadRequestException("subtitlePath 如传入必须为绝对路径");
+    }
+  }
+  if (body.screenshotVideoPath !== undefined) {
+    if (typeof body.screenshotVideoPath !== "string" || !isAbsolute(body.screenshotVideoPath)) {
+      throw new BadRequestException("screenshotVideoPath 如传入必须为绝对路径");
+    }
+  }
+  if (body.metadata === null || typeof body.metadata !== "object") {
+    throw new BadRequestException("metadata 必填");
+  }
+  if (body.metadata.type !== "bilibili" && body.metadata.type !== "local") {
+    throw new BadRequestException("metadata.type 必须为 bilibili 或 local");
+  }
+  if (body.metadata.type === "bilibili") {
+    if (typeof body.metadata.videoUrl !== "string" || body.metadata.videoUrl.trim().length === 0) {
+      throw new BadRequestException("metadata.type=bilibili 时 videoUrl 必填且非空");
+    }
+    if (typeof body.metadata.bvid !== "string" || body.metadata.bvid.trim().length === 0) {
+      throw new BadRequestException("metadata.type=bilibili 时 bvid 必填且非空");
+    }
+    if (typeof body.metadata.cid !== "number" || !Number.isFinite(body.metadata.cid)) {
+      throw new BadRequestException("metadata.type=bilibili 时 cid 必填且为数字");
+    }
+  }
 }
