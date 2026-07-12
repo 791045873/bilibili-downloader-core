@@ -1,7 +1,7 @@
 # AI Summary Trigger And Dual-Path Analysis (5b) Plan
 
 > Plan Status: planned
-> Last Reviewed: 2026-07-11
+> Last Reviewed: 2026-07-12
 > Source: `docs/requirements/2026-07-07-ai-summary-interaction-5b.md`
 > Related: `docs/plans/2026-07-07-ai-summary-database-5a-plan.md` (dependency), `docs/plans/2026-07-07-analysis-formal-api-plan.md` (AnalysisInput), `docs/plans/2026-07-07-document-structure-optimization-plan.md` (document structure), `docs/plans/2026-07-07-screenshot-fallback-3b-plan.md` (resolver bypass), `docs/plans/2026-07-07-link-parsing-frontend-4b-plan.md` (ParseResultList.vue)
 > Audit: required
@@ -9,15 +9,18 @@
 
 ## Current Baseline
 
-- `packages/server/src/download/download.service.ts`: `executeTask()` downloads video + audio + subtitle; on completion calls `this.onTaskFinished?.(id)` in `finally` block; `onTaskFinished` is set by `DownloadScheduler` to trigger next scheduling; `createTask()` accepts `DownloadDto` and calls `db.insertTask()` — no `autoSummary` field
-- `packages/server/src/download/download.dto.ts`: `DownloadDto` has `bvid`, `cid`, `title`, `quality`, `codec`, `outputPath`, `subtitleLang` — no `autoSummary` field
-- `packages/server/src/download/download-scheduler.ts`: manages `maxConcurrency` (from `MAX_CONCURRENT_DOWNLOADS` env var, default 2); `tryScheduleNext()` picks next `created` task; no concept of low-res download scheduling; `onTaskFinished` callback deletes from `runningSet` and calls `tryScheduleNext()`
-- `packages/server/src/analysis/analysis-engine.ts`: `AnalysisInput` has `videoPath` (required), `subtitlePath` (required), `summaryDir`, `videoTitle`; `analyze()` always parses SRT first — no video-only path; no `screenshotVideoPath` support; uses `input.videoPath` for both LLM and screenshots
-- `packages/server/src/analysis/analysis.controller.ts`: only `POST /api/analysis/debug` with hardcoded test assets; no internal trigger method
-- `packages/server/src/analysis/analysis.module.ts`: only registers `AnalysisController`, no providers
-- `packages/frontend/src/api/index.ts`: has `createDownload()`, `checkTasks()`; no AI summary API; `createDownload()` does not accept `autoSummary` parameter
-- Database (5a plan): `task.auto_summary`, `task.summary_status`, `task.summary_output`, `analysis_sub_task` table — not yet implemented
-- Formal API (formal API plan): `POST /api/analysis/run` with `AnalysisInput` including `metadata`, `screenshotVideoPath?`, optional `subtitlePath` — not yet implemented
+- `packages/server/src/download/download.service.ts`: `executeTask()` (line 210) downloads video + audio + subtitle; on completion calls `this.onTaskFinished?.(id)` in `finally` block (line 320); `onTaskFinished` is set by `DownloadScheduler` to trigger next scheduling (download-scheduler.ts line 42); `createTask()` (line 185) accepts `DownloadDto` and calls `db.insertTask()` (line 187) — no `autoSummary` field; `ResolutionService` and `BilibiliStreamProvider` are private members (lines 59, 62), not injectable via NestJS DI
+- `packages/server/src/download/download.dto.ts`: `DownloadDto` (lines 4-14) has `bvid`, `cid`, `title`, `quality?`, `codec?`, `outputPath?`, `subtitleLang?` — no `autoSummary` field
+- `packages/server/src/download/download-scheduler.ts`: manages `maxConcurrency` from `MAX_CONCURRENT_DOWNLOADS` env var, default 2 (line 26); `runningSet` tracks running downloads (line 20); `tryScheduleNext()` (line 83) picks next `created` task via `db.findNextCreatedTask()` (line 85); no concept of low-res download scheduling; `onTaskFinished` callback (lines 42-45) deletes from `runningSet` and calls `tryScheduleNext()`
+- `packages/server/src/analysis/analysis-engine.ts`: `AnalysisInput` (lines 32-54) has `videoPath` (required), `subtitlePath?` (optional, formal-api done), `summaryDir`, `videoTitle`, `metadata` (lines 42-51: `type`, `videoUrl?`, `bvid?`, `cid?` — formal-api done), `screenshotVideoPath?` (line 53 — formal-api done); `analyze()` (line 101) already skips SRT parsing when `subtitlePath` is undefined or file does not exist (lines 108-113 — formal-api done, video-only path IS supported); LLM uses `input.videoPath` for `video_url` content part (line 123); screenshots use `input.videoPath` (lines 165-170) — `screenshotVideoPath` field exists in the type but is NOT yet wired into `analyze()` for screenshot source selection; `AnalysisEngine` constructor (lines 93-96) is `constructor(llmConfig: LlmConfig, httpClient?: typeof fetch)` — instantiated per-request in controller, not DI-managed
+- `packages/server/src/analysis/analysis.controller.ts`: exposes `POST /api/analysis/run` (line 26, formal-api done) with `AnalysisRequest` body and input validation (lines 68-102); debug endpoint removed (formal-api done); no internal trigger method; `AnalysisEngine` instantiated per-request via `new AnalysisEngine(this.getLlmConfig())` (line 37); `getLlmConfig()` reads env vars (lines 41-65)
+- `packages/server/src/analysis/analysis.module.ts`: only registers `AnalysisController`, no providers (lines 4-6)
+- `packages/server/src/download/download.module.ts`: `providers: [DownloadService, DownloadScheduler]` (line 10), NO `exports` field — neither `DownloadService` nor `DownloadScheduler` is injectable outside `DownloadModule` without adding exports
+- `packages/server/src/database/database.module.ts`: `@Global()` (line 4), exports `DatabaseService` (line 7) — globally available without importing the module
+- `packages/frontend/src/api/index.ts`: has `createDownload()` (line 57), `checkTasks()` (line 98); no AI summary API; `createDownload()` does not accept `autoSummary` parameter
+- `packages/frontend/src/views/ParseResultList.vue`: does NOT exist (4b plan not yet implemented)
+- Database (5a plan): `task.auto_summary`, `task.summary_status`, `task.summary_output`, `analysis_sub_task` table — not yet implemented (live: `database.service.ts` `TaskRecord` lines 8-28 has no summary fields; `initSchema()` lines 52-86 has no such columns or table)
+- Formal API (formal-api plan): COMPLETED — `POST /api/analysis/run` exists (live: `analysis.controller.ts` line 26); `AnalysisInput` includes `metadata`, `screenshotVideoPath?`, optional `subtitlePath` (live: `analysis-engine.ts` lines 32-54); `analyze()` supports video-only path (live: lines 108-113)
 
 ## Goals
 
@@ -53,32 +56,32 @@
 
 ## Execution Plan
 
-### Phase 1 - AnalysisEngine: support optional subtitlePath and dual video source
+### Phase 1 - AnalysisEngine: wire screenshotVideoPath into analyze() for dual video source
 
 Status: planned
 Targets: `packages/server/src/analysis/analysis-engine.ts`
 
-- Item Types: Add | Fix
-- Prereqs: formal API plan (AnalysisInput with optional subtitlePath and screenshotVideoPath)
+- Item Types: Fix
+- Prereqs: formal API plan COMPLETED (AnalysisInput with optional subtitlePath and screenshotVideoPath)
 
-- [ ] Update `analyze()`: if `input.subtitlePath` is undefined or file does not exist, skip SRT parsing; LLM user message contains only `video_url` content part (no text part for subtitle)
-- [ ] Update `analyze()`: LLM `video_url` content part continues to use `input.videoPath` (low-res path); screenshot source changes to `input.screenshotVideoPath ?? input.videoPath`
+- [ ] Already done by formal-api plan: `analyze()` skips SRT parsing when `subtitlePath` is undefined or file does not exist (live: lines 108-113) — no action needed
+- [ ] Update `analyze()`: screenshot source changes from `input.videoPath` (live: line 166) to `input.screenshotVideoPath ?? input.videoPath` — this is the core dual video source wiring
 - [ ] When `screenshotVideoPath` is present, use it directly for `screenshotter.takeScreenshots()` (bypass ScreenshotSourceResolver)
 - [ ] Retain existing error handling: screenshot failure skips segment, LLM failure returns empty summary
 
 Exit Criteria:
 
-- [ ] Analysis without subtitlePath completes (video-only LLM call) — verified by code review: `analyze()` checks `subtitlePath` existence before `parseSrtFile()`
-- [ ] Analysis with `screenshotVideoPath` uses it for screenshots, `videoPath` for LLM — verified by code review: screenshot source is `input.screenshotVideoPath ?? input.videoPath`
+- [ ] Analysis without subtitlePath completes (video-only LLM call) — already verified by formal-api plan; no action needed
+- [ ] Analysis with `screenshotVideoPath` uses it for screenshots, `videoPath` for LLM — verified by code review: screenshot source is `input.screenshotVideoPath ?? input.videoPath` (live line 166 changed)
 - [ ] `pnpm typecheck` passes
 - [ ] `pnpm build` passes
 
 ### Phase 2 - AnalysisTriggerService and download completion callback
 
 Status: planned
-Targets: `packages/server/src/analysis/analysis-trigger.service.ts` (new), `packages/server/src/download/download-scheduler.ts`, `packages/server/src/analysis/analysis.module.ts`
+Targets: `packages/server/src/analysis/analysis-trigger.service.ts` (new), `packages/server/src/download/download-scheduler.ts`, `packages/server/src/download/download.module.ts`, `packages/server/src/analysis/analysis.module.ts`
 
-- Item Types: Add | Fix
+- Item Types: Add | Fix | Decision
 - Prereqs: Phase 1, 5a plan (database fields)
 
 - [ ] Create `AnalysisTriggerService` (Injectable) with method `trigger(taskId: number): Promise<void>` that manages the full analysis lifecycle independently from download pipeline
@@ -90,20 +93,26 @@ Targets: `packages/server/src/analysis/analysis-trigger.service.ts` (new), `pack
   5. If no `analysis_sub_task`: determine if low-res download needed (get quality list, compare with downloaded quality)
   6. If low-res needed: create `analysis_sub_task`, schedule low-res download, return (will be re-triggered when low-res completes)
   7. If low-res not needed (reuse): set `videoPath = screenshotVideoPath = downloaded video path`
-  8. Call `AnalysisEngine.analyze()` with correct `AnalysisInput`
-  9. Update `summary_status = 'completed'` and `summary_output` on success
-  10. Update `summary_status = 'failed'` on error
-  11. Clean up low-res video file from `ANALYSIS_LLM_VIDEO_DIR` after analysis
-- [ ] Update `download-scheduler.ts` `onTaskFinished` callback: after `runningSet.delete()` and `tryScheduleNext()`, check task `auto_summary` and `status`; if both true, call `analysisTriggerService.trigger(taskId)` as fire-and-forget (`.catch(err => logger.error(...))`)
-- [ ] `analysis.module.ts` updated to provide `AnalysisTriggerService` and import `DatabaseModule`, `DownloadModule`
+  8. Construct `AnalysisInput` including `metadata` from task fields (`type: "bilibili"`, `bvid`, `cid`, `videoUrl` constructed from bvid)
+  9. Call `AnalysisEngine.analyze()` with correct `AnalysisInput`
+  10. Update `summary_status = 'completed'` and `summary_output` on success
+  11. Update `summary_status = 'failed'` on error
+  12. Clean up low-res video file from `ANALYSIS_LLM_VIDEO_DIR` after analysis
+- [ ] Decision: break circular module dependency between `AnalysisModule` (needs `DownloadScheduler` for low-res scheduling) and `DownloadModule` (needs `AnalysisTriggerService` for completion callback). Use callback pattern consistent with existing `onTaskFinished` (download-scheduler.ts line 42): `DownloadScheduler` exposes a public `onAnalysisTrigger?: (taskId: number) => void` callback that `AnalysisTriggerService` sets. This avoids circular DI. Alternatives: NestJS `forwardRef` (rejected — adds complexity, existing codebase uses callback pattern); shared event bus (rejected — over-engineering for single callback). Residual risk: callback must be set before any download completes; `onModuleInit` ordering ensures this.
+- [ ] Decision: `AnalysisTriggerService` instantiates `AnalysisEngine` per-use via `new AnalysisEngine(getLlmConfig())`, consistent with the existing controller pattern (analysis.controller.ts line 37). Alternatives: make `AnalysisEngine` a NestJS provider (rejected — changes existing instantiation pattern, requires module restructuring). Residual risk: `getLlmConfig()` env-var reading logic is duplicated; acceptable given consistency with controller.
+- [ ] Decision: `DownloadModule` must export `DownloadScheduler` (add `exports: [DownloadScheduler]` to `download.module.ts`) so `AnalysisModule` can inject it. `DownloadService` export is also needed if 3b plan has not yet added it. `DatabaseService` is already `@Global()` (database.module.ts line 4), no import needed.
+- [ ] Update `download-scheduler.ts` `onTaskFinished` callback (lines 42-45): after `runningSet.delete()` and `tryScheduleNext()`, call `this.onAnalysisTrigger?.(taskId)` as fire-and-forget. `AnalysisTriggerService` sets this callback and internally checks `auto_summary` and `status` before triggering analysis (`.catch(err => logger.error(...))`)
+- [ ] `analysis.module.ts` updated to provide `AnalysisTriggerService` and import `DownloadModule` (for `DownloadScheduler` injection). `DatabaseService` is `@Global()`, no import needed.
 - [ ] Decision: analysis trigger is asynchronous via `AnalysisTriggerService`, completely decoupled from `executeTask()`. Alternatives: synchronous within `executeTask()` (rejected — blocks `onTaskFinished`, preventing download pipeline from scheduling next tasks). Residual risk: if server restarts during analysis, analysis is lost; `summary_status = 'pending'` can be used for future recovery.
 
 Exit Criteria:
 
 - [ ] `AnalysisTriggerService` exists and is registered in `analysis.module.ts` (code review)
-- [ ] `onTaskFinished` callback calls `analysisTriggerService.trigger()` as fire-and-forget (code review — confirms `.catch()` pattern, no `await`)
+- [ ] `DownloadModule` exports `DownloadScheduler` (code review — `download.module.ts` has `exports: [DownloadScheduler]`)
+- [ ] `DownloadScheduler` exposes `onAnalysisTrigger` callback; `AnalysisTriggerService` sets it (code review — callback pattern, no circular DI)
+- [ ] `onTaskFinished` callback calls `this.onAnalysisTrigger?.(taskId)` as fire-and-forget (code review — confirms `.catch()` pattern, no `await`)
 - [ ] `auto_summary=false` tasks do not trigger analysis (code review — `trigger()` checks `auto_summary` first)
-- [ ] `auto_summary=true` tasks trigger analysis after download success (code review — scheduler callback checks `status === 'success'`)
+- [ ] `auto_summary=true` tasks trigger analysis after download success (code review — callback checks `status === 'success'`)
 - [ ] Unified analysis flow determines quality and decides reuse vs. low-res download (code review of `trigger()` quality check logic)
 - [ ] `summary_status` updated to `pending`/`completed`/`failed` (code review)
 - [ ] Low-res video cleaned up after analysis (code review — `fs.unlink` or `rm` in `trigger()` finally block)
@@ -233,21 +242,39 @@ Exit Criteria:
 
 ## Plan Audit
 
-- Status: pending
-- Reviewer / Agent: TBD (independent subagent or reviewer)
-- Evidence: TBD
+- Status: passed (cold-replay proxy, reviewer availability = none)
+- Reviewer / Agent: 独立 subagent cold-replay
+- Evidence:
+  - Baseline 准确性: 逐条核对 live 代码，发现 3 blocker + 3 major，全部修订：
+    - B1 (blocker): baseline line 15 声称 `AnalysisInput` 的 `subtitlePath` required、无 `screenshotVideoPath`、无 video-only path — 与 live 代码矛盾。formal-api 已 done：`subtitlePath?` optional (line 36)，`screenshotVideoPath?` 存在 (line 53)，`metadata` 存在 (lines 42-51)，`analyze()` 已支持 video-only (lines 108-113)。已修订 baseline。
+    - B2 (blocker): baseline line 16 声称 controller 只有 `POST /api/analysis/debug` — 与 live 矛盾。formal-api 已 done：controller 暴露 `POST /api/analysis/run` (line 26)，debug 端点已移除。已修订 baseline。
+    - B3 (blocker): baseline line 20 声称 formal API "not yet implemented" — formal-api plan 已 completed。已修订为 "COMPLETED"。
+    - M1 (major): 循环依赖未处理 — `AnalysisModule` 需 `DownloadScheduler` (低分辨率调度)，`DownloadModule` 需 `AnalysisTriggerService` (完成回调)。已新增 Decision：使用 callback pattern (`onAnalysisTrigger`) 与现有 `onTaskFinished` 一致，避免循环 DI。
+    - M2 (major): `DownloadModule` 无 `exports` (live: download.module.ts)，`DownloadScheduler` 不可注入。已新增 Decision：`DownloadModule` 须 `exports: [DownloadScheduler]`。
+    - M3 (major): `AnalysisEngine` 实例化模式未说明 — `AnalysisTriggerService` 需调用 `analyze()` 但 `AnalysisEngine` 非 DI provider (per-request instantiated)。已新增 Decision：`AnalysisTriggerService` per-use 实例化 `AnalysisEngine`，与 controller 一致。
+    - M4 (minor): Phase 1 item "skip SRT parsing when subtitlePath absent" 已由 formal-api 实现 (lines 108-113)。已标注 "Already done by formal-api plan"，Phase 1 聚焦 screenshotVideoPath wiring。
+    - M5 (minor): baseline 缺少 `DownloadModule` 无 exports、`DatabaseModule` @Global、`ParseResultList.vue` 不存在等关键事实。已补充。
+    - M6 (minor): baseline 缺少 file:line 证据。已逐条补充。
+  - AC 覆盖: 15/15 全部被 exit criteria 覆盖（AC1→Phase 5 exit; AC2→Phase 4+5 exit; AC3→Phase 2 exit; AC4→Phase 2 exit line 107; AC5→Phase 2+3 exit; AC6→Phase 2 exit line 109 + Phase 6; AC7→Phase 5 exit; AC8→Phase 4+5 exit; AC9→Phase 4+5 exit; AC10→Phase 4+5 exit; AC11→Phase 5 exit; AC12→Phase 3 exit; AC13→Phase 3 exit; AC14→Phase 1 exit; AC15→all phases typecheck/build）
+  - 依赖方向: 5b depends on 5a, formal-api (done), doc-opt, 3b, 4b — 方向正确。5a plan line 6 确认；formal-api plan 已 completed；3b plan follow-up 确认 5b 使用 screenshotVideoPath bypass；4b plan follow-up 确认 5b 在 ParseResultList.vue 添加功能。
+  - R6 testing 文档: `docs/testing/2026/07-07-ai-summary-trigger-5b-testing.md` 不存在 — 已创建，含 15 个需求级测试方向（should/should-not）。
+  - R8 Item Types: Phase 1 已从 `Add | Fix` 修正为 `Fix`（仅 wiring 改动）；Phase 2 已从 `Add | Fix` 修正为 `Add | Fix | Decision`。
+  - Anti-Slacking: 未发现 optional/if time permits/consider/maybe/nice to have/as needed 禁用词用于 in-scope items。
+  - 5b 涉及 API、integration、cross-module DI 行为，但非 protected area（auth/data-deletion/payment/deployment 均不触及），符合 cold-replay 适用条件。
 
 ## Closure Gates
 
 - [ ] `pnpm typecheck` zero errors
 - [ ] `pnpm build` zero errors
 - [ ] 5a plan (`2026-07-07-ai-summary-database-5a-plan.md`) is closed — `task.auto_summary`, `task.summary_status`, `task.summary_output`, `analysis_sub_task` table exist
-- [ ] Formal API plan (`2026-07-07-analysis-formal-api-plan.md`) is closed — `AnalysisInput` includes `metadata`, `screenshotVideoPath?`, optional `subtitlePath`
+- [ ] Formal API plan (`2026-07-07-analysis-formal-api-plan.md`) is closed — `AnalysisInput` includes `metadata`, `screenshotVideoPath?`, optional `subtitlePath` (already done)
 - [ ] Document structure plan (`2026-07-07-document-structure-optimization-plan.md`) is closed — front matter `video_url` derivation from `metadata.type`
 - [ ] 3b plan (`2026-07-07-screenshot-fallback-3b-plan.md`) is closed OR `screenshotVideoPath` bypass makes resolver unnecessary (code review confirms 5b always passes `screenshotVideoPath`)
 - [ ] 4b plan (`2026-07-07-link-parsing-frontend-4b-plan.md`) is closed — `ParseResultList.vue` exists
 - [ ] `AnalysisTriggerService` exists and is registered (code review)
-- [ ] `onTaskFinished` calls `analysisTriggerService.trigger()` as fire-and-forget, does not block download pipeline (code review + manual verification: second download starts while first analysis runs)
+- [ ] `DownloadModule` exports `DownloadScheduler` (code review — `download.module.ts` has `exports`)
+- [ ] `DownloadScheduler` exposes `onAnalysisTrigger` callback, `AnalysisTriggerService` sets it — no circular DI (code review)
+- [ ] `onTaskFinished` calls `this.onAnalysisTrigger?.(taskId)` as fire-and-forget, does not block download pipeline (code review + manual verification: second download starts while first analysis runs)
 - [ ] `executeLowResDownload()` does not touch `taskCache` or call `onTaskFinished` (code review)
 - [ ] Low-res download completion calls `analysisTriggerService.trigger(taskId)` to re-check waiting task (code review)
 - [ ] `DownloadDto` includes `autoSummary?: boolean` (code review)
@@ -257,6 +284,7 @@ Exit Criteria:
 - [ ] One-click button executes 4 branches correctly — verified by manual testing
 - [ ] Mutual exclusion enforced — verified by manual testing
 - [ ] Low-res video cleaned up after analysis — verified by checking `ANALYSIS_LLM_VIDEO_DIR` after Path 2 analysis
+- [ ] `docs/logs/` updated with implementation record
 - [ ] corresponding `docs/testing/` document exists and every testing direction is confirmed passed or explicitly adjudicated out of scope
 - [ ] no in-scope item downgraded to deferred/follow-up without recorded rationale
 - [ ] plan audit passed before implementation

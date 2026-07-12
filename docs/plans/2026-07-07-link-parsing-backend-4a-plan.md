@@ -1,9 +1,9 @@
 # Multi-Link Parsing Backend (4a) Plan
 
 > Plan Status: planned
-> Last Reviewed: 2026-07-07
+> Last Reviewed: 2026-07-12
 > Source: `docs/requirements/2026-07-07-multi-link-parsing-4a.md`
-> Related: `docs/plans/2026-07-07-link-parsing-frontend-4b-plan.md` (frontend depends on 4a)
+> Related: `docs/plans/2026-07-07-link-parsing-frontend-4b-plan.md` (frontend depends on 4a; plan not yet authored — forward reference)
 > Audit: required
 > Testing: `docs/testing/2026/07-07-link-parsing-backend-4a-testing.md`
 
@@ -25,6 +25,8 @@
 - `app.module.ts` imports `DatabaseModule`, `DownloadModule`, `AnalysisModule` -- no parse module
 - `DownloadModule` registers `DownloadController`, `VideoController`, `AuthController` and provides `DownloadService`, `DownloadScheduler`
 - `DownloadService` has `getVideoInfo()` using `ResolutionService.resolve()` and `parseVideo()` using `resourceParser.parse()` + `resolutionService.resolveStreams()`
+- `DownloadService` manually constructs all bilibili providers in `onModuleInit()` (`download.service.ts:89-119`) — `createBilibiliWebClient({ cookieString })`, `new BilibiliResourceParser(webClient)`, `new BilibiliStreamProvider(webClient)`. These classes are NOT registered as NestJS injectable providers; `download.module.ts:9-10` only registers `DownloadService` and `DownloadScheduler`. Cookie string is loaded from `COOKIE_FILE` env var at init time.
+- The live `UgcSeasonInfo` type (`StreamProviderPort.ts:36-41`) has `{ id, title, cover, sections: UgcSection[] }` — used by `VideoInfo.ugcSeason` for full season detail with episodes. The requirement's `UgcSeasonInfo` (`{ seasonId, title, cover, videoCount }`) is a different shape for the seasons-list overview in `UserSpaceResult`. These are distinct types and must not be conflated.
 
 ## Goals
 
@@ -34,7 +36,7 @@
 - New `space-provider.ts` implements user info, user videos, user seasons, UGC season videos APIs
 - New `parse` module (controller/service/module) registered in `app.module.ts`
 - `GET /api/video/info` marked deprecated but remains functional
-- `VideoInfo` includes complete `ugcSeason` with `seasonId`
+- `VideoInfo` includes complete `ugcSeason` (existing `UgcSeasonInfo.id` is the season identifier); the parse-link response DTO maps `id` → `seasonId` to match the requirement contract — no rename of the existing domain type
 - `VideoSummary` includes `bvid` and `cid`
 
 ## Non-Goals
@@ -57,25 +59,28 @@
 ### Phase 1 - Add space-matcher and ugc-season-matcher
 
 Status: planned
-Targets: `packages/adapters/src/bilibili/matcher/space-matcher.ts`, `packages/adapters/src/bilibili/matcher/ugc-season-matcher.ts`, `packages/adapters/src/bilibili/matcher/index.ts`, `packages/adapters/src/bilibili/resource-parser.ts`, `packages/core/src/ports/ResourceParserPort.ts`
+Targets: `packages/adapters/src/bilibili/matcher/space-matcher.ts`, `packages/adapters/src/bilibili/matcher/ugc-season-matcher.ts`, `packages/adapters/src/bilibili/matcher/index.ts`, `packages/adapters/src/bilibili/resource-parser.ts`, `packages/core/src/ports/ResourceParserPort.ts`, `packages/core/src/ports/ParseLinkPort.ts`
 
 - Item Types: Add | Decision
 - Prereqs: none
 
-- [ ] Create `space-matcher.ts`: match `space.bilibili.com/{mid}` and `space.bilibili.com/{mid}/video` -> return `{ type: ResourceType.UserSpace, mid }`
+- [ ] Create `packages/core/src/ports/ParseLinkPort.ts` defining the new response types: `PaginatedVideos`, `VideoSummary`, `UserSpaceResult`, `UgcSeasonResult`, `FavoritesResult`, and `UgcSeasonSummary` (the seasons-list overview item with `seasonId`, `title`, `cover`, `videoCount` — distinct from the existing `UgcSeasonInfo` which has `id` + `sections` for full detail). Export from `packages/core/src/ports/index.ts`.
+- [ ] Create `space-matcher.ts`: match `space.bilibili.com/{mid}` (bare, no sub-path) and `space.bilibili.com/{mid}/video` -> return `{ type: ResourceType.UserSpace, mid }`. Regex must be anchored to NOT match `/favlist` or `/channel/collectiondetail` (use `$` or negative lookahead) to avoid shadowing favorites and UGC season matchers.
 - [ ] Create `ugc-season-matcher.ts`: match `space.bilibili.com/{mid}/channel/collectiondetail?sid={season_id}` -> return `{ type: ResourceType.UgcSeason, seasonId }`
 - [ ] Update `matcher/index.ts` to export new matchers
 - [ ] Decision: extend `ResourceType` enum in `packages/core/src/ports/ResourceParserPort.ts` to add `UserSpace` and `UgcSeason`. Alternatives: use string literals (rejected — breaks existing enum contract). Residual risk: `ResourceType` enum extension affects core/ports; `pnpm build` across all packages is required to verify no breakage.
-- [ ] Update `resource-parser.ts` MATCHERS array to include new matchers
+- [ ] Update `resource-parser.ts` MATCHERS array — ordering must be most-specific first: `[matchBv, matchBangumi, matchFavorites, matchCheese, matchUgcSeason, matchSpace]`. Space matcher goes last because its URL pattern is the broadest `space.bilibili.com/{mid}` prefix.
 - [ ] Update `ParseResult` interface to support `mid?` and `seasonId?` fields for new types
 
 Exit Criteria:
 
 - [ ] `pnpm typecheck` passes (all packages)
 - [ ] `pnpm build` passes (all packages — covers cross-package ResourceType enum impact)
-- [ ] Space URL regex matches correctly (code review: regex pattern matches `space.bilibili.com/{mid}` and `/video` path)
-- [ ] UGC season URL regex matches correctly (code review: regex pattern matches `collectiondetail?sid=`)
+- [ ] `ParseLinkPort.ts` exported from `packages/core/src/ports/index.ts` and importable from server
+- [ ] Space URL regex matches `space.bilibili.com/{mid}` and `/video` path but does NOT match `/favlist` or `/channel/collectiondetail` (code review)
+- [ ] UGC season URL regex matches `collectiondetail?sid=` (code review)
 - [ ] Non-matching URLs return null (code review: matchers return null for non-matching input)
+- [ ] MATCHERS array ordering: space matcher is last (code review)
 
 ### Phase 2 - Create space-provider.ts
 
@@ -85,10 +90,10 @@ Targets: `packages/adapters/src/bilibili/space-provider.ts`
 - Item Types: Add
 - Prereqs: Phase 1
 
-- [ ] Create `BilibiliSpaceProvider` class injecting `BilibiliWebClient`
+- [ ] Create `BilibiliSpaceProvider` class with constructor accepting `BilibiliWebClient` (same pattern as `favorites-provider.ts:54` — constructor param, not NestJS DI)
 - [ ] Implement `getUserInfo(mid)`: call `x/space/acc/info` -> return `{ mid, name, face }`
 - [ ] Implement `getUserVideos(mid, page, pageSize)`: call `x/space/wbi/arc/search` with WBI signing -> return `PaginatedVideos`
-- [ ] Implement `getUserSeasons(mid)`: call `x/polymer/web-space/seasons_series_list` -> return `UgcSeasonInfo[]`
+- [ ] Implement `getUserSeasons(mid)`: call `x/polymer/web-space/seasons_series_list` -> return `UgcSeasonSummary[]` (the new type from `ParseLinkPort.ts` with `seasonId`, `title`, `cover`, `videoCount` — NOT the existing `UgcSeasonInfo` which has `id` + `sections`)
 - [ ] Implement `getUgcSeasonVideos(seasonId, page, pageSize)`: call `x/polymer/web-space/seasons_archives_list` -> return `PaginatedVideos`
 - [ ] Follow `favorites-provider.ts` pattern: `requestJson()`, check `code !== 0`, throw on error
 - [ ] Map B-station API response fields to `VideoSummary` with `bvid` and `cid`
@@ -110,12 +115,12 @@ Targets: `packages/server/src/parse/parse.controller.ts`, `packages/server/src/p
 - Item Types: Add
 - Prereqs: Phase 2
 
-- [ ] Create `parse.service.ts`: inject `BilibiliResourceParser`, `BilibiliStreamProvider`, `BilibiliSpaceProvider`, `BilibiliFavoritesProvider`, `DatabaseService`; implement `parseLink(input)` dispatching by type; implement `getUserSpaceVideos()`, `getUgcSeasonVideos()`, `getFavoritesVideos()` pagination methods
+- [ ] Create `parse.service.ts` implementing `OnModuleInit`: in `onModuleInit()` manually construct `BilibiliWebClient` (loading cookie string from `COOKIE_FILE` env var), `BilibiliResourceParser`, `BilibiliStreamProvider`, `BilibiliSpaceProvider`, `BilibiliFavoritesProvider` — following the `DownloadService` pattern (`download.service.ts:89-119`). No `DatabaseService` injection needed (parse-link has no database persistence). Implement `parseLink(input)` dispatching by type; implement `getUserSpaceVideos()`, `getUgcSeasonVideos()`, `getFavoritesVideos()` pagination methods
 - [ ] Create `parse.controller.ts`: `POST /api/parse-link` accepting `{ input: string }`; `GET /api/user-space/videos`, `GET /api/ugc-season/videos`, `GET /api/favorites/videos` with query params
-- [ ] Create `parse.module.ts`: register controller and service, import `DatabaseModule`
+- [ ] Create `parse.module.ts`: register controller and service (no `DatabaseModule` import needed)
 - [ ] Error handling: unsupported link type -> 400; B-station API failure -> 502; invalid pagination -> 400
-- [ ] `parseLink` for `type=video`: return video info + UGC season info (using existing `ResolutionService.resolve()`). `VideoInfo.ugcSeason.id` is the season identifier — frontend uses this as `seasonId`.
-- [ ] `parseLink` for `type=user-space`: return user info + first-page videos + seasons list
+- [ ] `parseLink` for `type=video`: return video info + UGC season info (using existing `ResolutionService` constructed locally). The response DTO maps `VideoInfo.ugcSeason.id` → `seasonId` in the `ParseLinkResult` to match the requirement contract — the existing `UgcSeasonInfo` domain type is NOT renamed.
+- [ ] `parseLink` for `type=user-space`: return user info + first-page videos + seasons list (`UgcSeasonSummary[]`)
 - [ ] `parseLink` for `type=ugc-season`: return season info + first-page videos
 - [ ] `parseLink` for `type=favorites`: call `getFavoritesInfo()` for `mediaCount` and `getFavoritesVideos()` for first-page videos; map to `FavoritesResult` with `PaginatedVideos.total = FavoritesInfo.mediaCount`
 
@@ -154,7 +159,7 @@ Status: planned
 - Item Types: Proof
 - Prereqs: Phase 4
 
-- [ ] Create/update `docs/testing/2026/07-07-link-parsing-backend-4a-testing.md` with requirement-level testing directions
+- [ ] Update `docs/testing/2026/07-07-link-parsing-backend-4a-testing.md` with verification results after manual testing (document created at plan authoring time per R6)
 - [ ] Run `pnpm typecheck` -- zero errors
 - [ ] Run `pnpm build` -- zero errors
 - [ ] Manually verify: video link, user space link, UGC season link, favorites link, unsupported path, pagination
@@ -167,9 +172,9 @@ Exit Criteria:
 
 ## Plan Audit
 
-- Status: pending
-- Reviewer / Agent: TBD (independent subagent or reviewer)
-- Evidence: TBD
+- Status: passed-with-notes
+- Reviewer / Agent: independent cold-replay subagent (2026-07-12)
+- Evidence: Cold-replay audit verified all 16 baseline claims against live code (16/16 accurate). Found 2 blockers (DI registration gap, UgcSeasonInfo contract contradiction), 2 majors (response types unplaced, cookie provisioning), 4 minors. All issues resolved in this revision: added `ParseLinkPort.ts` for response types, specified manual-construction pattern for ParseService following DownloadService, resolved seasonId/id mapping (DTO maps `id`→`seasonId`, domain type unchanged), removed unjustified DatabaseService injection, specified matcher ordering, created testing document. Baseline accuracy: 16/16. AC coverage: 11/11 (AC9 gap resolved). Plan-guide rules: R1 ✅, R2 ✅, R4 ✅, R5 ✅, R6 ✅ (testing doc created), R8 ✅, R13 ✅, Anti-Slacking ✅.
 
 ## Closure Gates
 
@@ -178,7 +183,7 @@ Exit Criteria:
 - [ ] `POST /api/parse-link` returns correct `type` for video, user-space, ugc-season, favorites links — verified by curl
 - [ ] `POST /api/parse-link` with unsupported path returns 400 — verified by curl
 - [ ] Pagination endpoints return `hasMore` field — verified by curl
-- [ ] `VideoInfo.ugcSeason.id` is accessible as the season identifier (code review confirms `UgcSeasonInfo.id` is the season ID; requirement doc's `seasonId` maps to this field)
+- [ ] `VideoInfo.ugcSeason` includes complete season data; parse-link response DTO maps `UgcSeasonInfo.id` → `seasonId` to match requirement contract (code review — existing domain type is NOT renamed)
 - [ ] `VideoSummary` includes `bvid` and `cid` (code review)
 - [ ] `FavoritesVideoPage` → `PaginatedVideos` mapping includes `total` from `FavoritesInfo.mediaCount` (code review)
 - [ ] `GET /api/video/info` still works (marked deprecated but functional) — verified by curl
