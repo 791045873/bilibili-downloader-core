@@ -21,12 +21,12 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 
 ### 待实现：2026-07-07 视频分析增强系列（9 项，按推荐顺序）
 
-实现顺序由各 plan 头部 `> Related:` 字段的显式依赖声明推导（见下方“推荐实现顺序”）。所有项 plan 已写好但 plan audit 仍 pending，故 AI Autonomy 为 `plan-first`，实现前必须先通过独立 plan audit。
+实现顺序由各 plan 头部 `> Related:` 字段的显式依赖声明推导（见下方“推荐实现顺序”）。所有项 plan 已写好且 plan audit 已于 2026-07-12 通过（cold-replay proxy, reviewer availability = none），用户已授权依次实现。
 
 | Seq | Phase | Priority | Item | Requirement | Owner Doc | Plan | Status | AI Autonomy | Blocker | Last Checked |
 |-----|-------|----------|------|-------------|-----------|------|--------|-------------|---------|--------------|
 | 1 | 1 | P0 | 视频分析-正式分析 API | `docs/requirements/2026-07-07-analysis-formal-api.md` | `docs/design/app-overview.md` | `docs/plans/2026-07-07-analysis-formal-api-plan.md` | `done` | `implement` | `none (plan audit + closure audit passed 2026-07-12)` | 2026-07-12 |
-| 2 | 1 | P0 | 视频分析-截图远端化（3a） | `docs/requirements/2026-07-07-screenshot-source-fallback-3a.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-screenshot-remote-3a-plan.md` | `ready` | `plan-first` | `none (plan audit passed 2026-07-12)` | 2026-07-12 |
+| 2 | 1 | P0 | 视频分析-截图远端化（3a） | `docs/requirements/2026-07-07-screenshot-source-fallback-3a.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-screenshot-remote-3a-plan.md` | `in-progress` | `implement` | `closure blocked: live CDN verification needs B站 cookies` | 2026-07-13 |
 | 3 | 1 | P0 | 视频分析-多链接解析后端（4a） | `docs/requirements/2026-07-07-multi-link-parsing-4a.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-link-parsing-backend-4a-plan.md` | `ready` | `plan-first` | `none (plan audit passed 2026-07-12)` | 2026-07-12 |
 | 4 | 1 | P0 | 视频分析-AI 总结数据库（5a） | `docs/requirements/2026-07-07-ai-summary-interaction-5a.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-ai-summary-database-5a-plan.md` | `ready` | `plan-first` | `none (plan audit passed 2026-07-12)` | 2026-07-12 |
 | 5 | 2 | P1 | 视频分析-文档结构优化 | `docs/requirements/2026-07-07-document-structure-optimization.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-document-structure-optimization-plan.md` | `ready` | `plan-first` | `none (plan audit passed 2026-07-12)` | 2026-07-12 |
@@ -66,7 +66,7 @@ Seq 3 4a ──► Seq 7 4b ────────────── ┘
 ### 前置门控
 
 每个 Seq 实现前必须：
-1. 通过独立 plan audit（当前所有 9 项 plan audit 均 pending）
+1. 通过独立 plan audit（所有 9 项 plan audit 已于 2026-07-12 通过，cold-replay proxy）
 2. 同步扩展 `docs/design/app-overview.md` 与 `docs/design/feature-inventory.md` 以覆盖新接口/新表
 3. 确认 `docs/context/project-context.md` 的 active requirement 已指向对应项
 

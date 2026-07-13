@@ -1,7 +1,7 @@
 # Screenshot Remote Support (3a) Plan
 
-> Plan Status: planned
-> Last Reviewed: 2026-07-11
+> Plan Status: in-progress
+> Last Reviewed: 2026-07-13
 > Source: `docs/requirements/2026-07-07-screenshot-source-fallback-3a.md`
 > Related: `docs/plans/2026-07-07-screenshot-fallback-3b-plan.md` (depends on 3a)
 > Audit: required
@@ -47,56 +47,54 @@ Note: Originally classified as micro-plan exception. Reclassified as Audit: requ
 
 ### Phase 1 - Add headers support, HTTP URL detection, and ffprobe error handling
 
-Status: planned
+Status: completed
 Targets: `packages/adapters/src/ffmpeg/ffmpeg-screenshot.ts`
 
 - Item Types: Add | Fix
 - Prereqs: none
 
-- [ ] Add `headers?: Record<string, string>` to `ScreenshotParams` interface
-- [ ] Detect if `videoPath` starts with `http://` or `https://` to determine remote mode
-- [ ] When remote and `headers` provided: construct ffmpeg `-headers` arg string (`"Key: value\r\n"` joined), inserted before `-i` in ffmpeg args
-- [ ] When remote and `headers` provided: also add `-headers` to ffprobe args in `probeVideoDuration()` call
-- [ ] Fix: wrap `getVideoDuration()` call in `takeScreenshots()` with try/catch; if remote URL and ffprobe fails, skip duration check (set `videoDuration = Infinity` so the `time > videoDuration` guard never skips frames)
-- [ ] When local: ignore `headers`; ffprobe and ffmpeg behave identically to before
-
-- [ ] Decision: Use `Infinity` as duration fallback for remote URLs rather than a configurable timeout. Rationale: the duration check's purpose is to skip frames past end-of-file — for remote URLs, skipping the check only means ffmpeg may try an impossible timestamp and fail (which `screenshotFrame()` already handles by returning false). Alternatives: configurable timeout (rejected — adds config surface for marginal benefit). Residual risk: ffmpeg may attempt out-of-range timestamps on remote URLs, but `screenshotFrame()` returns false gracefully.
+- [x] Add `headers?: Record<string, string>` to `ScreenshotParams` interface
+- [x] Detect if `videoPath` starts with `http://` or `https://` to determine remote mode
+- [x] When remote and `headers` provided: construct ffmpeg `-headers` arg string (`"Key: value\r\n"` joined), inserted before `-i` in ffmpeg args
+- [x] When remote and `headers` provided: also add `-headers` to ffprobe args in `probeVideoDuration()` call
+- [x] Fix: wrap `getVideoDuration()` call in `takeScreenshots()` with try/catch; if remote URL and ffprobe fails, skip duration check (set `videoDuration = Infinity` so the `time > videoDuration` guard never skips frames)
+- [x] When local: ignore `headers`; ffprobe and ffmpeg behave identically to before
+- [x] Decision: Use `Infinity` as duration fallback for remote URLs rather than a configurable timeout. Rationale: the duration check's purpose is to skip frames past end-of-file — for remote URLs, skipping the check only means ffmpeg may try an impossible timestamp and fail (which `screenshotFrame()` already handles by returning false). Alternatives: configurable timeout (rejected — adds config surface for marginal benefit). Residual risk: ffmpeg may attempt out-of-range timestamps on remote URLs, but `screenshotFrame()` returns false gracefully.
 
 Exit Criteria:
 
-- [ ] Local path screenshots work identically to before (no regression) — verified by `pnpm typecheck` + `pnpm build` + code review that local branch is unchanged
-- [ ] HTTP URL code path: `takeScreenshots()` does not throw even when ffprobe fails on remote URL — verified by code review that the try/catch is in place
-- [ ] HTTP URL code path: ffmpeg command args contain `-headers` when headers provided — verified by code review of args construction
-- [ ] HTTP URL code path: ffprobe args contain `-headers` when headers provided — verified by code review of args construction
-- [ ] `pnpm typecheck` passes
-- [ ] `pnpm build` passes
+- [x] Local path screenshots work identically to before (no regression) — verified by `pnpm typecheck` + `pnpm build` + code review that local branch is unchanged
+- [x] HTTP URL code path: `takeScreenshots()` does not throw even when ffprobe fails on remote URL — verified by code review that the try/catch is in place
+- [x] HTTP URL code path: ffmpeg command args contain `-headers` when headers provided — verified by code review of args construction
+- [x] HTTP URL code path: ffprobe args contain `-headers` when headers provided — verified by code review of args construction
+- [x] `pnpm typecheck` passes
+- [x] `pnpm build` passes
 
 Note: "code review" as verification method is valid here because the behavior is deterministic from the code structure. No external service call needed to confirm the args array is constructed correctly.
 
 ### Phase 2 - Verification
 
-Status: planned
-
+Status: in-progress
 - Item Types: Proof
 - Prereqs: Phase 1
 
-- [ ] Create/update `docs/testing/2026/07-07-screenshot-remote-3a-testing.md` with requirement-level testing directions
-- [ ] Run `pnpm typecheck` — zero errors
-- [ ] Run `pnpm build` — zero errors
-- [ ] Code review: confirm local branch unchanged (no headers, no try/catch)
-- [ ] Code review: confirm remote branch adds -headers to ffmpeg args and ffprobe args when headers provided
-- [ ] Code review: confirm try/catch wraps getVideoDuration in takeScreenshots and falls back to Infinity
+- [x] Create/update `docs/testing/2026/07-07-screenshot-remote-3a-testing.md` with requirement-level testing directions
+- [x] Run `pnpm typecheck` — zero errors
+- [x] Run `pnpm build` — zero errors
+- [x] Code review: confirm local branch unchanged (no headers, no try/catch)
+- [x] Code review: confirm remote branch adds -headers to ffmpeg args and ffprobe args when headers provided
+- [x] Code review: confirm try/catch wraps getVideoDuration in takeScreenshots and falls back to Infinity
 - [ ] Run verification script (inline, not committed): use `BilibiliStreamProvider.getVideoInfo("BV1SoTx6yEYc")` to obtain `cid` from `pages[0]`, then `getPlayStreams({bvid, cid, resourceType: ResourceType.Video, cookieString})` to resolve stream URL, select lowest quality video stream URL, call `takeScreenshots()` with `timePoints=[5]`, `headers={Referer: "https://www.bilibili.com"}`, assert `outputFiles.length > 0` and each file exists with size > 0 — script prints PASS or FAIL and exits. Script and output screenshot files are deleted after verification.
 - [ ] Human final review at Closure: re-run verification script or confirm screenshot files were produced during Phase 2 run.
 
 Exit Criteria:
 
-- [ ] `pnpm typecheck` zero errors
-- [ ] `pnpm build` zero errors
-- [ ] Code review confirms local path unchanged, remote branch adds -headers to ffmpeg and ffprobe args, try/catch is in place
-- [ ] Verification script exits PASS (outputFiles non-empty, files exist with size > 0)
-- [ ] Testing document covers: local path no regression, HTTP URL args construction, headers in ffprobe, ffprobe failure handling, remote live CDN screenshot PASS confirmed
-- [ ] `docs/logs/` updated with plan completion entry
+- [x] `pnpm typecheck` zero errors
+- [x] `pnpm build` zero errors
+- [x] Code review confirms local path unchanged, remote branch adds -headers to ffmpeg and ffprobe args, try/catch is in place
+- [ ] Verification script exits PASS (outputFiles non-empty, files exist with size > 0) — deferred: requires B站 cookies not available in current environment
+- [ ] Testing document covers: local path no regression, HTTP URL args construction, headers in ffprobe, ffprobe failure handling, remote live CDN screenshot PASS confirmed (directions 1-4 verified by code review; direction 5 pending)
+- [x] `docs/logs/` updated with current implementation and verification status
 
 ## Plan Audit
 
@@ -111,16 +109,16 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] in-scope behavior is complete
-- [ ] relevant docs are aligned
-- [ ] verification has run (`pnpm typecheck` and `pnpm build`)
+- [x] in-scope implementation is complete
+- [x] relevant docs are aligned with the current open status
+- [x] verification has run (`pnpm typecheck` and `pnpm build`)
 - [ ] verification script exited PASS: real B-station URL screenshot produced non-empty outputFiles with files of size > 0
-- [ ] corresponding `docs/testing/` document exists and every testing direction is confirmed passed or explicitly adjudicated out of scope
-- [ ] no in-scope item downgraded to deferred/follow-up without recorded rationale
-- [ ] plan audit passed before implementation
-- [ ] text consistency verified: status, phases, gates, testing document, and log all agree
-- [ ] closure audit was independent (or cold-replay proxy documented)
-- [ ] closure evidence exists in files
+- [ ] corresponding `docs/testing/` document exists and every testing direction is confirmed passed (directions 1-4 verified by code review; direction 5 pending)
+- [x] no in-scope item downgraded to deferred/follow-up without recorded rationale
+- [x] plan audit passed before implementation
+- [ ] text consistency verified for final closure
+- [ ] closure audit completed after all verification gates pass
+- [ ] final closure evidence exists in files
 
 ## Deferred But Adjudicated
 
@@ -130,15 +128,27 @@ Exit Criteria:
 - Why Not Blocking Closure: Resolver and fallback strategy are owned by `2026-07-07-screenshot-fallback-3b-plan.md`. This plan only provides the adapter-layer capability.
 - Successor Required: yes (3b plan)
 
+### Live CDN screenshot verification (testing direction #5)
+
+- Classification: blocking verification prerequisite
+- Why Blocking Closure: The plan explicitly requires a live B-station CDN screenshot with headers. Valid B站 cookies (`COOKIE_FILE` or cookie string) are not available in the current environment, so this gate remains open.
+- Resolution Required: run the Phase 2 verification script with valid cookies, then perform the final closure audit.
+
 ## Closure
 
-Status Note: Plan not yet started.
+Status Note: Implementation complete but plan remains open. `ScreenshotParams` supports `headers` and HTTP URL input; ffmpeg/ffprobe args include `-headers` for remote sources; ffprobe failure on remote URLs falls back to `Infinity`; screenshot success now requires a real, non-empty output file. Live CDN verification is still pending valid B站 cookies.
 
 Closure Audit Evidence:
 
-- Reviewer / Agent: TBD
-- Evidence: TBD
+- Reviewer / Agent: pending after live CDN verification
+- Current evidence:
+  - Code review: local paths ignore headers; remote paths add `-headers` before `-i` in ffmpeg and before the URL in ffprobe; remote probe failure falls back to `Infinity`
+  - Screenshot success requires `stat(outputPath)` to confirm a file with `size > 0`
+  - `pnpm typecheck` and `pnpm build` passed after the output validation fix on 2026-07-13
+  - Testing doc exists at `docs/testing/2026/07-07-screenshot-remote-3a-testing.md`; directions 1-4 reviewed, direction 5 pending
+  - Log recorded at `docs/logs/2026-07-13-screenshot-remote-3a.md`
 
 Follow-up:
 
-- 3b plan will consume this capability for the ScreenshotSourceResolver remote fallback path and provide live CDN integration verification
+- Run Phase 2 live CDN verification with valid B站 cookies
+- After all gates pass, perform a separate cold-replay closure audit and only then mark the plan and backlog item completed
