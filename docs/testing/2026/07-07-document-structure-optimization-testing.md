@@ -110,3 +110,12 @@
 - `pnpm typecheck` —— 零错误
 - `pnpm build` —— 零错误
 - 手动检查生成的 Markdown 文件结构（front matter 字段、正文格式、空内容路径）
+
+## 2026-07-14 执行记录
+
+- 结果：通过
+- 命令：`pnpm typecheck`（通过，存在 Node engine warning: 期望 24.16.0，当前 22.22.3）
+- 命令：`pnpm build`（通过，存在相同 engine warning）
+- 手动验证（非空 segments）：通过 `pnpm --filter @bilibili-downloader/server exec node -e "...generateMarkdown(...)..."` 生成样例，确认存在 front matter 四字段、H1、平铺 H2、图片与 `>` 引用说明。
+- 手动验证（空 segments）：通过同类命令生成空样例，确认仅保留 front matter 与 H1，正文无占位符文本。
+- 反状态检查：输出中未出现 `## 内容总结`、`## 重点内容`、`**相关原文：**`、`[该视频无重点内容可总结]`。

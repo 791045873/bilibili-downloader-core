@@ -70,6 +70,7 @@ interface SubtitleAnalysis {
     title: string;
     content: string;
     timestamp: string;
+    frameDescription: string;
   }>;
 }
 
@@ -80,8 +81,8 @@ function buildAnalysisSystemPrompt(): string {
     "博主在这个视频中讲述了自己关于穿搭方面的技巧与思路，并向观众展示了真实的穿搭例子。"+
     "请你完整、仔细地从视频与文本中总结这些技巧与思路，并给出其对应的展示案例在视频中的时间戳。"+
     "请严格按照 JSON 格式输出，格式如下："+
-    "{summary: Array<{title: string, content: string, timestamp: string}>}"+
-    "summary中的title是总结的穿搭技巧或思路的标题, content是穿搭技巧或思路的具体内容, timestamp是对应的展示案例的时间戳(格式为hh:mm:ss,例如00:02:30代表2分20秒)"+
+    "{summary: Array<{title: string, content: string, timestamp: string, frameDescription: string}>}"+
+    "summary中的title是总结的穿搭技巧或思路的标题, content是穿搭技巧或思路的具体内容, timestamp是对应的展示案例的时间戳(格式为hh:mm:ss,例如00:02:30代表2分20秒), frameDescription是该时间戳画面的文本描述"+
     "有可能某一个穿搭技巧、思路的实际展示持续了较长时间，请你从其中选择最能展现该穿搭技巧、思路的时刻记录为时间戳。"
   ].join("\n");
 }
@@ -89,11 +90,13 @@ function buildAnalysisSystemPrompt(): string {
 export class AnalysisEngine {
   private readonly llmClient: QwenClient;
   private readonly screenshotter: FfmpegScreenshot;
+  private readonly llmConfig: LlmConfig;
 
   constructor(
     llmConfig: LlmConfig,
     httpClient?: typeof fetch,
   ) {
+    this.llmConfig = llmConfig;
     this.llmClient = new QwenClient(llmConfig, httpClient);
     this.screenshotter = new FfmpegScreenshot();
   }
@@ -175,11 +178,12 @@ export class AnalysisEngine {
       }
 
       processedSegments.push({
-        topic: item.title,
-        subtitleText: item.content,
-        selectedImages: segmentScreenshots.map((file) => ({
+        title: item.title,
+        content: item.content,
+        timestamp: item.timestamp,
+        frameDescription: item.frameDescription,
+        images: segmentScreenshots.map((file) => ({
           relativePath: `screenshots/${basename(file)}`,
-          reason: item.title,
         })),
       });
     }
@@ -187,9 +191,10 @@ export class AnalysisEngine {
     // 4. 生成 Markdown
     const doc = generateMarkdown({
       videoTitle: input.videoTitle,
-      summary: summaryItems.map((item) => `- ${item.title}: ${item.content}`).join("\n"),
+      videoUrl: input.metadata.type === "bilibili" ? (input.metadata.videoUrl ?? "") : "",
+      modelName: this.llmConfig.visionModelName ?? this.llmConfig.modelName,
+      createdAt: new Date().toString(),
       segments: processedSegments,
-      emptySummary: processedSegments.length === 0,
     });
 
     const summaryPath = join(input.summaryDir, `${input.videoTitle}-summary.md`);
@@ -209,9 +214,10 @@ export class AnalysisEngine {
   ): Promise<AnalysisOutput> {
     const doc = generateMarkdown({
       videoTitle: input.videoTitle,
-      summary: "",
+      videoUrl: input.metadata.type === "bilibili" ? (input.metadata.videoUrl ?? "") : "",
+      modelName: this.llmConfig.visionModelName ?? this.llmConfig.modelName,
+      createdAt: new Date().toString(),
       segments: [],
-      emptySummary: true,
     });
     const summaryPath = join(input.summaryDir, `${input.videoTitle}-summary.md`);
     await writeFile(summaryPath, doc, "utf-8");
@@ -232,5 +238,7 @@ function normalizeSummaryItems(analysis: SubtitleAnalysis | undefined): Subtitle
     && item.content.trim().length > 0
     && typeof item.timestamp === "string"
     && item.timestamp.trim().length > 0
+    && typeof item.frameDescription === "string"
+    && item.frameDescription.trim().length > 0
   ));
 }

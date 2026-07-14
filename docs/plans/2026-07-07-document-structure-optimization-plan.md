@@ -1,7 +1,7 @@
 # Document Structure Optimization Plan
 
-> Plan Status: planned
-> Last Reviewed: 2026-07-12
+> Plan Status: done
+> Last Reviewed: 2026-07-14
 > Source: `docs/requirements/2026-07-07-document-structure-optimization.md`
 > Related: `docs/plans/2026-07-07-analysis-formal-api-plan.md` (AnalysisInput 权威定义, completed)
 > Audit: required
@@ -48,64 +48,64 @@
 
 ### Phase 1 - Rewrite DocumentInput and generateMarkdown()
 
-Status: planned
+Status: completed
 Targets: `packages/server/src/analysis/document-generator.ts`
 
 - Item Types: `Add | Fix`
 - Prereqs: none
 
-- [ ] Rewrite `DocumentInput` interface: replace `summary`, `segments` with new structure containing `videoUrl`, `modelName`, `createdAt`, and `segments: Array<{ title, content, timestamp, frameDescription, images: Array<{ relativePath }> }>`
-- [ ] Rewrite `generateMarkdown()`: emit YAML front matter block, H1 title, flat H2 segments with content + images + frame description quotes
-- [ ] Empty content path: front matter + H1 only, no `[该视频无重点内容可总结]`
-- [ ] Remove `emptySummary` field from `DocumentInput` (empty = segments array is empty)
+- [x] Rewrite `DocumentInput` interface: replace `summary`, `segments` with new structure containing `videoUrl`, `modelName`, `createdAt`, and `segments: Array<{ title, content, timestamp, frameDescription, images: Array<{ relativePath }> }>`
+- [x] Rewrite `generateMarkdown()`: emit YAML front matter block, H1 title, flat H2 segments with content + images + frame description quotes
+- [x] Empty content path: front matter + H1 only, no `[该视频无重点内容可总结]`
+- [x] Remove `emptySummary` field from `DocumentInput` (empty = segments array is empty)
 
 Exit Criteria:
 
-- [ ] `generateMarkdown()` with non-empty segments produces front matter + H1 + flat H2 segments
-- [ ] `generateMarkdown()` with empty segments produces front matter + H1 only
-- [ ] `pnpm typecheck` passes (will fail until Phase 2 updates analysis-engine.ts)
+- [x] `generateMarkdown()` with non-empty segments produces front matter + H1 + flat H2 segments
+- [x] `generateMarkdown()` with empty segments produces front matter + H1 only
+- [x] `pnpm typecheck` passes (will fail until Phase 2 updates analysis-engine.ts)
 
 ### Phase 2 - Update SubtitleAnalysis, buildAnalysisSystemPrompt, and segment construction
 
-Status: planned
+Status: completed
 Targets: `packages/server/src/analysis/analysis-engine.ts`
 
 - Item Types: `Add | Fix`
 - Prereqs: Phase 1
 
-- [ ] Add `frameDescription: string` to `SubtitleAnalysis.summary` item type
-- [ ] Update `buildAnalysisSystemPrompt()` to instruct LLM to also return `frameDescription` for each timestamp
-- [ ] Retain `llmConfig` reference in `AnalysisEngine` constructor for model name access
-- [ ] Update segment construction: map `item.title` -> `title`, `item.content` -> `content`, `item.timestamp` -> `timestamp`, `item.frameDescription` -> `frameDescription`, screenshots -> `images: [{ relativePath }]`
-- [ ] Pass `videoUrl` (from `metadata.type === "bilibili" ? metadata.videoUrl : ""`) and `modelName` (`this.llmConfig.visionModelName ?? this.llmConfig.modelName`) and `createdAt` (`new Date().toString()`) into `generateMarkdown()`
-- [ ] Update `writeEmptySummary()` to pass front matter fields
-- [ ] `AnalysisInput` is defined by formal-api plan (completed); `metadata` already exists. This plan references `metadata.type` and `metadata.videoUrl` for front matter `video_url` derivation only — no `AnalysisInput` changes needed.
+- [x] Add `frameDescription: string` to `SubtitleAnalysis.summary` item type
+- [x] Update `buildAnalysisSystemPrompt()` to instruct LLM to also return `frameDescription` for each timestamp
+- [x] Retain `llmConfig` reference in `AnalysisEngine` constructor for model name access
+- [x] Update segment construction: map `item.title` -> `title`, `item.content` -> `content`, `item.timestamp` -> `timestamp`, `item.frameDescription` -> `frameDescription`, screenshots -> `images: [{ relativePath }]`
+- [x] Pass `videoUrl` (from `metadata.type === "bilibili" ? metadata.videoUrl : ""`) and `modelName` (`this.llmConfig.visionModelName ?? this.llmConfig.modelName`) and `createdAt` (`new Date().toString()`) into `generateMarkdown()`
+- [x] Update `writeEmptySummary()` to pass front matter fields
+- [x] `AnalysisInput` is defined by formal-api plan (completed); `metadata` already exists. This plan references `metadata.type` and `metadata.videoUrl` for front matter `video_url` derivation only — no `AnalysisInput` changes needed.
 
 Exit Criteria:
 
-- [ ] `AnalysisEngine.analyze()` produces documents with front matter containing `title`, `video_url`, `model`, `created_at`
-- [ ] Segments use new field names matching LLM return structure
-- [ ] `frameDescription` appears as image caption in generated Markdown
-- [ ] `pnpm typecheck` passes
-- [ ] `pnpm build` passes
+- [x] `AnalysisEngine.analyze()` produces documents with front matter containing `title`, `video_url`, `model`, `created_at`
+- [x] Segments use new field names matching LLM return structure
+- [x] `frameDescription` appears as image caption in generated Markdown
+- [x] `pnpm typecheck` passes
+- [x] `pnpm build` passes
 
 ### Phase 3 - Verification
 
-Status: planned
+Status: completed
 
 - Item Types: `Proof`
 - Prereqs: Phase 2
 
-- [ ] Confirm `docs/testing/2026/07-07-document-structure-optimization-testing.md` covers all requirement-level testing directions (created during plan audit)
-- [ ] Run `pnpm typecheck` -- zero errors
-- [ ] Run `pnpm build` -- zero errors
-- [ ] Manually verify generated Markdown structure matches target format
+- [x] Confirm `docs/testing/2026/07-07-document-structure-optimization-testing.md` covers all requirement-level testing directions (created during plan audit)
+- [x] Run `pnpm typecheck` -- zero errors
+- [x] Run `pnpm build` -- zero errors
+- [x] Manually verify generated Markdown structure matches target format
 
 Exit Criteria:
 
-- [ ] `pnpm typecheck` zero errors
-- [ ] `pnpm build` zero errors
-- [ ] Testing document covers: front matter fields present, body is flat segments, empty content has front matter + H1 only
+- [x] `pnpm typecheck` zero errors
+- [x] `pnpm build` zero errors
+- [x] Testing document covers: front matter fields present, body is flat segments, empty content has front matter + H1 only
 
 ## Plan Audit
 
@@ -129,15 +129,15 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] in-scope behavior is complete
-- [ ] relevant docs are aligned
-- [ ] verification has run (`pnpm typecheck` and `pnpm build`)
-- [ ] corresponding `docs/testing/` document exists and every testing direction is confirmed passed or explicitly adjudicated out of scope
-- [ ] no in-scope item downgraded to deferred/follow-up
-- [ ] plan audit passed before implementation
-- [ ] text consistency verified: status, phases, gates, testing document, and log all agree
-- [ ] closure audit was independent (or cold-replay proxy documented)
-- [ ] closure evidence exists in files
+- [x] in-scope behavior is complete
+- [x] relevant docs are aligned
+- [x] verification has run (`pnpm typecheck` and `pnpm build`)
+- [x] corresponding `docs/testing/` document exists and every testing direction is confirmed passed or explicitly adjudicated out of scope
+- [x] no in-scope item downgraded to deferred/follow-up
+- [x] plan audit passed before implementation
+- [x] text consistency verified: status, phases, gates, testing document, and log all agree
+- [x] closure audit was independent (or cold-replay proxy documented)
+- [x] closure evidence exists in files
 
 ## Deferred But Adjudicated
 
@@ -149,13 +149,14 @@ Exit Criteria:
 
 ## Closure
 
-Status Note: Plan not yet started. Closure will require front matter generation, flat segment structure, field name alignment, and model name injection all verified.
+Status Note: Plan closed on 2026-07-14. Front matter generation, flat segment structure, LLM field-name alignment, and model-name injection are implemented and verified.
 
 Closure Audit Evidence:
 
-- Reviewer / Agent: TBD
-- Evidence: TBD
+- Reviewer / Agent: independent closure audit by subagent Explore (2026-07-14)
+- Evidence: pnpm typecheck, pnpm build, manual markdown output checks (non-empty and empty segments), and subagent closure audit result PASS.
 
 Follow-up:
 
 - None. formal-api plan (completed) already defines `AnalysisInput` with `metadata`; no cross-plan coordination needed.
+
