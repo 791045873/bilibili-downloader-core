@@ -66,3 +66,10 @@
 - `pnpm build` —— 零错误
 - 代码审查：local 分支无 headers/无 try/catch；remote 分支含 `-headers`；try/catch 包裹 `getVideoDuration`
 - 内联验证脚本：BilibiliStreamProvider 解析 BV1SoTx6yEYc → takeScreenshots → 断言 outputFiles 非空
+
+## 2026-07-14 Closure Verification Record
+
+- `pnpm test:screenshot:no-cookie` 执行完成，exit code = 0
+- 使用真实远端流 URL（低清晰度）调用 `takeScreenshots()` 成功生成截图
+- 结果文件存在且 `size > 0`
+- 结论：测试方向 1-5 均通过（方向 5 使用无 Cookie 等价远端验证路径）

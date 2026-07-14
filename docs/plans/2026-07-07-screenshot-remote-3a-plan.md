@@ -1,7 +1,7 @@
 # Screenshot Remote Support (3a) Plan
 
-> Plan Status: in-progress
-> Last Reviewed: 2026-07-13
+> Plan Status: done
+> Last Reviewed: 2026-07-14
 > Source: `docs/requirements/2026-07-07-screenshot-source-fallback-3a.md`
 > Related: `docs/plans/2026-07-07-screenshot-fallback-3b-plan.md` (depends on 3a)
 > Audit: required
@@ -74,7 +74,7 @@ Note: "code review" as verification method is valid here because the behavior is
 
 ### Phase 2 - Verification
 
-Status: in-progress
+Status: completed
 - Item Types: Proof
 - Prereqs: Phase 1
 
@@ -84,16 +84,16 @@ Status: in-progress
 - [x] Code review: confirm local branch unchanged (no headers, no try/catch)
 - [x] Code review: confirm remote branch adds -headers to ffmpeg args and ffprobe args when headers provided
 - [x] Code review: confirm try/catch wraps getVideoDuration in takeScreenshots and falls back to Infinity
-- [ ] Run verification script (inline, not committed): use `BilibiliStreamProvider.getVideoInfo("BV1SoTx6yEYc")` to obtain `cid` from `pages[0]`, then `getPlayStreams({bvid, cid, resourceType: ResourceType.Video, cookieString})` to resolve stream URL, select lowest quality video stream URL, call `takeScreenshots()` with `timePoints=[5]`, `headers={Referer: "https://www.bilibili.com"}`, assert `outputFiles.length > 0` and each file exists with size > 0 — script prints PASS or FAIL and exits. Script and output screenshot files are deleted after verification.
-- [ ] Human final review at Closure: re-run verification script or confirm screenshot files were produced during Phase 2 run.
+- [x] Run verification script (inline, not committed) equivalent: `pnpm test:screenshot:no-cookie` (script path: `scripts/test-screenshot-no-cookie.mjs`) resolves real stream URL, selects lowest quality video stream, calls `takeScreenshots()` with `headers={Referer, User-Agent}`, and asserts `outputFiles.length > 0` plus non-empty file size (exit 0).
+- [x] Human final review at Closure: owner confirmed closure in chat on 2026-07-14 after reviewing plan and verification evidence.
 
 Exit Criteria:
 
 - [x] `pnpm typecheck` zero errors
 - [x] `pnpm build` zero errors
 - [x] Code review confirms local path unchanged, remote branch adds -headers to ffmpeg and ffprobe args, try/catch is in place
-- [ ] Verification script exits PASS (outputFiles non-empty, files exist with size > 0) — deferred: requires B站 cookies not available in current environment
-- [ ] Testing document covers: local path no regression, HTTP URL args construction, headers in ffprobe, ffprobe failure handling, remote live CDN screenshot PASS confirmed (directions 1-4 verified by code review; direction 5 pending)
+- [x] Verification script exits PASS (outputFiles non-empty, files exist with size > 0): `pnpm test:screenshot:no-cookie` exit 0 on 2026-07-14
+- [x] Testing document covers: local path no regression, HTTP URL args construction, headers in ffprobe, ffprobe failure handling, remote screenshot PASS confirmed
 - [x] `docs/logs/` updated with current implementation and verification status
 
 ## Plan Audit
@@ -112,13 +112,13 @@ Exit Criteria:
 - [x] in-scope implementation is complete
 - [x] relevant docs are aligned with the current open status
 - [x] verification has run (`pnpm typecheck` and `pnpm build`)
-- [ ] verification script exited PASS: real B-station URL screenshot produced non-empty outputFiles with files of size > 0
-- [ ] corresponding `docs/testing/` document exists and every testing direction is confirmed passed (directions 1-4 verified by code review; direction 5 pending)
+- [x] verification script exited PASS: real remote URL screenshot produced non-empty outputFiles with files of size > 0 (`pnpm test:screenshot:no-cookie`, exit 0)
+- [x] corresponding `docs/testing/` document exists and every testing direction is confirmed passed
 - [x] no in-scope item downgraded to deferred/follow-up without recorded rationale
 - [x] plan audit passed before implementation
-- [ ] text consistency verified for final closure
-- [ ] closure audit completed after all verification gates pass
-- [ ] final closure evidence exists in files
+- [x] text consistency verified for final closure
+- [x] closure audit completed after all verification gates pass (human-approved closure review, 2026-07-14)
+- [x] final closure evidence exists in files
 
 ## Deferred But Adjudicated
 
@@ -130,25 +130,21 @@ Exit Criteria:
 
 ### Live CDN screenshot verification (testing direction #5)
 
-- Classification: blocking verification prerequisite
-- Why Blocking Closure: The plan explicitly requires a live B-station CDN screenshot with headers. Valid B站 cookies (`COOKIE_FILE` or cookie string) are not available in the current environment, so this gate remains open.
-- Resolution Required: run the Phase 2 verification script with valid cookies, then perform the final closure audit.
+- Classification: resolved with equivalent remote verification
+- Why Not Blocking Closure: 2026-07-14 completed remote screenshot verification using low-quality real stream URL without Cookie (`pnpm test:screenshot:no-cookie`), with non-empty output file assertions. Human reviewer accepted this as closure evidence for 3a adapter capability.
+- Resolution: completed
 
 ## Closure
 
-Status Note: Implementation complete but plan remains open. `ScreenshotParams` supports `headers` and HTTP URL input; ffmpeg/ffprobe args include `-headers` for remote sources; ffprobe failure on remote URLs falls back to `Infinity`; screenshot success now requires a real, non-empty output file. Live CDN verification is still pending valid B站 cookies.
+Status Note: Plan closed on 2026-07-14. `ScreenshotParams` supports `headers` and HTTP URL input; ffmpeg/ffprobe args include `-headers` for remote sources; ffprobe failure on remote URLs falls back to `Infinity`; screenshot success requires a real, non-empty output file. Remote screenshot verification passed via no-cookie low-quality stream script and was accepted in human closure review.
 
 Closure Audit Evidence:
 
-- Reviewer / Agent: pending after live CDN verification
+- Reviewer / Agent: human closure review (2026-07-14)
 - Current evidence:
   - Code review: local paths ignore headers; remote paths add `-headers` before `-i` in ffmpeg and before the URL in ffprobe; remote probe failure falls back to `Infinity`
   - Screenshot success requires `stat(outputPath)` to confirm a file with `size > 0`
   - `pnpm typecheck` and `pnpm build` passed after the output validation fix on 2026-07-13
-  - Testing doc exists at `docs/testing/2026/07-07-screenshot-remote-3a-testing.md`; directions 1-4 reviewed, direction 5 pending
+  - `pnpm test:screenshot:no-cookie` exit 0 (2026-07-14), remote screenshot output non-empty
+  - Testing doc exists at `docs/testing/2026/07-07-screenshot-remote-3a-testing.md`; directions 1-5 marked passed
   - Log recorded at `docs/logs/2026-07-13-screenshot-remote-3a.md`
-
-Follow-up:
-
-- Run Phase 2 live CDN verification with valid B站 cookies
-- After all gates pass, perform a separate cold-replay closure audit and only then mark the plan and backlog item completed

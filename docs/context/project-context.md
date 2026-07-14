@@ -16,12 +16,12 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `docs/requirements/2026-07-07-screenshot-source-fallback-3a.md`（Seq 2，用户授权依次实现 Seq 2-9）
+- Active requirement: `none`（Seq 2 / 3a 已于 2026-07-14 关闭；等待选择下一个 backlog 项）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-07-07-screenshot-remote-3a-plan.md`
-- Active backlog item: Seq 2 (3a) — screenshot remote support
+- Active plan: `none`
+- Active backlog item: `none`
 - AI autonomy: `implement`（用户显式授权依次实现 backlog 待实现项；所有项 plan audit 已于 2026-07-12 通过）
-- Current blocker: 3a closure requires live CDN verification with valid B站 cookies
+- Current blocker: `none`
 
 Rule:
 

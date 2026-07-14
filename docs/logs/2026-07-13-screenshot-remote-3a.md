@@ -34,3 +34,12 @@
 ## 备注
 - `AnalysisEngine` 调用 `takeScreenshots()` 时未传 `headers`，向后兼容
 - 3b plan 将消费此能力实现 `ScreenshotSourceResolver` 远端降级路径
+
+## 2026-07-14 关闭记录
+- 人工审查结论：允许关闭 3a plan
+- 执行 `pnpm test:screenshot:no-cookie`，exit code = 0
+- 远端截图（低清晰度流，无 Cookie）成功，输出文件存在且 `size > 0`
+- 已同步更新：
+  - `docs/plans/2026-07-07-screenshot-remote-3a-plan.md` → Plan Status: `done`
+  - `docs/testing/2026/07-07-screenshot-remote-3a-testing.md` → 方向 1-5 通过
+  - `docs/backlog/README.md` → Seq 2 (3a) 状态 `done`
