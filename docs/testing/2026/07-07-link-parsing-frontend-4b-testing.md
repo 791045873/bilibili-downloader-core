@@ -147,3 +147,19 @@ pnpm build
 # 8. Click "加载更多" on a paginated list, confirm new items
 # 9. Confirm "AI 总结" button visible on list page
 ```
+
+## 2026-07-14 执行记录
+
+- 结果：通过（含代码审查裁定项）。
+- 通过：`pnpm typecheck`（零错误；存在 Node engine warning: 期望 24.16.0，当前 22.22.3）。
+- 通过：`pnpm build`（零错误；存在同样 engine warning）。
+- 通过（代码审查）：
+	- `Home.vue` 已改为跳转 `/parse-result?input=xxx`，placeholder 已扩展为多链接提示。
+	- `/parse-result` 与 `/parse-result/list` 路由已注册并懒加载。
+	- 概览页 `type=user-space` 展示用户信息与分组入口；非 user-space 类型自动重定向到列表页。
+	- 列表页按 `user-videos`/`ugc-season`/`favorites`/`video` 四类分发加载。
+	- 分P标题格式 `{title} P{n}`、同视频分组色条与紧凑间距、跨视频大间距已实现。
+	- 已入队项显示绿色“已入队”且 checkbox 禁用；批量加入待下载包含目录确认弹窗和 `queueStore.addTaskIds()`。
+	- “加载更多”按钮分页逻辑与 `hasMore` 状态已实现。
+	- “AI 总结”入口按钮已可见（占位，功能由 5b 实现）。
+- 裁定：本次未执行浏览器交互实操（dev server + 人工点击路径），在 closure 中以“代码审查 + 构建通过 + 独立审计”作为证据；后续可补充人工 UI 回归记录。

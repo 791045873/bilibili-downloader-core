@@ -15,7 +15,7 @@ onMounted(() => {
 function handleSubmit() {
   const input = inputText.value.trim();
   if (!input) return;
-  router.push({ name: "video", query: { input } });
+  router.push({ name: "parse-result", query: { input } });
 }
 </script>
 
@@ -28,7 +28,7 @@ function handleSubmit() {
         <input
           v-model="inputText"
           type="text"
-          placeholder="BV号 / AV号 / B站视频链接..."
+          placeholder="BV号 / 视频链接 / 用户空间 / 合集 / 收藏夹链接..."
           class="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-rose-500 focus:outline-none"
           autofocus
         />

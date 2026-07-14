@@ -72,6 +72,77 @@ export interface ParseResultItem {
   audioQualityList: string[];
 }
 
+export interface VideoSummary {
+  bvid: string;
+  cid: number;
+  title: string;
+  cover?: string;
+  duration: number;
+}
+
+export interface PaginatedVideos {
+  items: VideoSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface UgcSeasonSummary {
+  seasonId: number;
+  title: string;
+  cover?: string;
+  videoCount: number;
+}
+
+export interface UserSpaceResult {
+  mid: number;
+  name: string;
+  face?: string;
+  videos: PaginatedVideos;
+  seasons: UgcSeasonSummary[];
+}
+
+export interface UgcSeasonResult {
+  seasonId: number;
+  title: string;
+  cover?: string;
+  upperName?: string;
+  videos: PaginatedVideos;
+}
+
+export interface FavoritesResult {
+  mediaId: number;
+  title: string;
+  cover?: string;
+  upperName?: string;
+  videos: PaginatedVideos;
+}
+
+export interface VideoParseResult {
+  bvid: string;
+  avid: number;
+  title: string;
+  duration: number;
+  coverUrl: string;
+  upperName: string;
+  upperMid: number;
+  upperFace?: string;
+  playCount: string;
+  danmakuCount: string;
+  publishTime: string;
+  description: string;
+  videoZone: string;
+  typeId: number;
+  pages: VideoPage[];
+  ugcSeason?: UgcSeasonInfo | null;
+}
+
+export interface ParseLinkResult {
+  type: "video" | "user-space" | "ugc-season" | "favorites";
+  data: VideoParseResult | UserSpaceResult | UgcSeasonResult | FavoritesResult;
+}
+
 // ---- 下载相关 ----
 
 /** 服务端任务记录 */

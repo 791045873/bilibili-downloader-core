@@ -1,5 +1,7 @@
 import type {
   DownloadConfig,
+  ParseLinkResult,
+  PaginatedVideos,
   VideoInfo,
   ParseResultItem,
   TaskEntry,
@@ -44,6 +46,43 @@ export async function parseAllVideos(
     method: "POST",
     body: JSON.stringify({ bvid, cids }),
   });
+}
+
+export async function parseLink(input: string): Promise<ParseLinkResult> {
+  return request("/parse-link", {
+    method: "POST",
+    body: JSON.stringify({ input }),
+  });
+}
+
+export async function getUserSpaceVideos(
+  mid: number,
+  page: number,
+  pageSize: number,
+): Promise<PaginatedVideos> {
+  return request(
+    `/user-space/videos?mid=${mid}&page=${page}&pageSize=${pageSize}`,
+  );
+}
+
+export async function getUgcSeasonVideos(
+  seasonId: number,
+  page: number,
+  pageSize: number,
+): Promise<PaginatedVideos> {
+  return request(
+    `/ugc-season/videos?seasonId=${seasonId}&page=${page}&pageSize=${pageSize}`,
+  );
+}
+
+export async function getFavoritesVideos(
+  mediaId: number,
+  page: number,
+  pageSize: number,
+): Promise<PaginatedVideos> {
+  return request(
+    `/favorites/videos?mediaId=${mediaId}&page=${page}&pageSize=${pageSize}`,
+  );
 }
 
 // ==================== 下载配置 ====================

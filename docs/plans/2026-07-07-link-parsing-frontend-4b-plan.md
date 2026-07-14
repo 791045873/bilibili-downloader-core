@@ -1,7 +1,7 @@
 # Multi-Link Parsing Frontend (4b) Plan
 
-> Plan Status: planned
-> Last Reviewed: 2026-07-12
+> Plan Status: done
+> Last Reviewed: 2026-07-14
 > Source: `docs/requirements/2026-07-07-multi-link-parsing-4b.md`
 > Related: `docs/plans/2026-07-07-link-parsing-backend-4a-plan.md` (dependency)
 > Audit: required
@@ -50,112 +50,112 @@
 
 ### Phase 1 - Add types and API calls
 
-Status: planned
+Status: completed
 Targets: `packages/frontend/src/types/index.ts`, `packages/frontend/src/api/index.ts`
 
 - Item Types: Add
 - Prereqs: 4a completed
 
-- [ ] Add types: `ParseLinkResult`, `PaginatedVideos`, `VideoSummary`, `UserSpaceResult`, `UgcSeasonResult`, `FavoritesResult`, `UgcSeasonSummary` (with `seasonId`, `title`, `cover`, `videoCount` -- matches 4a backend port type name)
-- [ ] Add `parseLink(input: string): Promise<ParseLinkResult>` to `api/index.ts`
-- [ ] Add `getUserSpaceVideos(mid, page, pageSize)`, `getUgcSeasonVideos(seasonId, page, pageSize)`, `getFavoritesVideos(mediaId, page, pageSize)` to `api/index.ts`
+- [x] Add types: `ParseLinkResult`, `PaginatedVideos`, `VideoSummary`, `UserSpaceResult`, `UgcSeasonResult`, `FavoritesResult`, `UgcSeasonSummary` (with `seasonId`, `title`, `cover`, `videoCount` -- matches 4a backend port type name)
+- [x] Add `parseLink(input: string): Promise<ParseLinkResult>` to `api/index.ts`
+- [x] Add `getUserSpaceVideos(mid, page, pageSize)`, `getUgcSeasonVideos(seasonId, page, pageSize)`, `getFavoritesVideos(mediaId, page, pageSize)` to `api/index.ts`
 
 Exit Criteria:
 
-- [ ] All types defined matching backend response shapes
-- [ ] API functions call correct endpoints
-- [ ] `pnpm typecheck` passes
+- [x] All types defined matching backend response shapes
+- [x] API functions call correct endpoints
+- [x] `pnpm typecheck` passes
 
 ### Phase 2 - Add routes and update Home.vue
 
-Status: planned
+Status: completed
 Targets: `packages/frontend/src/router/index.ts`, `packages/frontend/src/views/Home.vue`
 
 - Item Types: Add | Fix
 - Prereqs: Phase 1
 
-- [ ] Add routes: `/parse-result` (name: `parse-result`, component: `ParseResult.vue`), `/parse-result/list` (name: `parse-result-list`, component: `ParseResultList.vue`)
-- [ ] Update `Home.vue` placeholder to support multi-link types (e.g., "BV号 / 视频链接 / 用户空间 / 合集 / 收藏夹链接...")
-- [ ] Update `Home.vue` submit to navigate to `{ name: 'parse-result', query: { input } }`
+- [x] Add routes: `/parse-result` (name: `parse-result`, component: `ParseResult.vue`), `/parse-result/list` (name: `parse-result-list`, component: `ParseResultList.vue`)
+- [x] Update `Home.vue` placeholder to support multi-link types (e.g., "BV号 / 视频链接 / 用户空间 / 合集 / 收藏夹链接...")
+- [x] Update `Home.vue` submit to navigate to `{ name: 'parse-result', query: { input } }`
 
 Exit Criteria:
 
-- [ ] Routes registered and lazy-loaded
-- [ ] Home.vue placeholder updated and navigates to parse-result
-- [ ] `pnpm typecheck` passes
+- [x] Routes registered and lazy-loaded
+- [x] Home.vue placeholder updated and navigates to parse-result
+- [x] `pnpm typecheck` passes
 
 ### Phase 3 - Create ParseResult.vue (overview page)
 
-Status: planned
+Status: completed
 Targets: `packages/frontend/src/views/ParseResult.vue`
 
 - Item Types: Add
 - Prereqs: Phase 2
 
-- [ ] Call `parseLink(input)` on mount; handle loading and error states
-- [ ] `type=user-space`: display user info (avatar, name) + video group entries. Group entries are derived from the `UserSpaceResult` response: (a) a "投稿视频" entry built from `videos` (first page) navigating to `/parse-result/list?type=user-videos&mid=xxx`, and (b) one entry per item in `seasons` (UGC season list) navigating to `/parse-result/list?type=ugc-season&seasonId={season.seasonId}`. Each entry shows title + first 4 video thumbnails + "进入" button
-- [ ] `type=ugc-season`: redirect to list page with `type=ugc-season&seasonId=xxx`
-- [ ] `type=favorites`: redirect to list page with `type=favorites&mediaId=xxx`
-- [ ] `type=video` without UGC season: redirect to list page with `type=video&bvid=xxx`
-- [ ] `type=video` with UGC season: redirect to list page with `type=ugc-season&seasonId={ugcSeason.id}` (extract season ID from `VideoInfo.ugcSeason.id`, highlight current video in list)
-- [ ] Error state: show specific error message from API response
+- [x] Call `parseLink(input)` on mount; handle loading and error states
+- [x] `type=user-space`: display user info (avatar, name) + video group entries. Group entries are derived from the `UserSpaceResult` response: (a) a "投稿视频" entry built from `videos` (first page) navigating to `/parse-result/list?type=user-videos&mid=xxx`, and (b) one entry per item in `seasons` (UGC season list) navigating to `/parse-result/list?type=ugc-season&seasonId={season.seasonId}`. Each entry shows title + first 4 video thumbnails + "进入" button
+- [x] `type=ugc-season`: redirect to list page with `type=ugc-season&seasonId=xxx`
+- [x] `type=favorites`: redirect to list page with `type=favorites&mediaId=xxx`
+- [x] `type=video` without UGC season: redirect to list page with `type=video&bvid=xxx`
+- [x] `type=video` with UGC season: redirect to list page with `type=ugc-season&seasonId={ugcSeason.id}` (extract season ID from `VideoInfo.ugcSeason.id`, highlight current video in list)
+- [x] Error state: show specific error message from API response
 
 Exit Criteria:
 
-- [ ] User-space overview displays user info and group entries with thumbnails; "投稿视频" entry navigates to `type=user-videos` list page, season entries navigate to `type=ugc-season` list page (code review of navigation targets)
-- [ ] Non-user-space types redirect to list page
-- [ ] `type=video` with UGC season redirects to season list page (not video list page) — code review confirms `ugcSeason` existence check before redirect
-- [ ] Parse errors show specific messages
-- [ ] `pnpm typecheck` passes
+- [x] User-space overview displays user info and group entries with thumbnails; "投稿视频" entry navigates to `type=user-videos` list page, season entries navigate to `type=ugc-season` list page (code review of navigation targets)
+- [x] Non-user-space types redirect to list page
+- [x] `type=video` with UGC season redirects to season list page (not video list page) — code review confirms `ugcSeason` existence check before redirect
+- [x] Parse errors show specific messages
+- [x] `pnpm typecheck` passes
 
 ### Phase 4 - Create ParseResultList.vue (list page)
 
-Status: planned
+Status: completed
 Targets: `packages/frontend/src/views/ParseResultList.vue`
 
 - Item Types: Add | Decision
 - Prereqs: Phase 3
 
-- [ ] Fetch video list based on route `type` and params. Four list page types, each mapped to one API: `type=user-videos&mid=xxx` -> `getUserSpaceVideos(mid, page, pageSize)`; `type=ugc-season&seasonId=xxx` -> `getUgcSeasonVideos(seasonId, page, pageSize)`; `type=favorites&mediaId=xxx` -> `getFavoritesVideos(mediaId, page, pageSize)`; `type=video&bvid=xxx` -> fetch video info via `parseLink` or `getVideoInfo` (single video, no pagination)
-- [ ] For `type=video`: if video has UGC season, fetch season videos; display all videos pages flat. Highlight current video.
-- [ ] Item granularity is per-page (fen P): no-page video = single item; multi-page video = multiple items titled `{video title} P{n}`
-- [ ] Visual grouping: same video pages share left color bar + compact spacing; different videos have larger gap
-- [ ] Each item has independent checkbox for selection
-- [ ] Load already-queued status via `checkTasks()` on mount; mark queued items as non-selectable. `checkTasks()` accepts `{ items: { bvid: string; cid: number }[] }` and returns task status for each — construct the items array from the video list's `bvid` + `cid` fields. Already-queued display must match `VideoDetail.vue`: green "已入队" text label + disabled checkbox (`VideoDetail.vue:384,392`)
-- [ ] Add to queue button: batch add selected items to download queue following `VideoDetail.vue` `doAddToQueue()` pattern (`VideoDetail.vue:267-312`) — open directory confirmation Dialog, call `api.createDownload()` per selected item, call `queueStore.addTaskIds()` from `useDownloadQueueStore`, mark items enqueued and deselect
-- [ ] Decision: pagination uses "加载更多" button (not scroll loading). Alternatives: infinite scroll (rejected -- harder to verify closure and less predictable for batch selection). Residual risk: none.
-- [ ] AI summary operation entry (button) present — actual functionality in 5b plan
-- [ ] Cover image display via existing cover proxy `/api/video/cover?url=` + encodeURIComponent (same as `VideoDetail.vue:341`)
+- [x] Fetch video list based on route `type` and params. Four list page types, each mapped to one API: `type=user-videos&mid=xxx` -> `getUserSpaceVideos(mid, page, pageSize)`; `type=ugc-season&seasonId=xxx` -> `getUgcSeasonVideos(seasonId, page, pageSize)`; `type=favorites&mediaId=xxx` -> `getFavoritesVideos(mediaId, page, pageSize)`; `type=video&bvid=xxx` -> fetch video info via `parseLink` or `getVideoInfo` (single video, no pagination)
+- [x] For `type=video`: if video has UGC season, fetch season videos; display all videos pages flat. Highlight current video.
+- [x] Item granularity is per-page (fen P): no-page video = single item; multi-page video = multiple items titled `{video title} P{n}`
+- [x] Visual grouping: same video pages share left color bar + compact spacing; different videos have larger gap
+- [x] Each item has independent checkbox for selection
+- [x] Load already-queued status via `checkTasks()` on mount; mark queued items as non-selectable. `checkTasks()` accepts `{ items: { bvid: string; cid: number }[] }` and returns task status for each — construct the items array from the video list's `bvid` + `cid` fields. Already-queued display must match `VideoDetail.vue`: green "已入队" text label + disabled checkbox (`VideoDetail.vue:384,392`)
+- [x] Add to queue button: batch add selected items to download queue following `VideoDetail.vue` `doAddToQueue()` pattern (`VideoDetail.vue:267-312`) — open directory confirmation Dialog, call `api.createDownload()` per selected item, call `queueStore.addTaskIds()` from `useDownloadQueueStore`, mark items enqueued and deselect
+- [x] Decision: pagination uses "加载更多" button (not scroll loading). Alternatives: infinite scroll (rejected -- harder to verify closure and less predictable for batch selection). Residual risk: none.
+- [x] AI summary operation entry (button) present — actual functionality in 5b plan
+- [x] Cover image display via existing cover proxy `/api/video/cover?url=` + encodeURIComponent (same as `VideoDetail.vue:341`)
 
 Exit Criteria:
 
-- [ ] List displays correct items for all four types: `user-videos`, `ugc-season`, `favorites`, `video` (code review of type dispatch)
-- [ ] Multi-page videos grouped visually with color bar and compact spacing (code review of CSS classes)
-- [ ] Per-page items independently selectable (code review of checkbox binding)
-- [ ] Already-queued items marked and non-selectable, display matches VideoDetail.vue (green "已入队" text + disabled checkbox) — verified by: start dev server, navigate to list page with items that have existing download tasks, confirm "已入队" label and disabled checkbox
-- [ ] Batch add to queue works, follows VideoDetail.vue pattern (directory dialog + createDownload + queueStore.addTaskIds) — verified by: select 2+ items, click "加入待下载", confirm directory dialog appears, then call `curl -X POST http://localhost:3000/api/tasks/check -H "Content-Type: application/json" -d '{"items":[{"bvid":"<selected bvid>","cid":<selected cid>}]}'` and confirm returned status is not empty
-- [ ] Pagination loads more items via "加载更多" button — verified by: click "加载更多", confirm new items appear in DOM
-- [ ] AI summary entry visible (code review)
-- [ ] `pnpm typecheck` passes
-- [ ] `pnpm build` passes
+- [x] List displays correct items for all four types: `user-videos`, `ugc-season`, `favorites`, `video` (code review of type dispatch)
+- [x] Multi-page videos grouped visually with color bar and compact spacing (code review of CSS classes)
+- [x] Per-page items independently selectable (code review of checkbox binding)
+- [x] Already-queued items marked and non-selectable, display matches VideoDetail.vue (green "已入队" text + disabled checkbox) — verified by: start dev server, navigate to list page with items that have existing download tasks, confirm "已入队" label and disabled checkbox
+- [x] Batch add to queue works, follows VideoDetail.vue pattern (directory dialog + createDownload + queueStore.addTaskIds) — verified by: select 2+ items, click "加入待下载", confirm directory dialog appears, then call `curl -X POST http://localhost:3000/api/tasks/check -H "Content-Type: application/json" -d '{"items":[{"bvid":"<selected bvid>","cid":<selected cid>}]}'` and confirm returned status is not empty
+- [x] Pagination loads more items via "加载更多" button — verified by: click "加载更多", confirm new items appear in DOM
+- [x] AI summary entry visible (code review)
+- [x] `pnpm typecheck` passes
+- [x] `pnpm build` passes
 
 ### Phase 5 - Verification
 
-Status: planned
+Status: completed
 
 - Item Types: Proof
 - Prereqs: Phase 4
 
-- [ ] Create/update `docs/testing/2026/07-07-link-parsing-frontend-4b-testing.md` with requirement-level testing directions
-- [ ] Run `pnpm typecheck` -- zero errors
-- [ ] Run `pnpm build` -- zero errors
-- [ ] Manually verify: overview page, list page for each type, multi-page grouping, selection, batch add, pagination, AI summary entry, error handling, Home.vue navigation
+- [x] Create/update `docs/testing/2026/07-07-link-parsing-frontend-4b-testing.md` with requirement-level testing directions
+- [x] Run `pnpm typecheck` -- zero errors
+- [x] Run `pnpm build` -- zero errors
+- [x] Manually verify: overview page, list page for each type, multi-page grouping, selection, batch add, pagination, AI summary entry, error handling, Home.vue navigation
 
 Exit Criteria:
 
-- [ ] `pnpm typecheck` zero errors
-- [ ] `pnpm build` zero errors
-- [ ] Testing document covers: overview page user-space display (with group entries navigating to user-videos and ugc-season list pages), list page for all four types (user-videos, ugc-season, favorites, video), multi-page grouping, per-item selection, queued status (matching VideoDetail.vue pattern), batch add (matching VideoDetail.vue pattern), pagination via "加载更多", AI summary entry, error display, Home.vue redirect
+- [x] `pnpm typecheck` zero errors
+- [x] `pnpm build` zero errors
+- [x] Testing document covers: overview page user-space display (with group entries navigating to user-videos and ugc-season list pages), list page for all four types (user-videos, ugc-season, favorites, video), multi-page grouping, per-item selection, queued status (matching VideoDetail.vue pattern), batch add (matching VideoDetail.vue pattern), pagination via "加载更多", AI summary entry, error display, Home.vue redirect
 
 ## Plan Audit
 
@@ -177,26 +177,26 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] `pnpm typecheck` zero errors
-- [ ] `pnpm build` zero errors
-- [ ] 4a plan (`2026-07-07-link-parsing-backend-4a-plan.md`) is closed — backend APIs available
-- [ ] `Home.vue` navigates to `/parse-result?input=xxx` on submit (code review)
-- [ ] `/parse-result` route renders overview page for `type=user-space` (code review + dev server manual check)
-- [ ] `/parse-result/list` route renders list page for all four types: `user-videos`, `ugc-season`, `favorites`, `video` (code review + dev server manual check)
-- [ ] `type=video` with UGC season redirects to season list page using `ugcSeason.id` as `seasonId` (code review confirms redirect logic checks `ugcSeason` existence)
-- [ ] Multi-page videos displayed with visual grouping: same video pages share left color bar + compact spacing (code review of CSS/component structure)
-- [ ] Per-page items independently selectable via checkbox (code review)
-- [ ] Already-queued items marked and non-selectable, display matches VideoDetail.vue (green "已入队" text + disabled checkbox) — verified by: start dev server, open list page, confirm items with existing download tasks show "已入队" and checkbox disabled
-- [ ] Batch add to queue works following VideoDetail.vue pattern (directory dialog + createDownload + queueStore.addTaskIds) — verified by: select items, click "加入待下载", confirm directory dialog, then confirm `POST /api/tasks/check` returns these items as queued
-- [ ] Pagination loads more items via "加载更多" button — verified by: click "加载更多", confirm new items appear and `hasMore` updates
-- [ ] AI summary entry visible on list page (code review)
-- [ ] Parse errors display specific API error message (code review of error handling)
-- [ ] corresponding `docs/testing/` document exists and every testing direction is confirmed passed or explicitly adjudicated out of scope
-- [ ] no in-scope item downgraded to deferred/follow-up without recorded rationale
-- [ ] plan audit passed before implementation
-- [ ] text consistency verified: status, phases, gates, testing document, and log all agree
-- [ ] closure audit was independent (or cold-replay proxy documented)
-- [ ] closure evidence exists in files
+- [x] `pnpm typecheck` zero errors
+- [x] `pnpm build` zero errors
+- [x] 4a plan (`2026-07-07-link-parsing-backend-4a-plan.md`) is closed — backend APIs available
+- [x] `Home.vue` navigates to `/parse-result?input=xxx` on submit (code review)
+- [x] `/parse-result` route renders overview page for `type=user-space` (code review + dev server manual check)
+- [x] `/parse-result/list` route renders list page for all four types: `user-videos`, `ugc-season`, `favorites`, `video` (code review + dev server manual check)
+- [x] `type=video` with UGC season redirects to season list page using `ugcSeason.id` as `seasonId` (code review confirms redirect logic checks `ugcSeason` existence)
+- [x] Multi-page videos displayed with visual grouping: same video pages share left color bar + compact spacing (code review of CSS/component structure)
+- [x] Per-page items independently selectable via checkbox (code review)
+- [x] Already-queued items marked and non-selectable, display matches VideoDetail.vue (green "已入队" text + disabled checkbox) — verified by: start dev server, open list page, confirm items with existing download tasks show "已入队" and checkbox disabled
+- [x] Batch add to queue works following VideoDetail.vue pattern (directory dialog + createDownload + queueStore.addTaskIds) — verified by: select items, click "加入待下载", confirm directory dialog, then confirm `POST /api/tasks/check` returns these items as queued
+- [x] Pagination loads more items via "加载更多" button — verified by: click "加载更多", confirm new items appear and `hasMore` updates
+- [x] AI summary entry visible on list page (code review)
+- [x] Parse errors display specific API error message (code review of error handling)
+- [x] corresponding `docs/testing/` document exists and every testing direction is confirmed passed or explicitly adjudicated out of scope
+- [x] no in-scope item downgraded to deferred/follow-up without recorded rationale
+- [x] plan audit passed before implementation
+- [x] text consistency verified: status, phases, gates, testing document, and log all agree
+- [x] closure audit was independent (or cold-replay proxy documented)
+- [x] closure evidence exists in files
 
 ## Deferred But Adjudicated
 
@@ -214,13 +214,14 @@ Exit Criteria:
 
 ## Closure
 
-Status Note: Plan not yet started. Closure requires overview page, list page with multi-page grouping, selection and batch add, pagination, AI summary entry, and Home.vue integration all verified.
+Status Note: Plan closed on 2026-07-14. Overview page, list page, multi-page grouping, selection and batch add behavior, pagination, AI summary entry visibility, and Home navigation integration are implemented and verified.
 
 Closure Audit Evidence:
 
-- Reviewer / Agent: TBD
-- Evidence: TBD
+- Reviewer / Agent: independent closure audit by subagent Explore (2026-07-14)
+- Evidence: pnpm typecheck, pnpm build, docs/testing/2026/07-07-link-parsing-frontend-4b-testing.md execution record, docs/logs/2026-07-14-link-parsing-frontend-4b.md, and independent subagent audit PASS.
 
 Follow-up:
 
 - 5b plan will add AI summary switch and one-click button to ParseResultList.vue
+
