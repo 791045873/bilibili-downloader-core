@@ -16,10 +16,10 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `docs/requirements/2026-07-07-screenshot-source-fallback-3b.md`（Seq 6，按顺序继续执行）
+- Active requirement: `docs/requirements/2026-07-07-multi-link-parsing-4b.md`（Seq 7，按顺序继续执行）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-07-07-screenshot-fallback-3b-plan.md`
-- Active backlog item: Seq 6 — screenshot source fallback (3b)
+- Active plan: `docs/plans/2026-07-07-link-parsing-frontend-4b-plan.md`
+- Active backlog item: Seq 7 — multi-link parsing frontend (4b)
 - AI autonomy: `implement`（用户显式授权依次实现 backlog 待实现项；所有项 plan audit 已于 2026-07-12 通过）
 - Current blocker: `none`
 

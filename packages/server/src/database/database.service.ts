@@ -344,6 +344,21 @@ export class DatabaseService {
     );
   }
 
+  /** 查询某个视频分P最近完成下载任务（用于截图源本地回退） */
+  findCompletedTaskByBvidAndCid(
+    bvid: string,
+    cid: number,
+  ): TaskRecord | undefined {
+    return this.db
+      .prepare(
+        `${this.taskSelectSql}
+         WHERE bvid = ? AND cid = ? AND status = 'success'
+         ORDER BY createdAt DESC
+         LIMIT 1`,
+      )
+      .get(bvid, cid) as TaskRecord | undefined;
+  }
+
   insertAnalysisSubTask(record: AnalysisSubTaskRecord): number {
     const stmt = this.db.prepare(`
       INSERT INTO analysis_sub_task (

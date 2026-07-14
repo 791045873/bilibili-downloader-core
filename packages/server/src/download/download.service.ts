@@ -179,6 +179,31 @@ export class DownloadService implements OnModuleInit {
     return results;
   }
 
+  /** 获取分P最高可用清晰度视频流（用于分析截图源远端优先策略） */
+  async resolveBestVideoStream(
+    bvid: string,
+    cid: number,
+  ): Promise<{ url: string; quality: number }> {
+    const parsed = await this.resourceParser.parse(bvid);
+    const cookieString = this.cookieFile
+      ? await this.loadCookieString(this.cookieFile)
+      : undefined;
+
+    const streams = await this.resolutionService.resolveStreams({
+      bvid,
+      cid,
+      resourceType: parsed.type,
+      cookieString,
+    });
+
+    const best = this.resolutionService.selectBestStream(streams.videoStreams);
+    if (!best) {
+      throw new Error(`无法为 ${bvid}/${cid} 选择视频流`);
+    }
+
+    return { url: best.url, quality: best.quality };
+  }
+
   // ==================== 下载任务 ====================
 
   /** 创建下载任务（仅落库，不执行，由 Scheduler 调度） */

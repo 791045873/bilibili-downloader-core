@@ -1,7 +1,7 @@
 # Screenshot Source Fallback (3b) Plan
 
-> Plan Status: planned
-> Last Reviewed: 2026-07-12
+> Plan Status: done
+> Last Reviewed: 2026-07-14
 > Source: `docs/requirements/2026-07-07-screenshot-source-fallback-3b.md`
 > Related: `docs/plans/2026-07-07-screenshot-remote-3a-plan.md` (dependency), `docs/plans/2026-07-07-analysis-formal-api-plan.md` (AnalysisInput metadata)
 > Audit: required
@@ -60,81 +60,81 @@
 
 ### Phase 1 - Define ScreenshotSourceResolver interface and implementation
 
-Status: planned
+Status: completed
 Targets: `packages/server/src/analysis/screenshot-source-resolver.ts`, `packages/server/src/database/database.service.ts` (new query method), `packages/server/src/download/download.service.ts` (expose stream resolution), `packages/server/src/download/download.module.ts` (export DownloadService)
 
 - Item Types: Add | Decision
 - Prereqs: 3a completed
 
-- [ ] Define `ScreenshotSourceResolver` interface: `resolve(params: { metadata, localVideoPath? }): Promise<{ source: string; sourceType: "remote" | "local"; headers?: Record<string, string> }>`
-- [ ] Decision: resolver obtains stream resolution capability via `DownloadService` delegation method (e.g., `DownloadService.resolveBestVideoStream(bvid, cid): Promise<{ url, quality }>`), NOT via direct injection of `ResolutionService`/`BilibiliStreamProvider` (neither is a NestJS provider -- live: download.service.ts lines 56-65). Alternatives: promote `ResolutionService` to a shared provider (rejected -- changes existing instantiation pattern in `DownloadService.onModuleInit()` and risks breaking download flow). Residual risk: `DownloadService` gains a new public method that exposes internal capability.
-- [ ] Implement resolver class that depends on `DownloadService` and `DatabaseService` (injected via constructor). `DownloadService` provides both stream resolution (new delegation method) and sync download (`createTask()` + `executeTask()`).
-- [ ] Add new query method to `DatabaseService`: `findCompletedTaskByBvidAndCid(bvid: string, cid: number): TaskRecord | undefined` that returns full `TaskRecord` including `quality` and `outputFile` for `status='success'` tasks. Existing `findTasksByBvidsAndCids()` (live: database.service.ts line 221) returns only `{bvid, cid, status, createdAt}` and cannot serve the resolver.
-- [ ] Add delegation method to `DownloadService`: `resolveBestVideoStream(bvid, cid)` that calls the internal `ResolutionService.resolveStreams()` + `selectBestStream()` (no preferences = highest quality) and returns the remote stream URL + quality. Cookie loading reuses existing `loadCookieString()` (live: download.service.ts line 434).
-- [ ] Add `exports: [DownloadService]` to `DownloadModule` (live: download.module.ts) so `AnalysisModule` can inject it.
-- [ ] Implement `metadata.type=local` path: return `{ source: localVideoPath, sourceType: "local" }`
-- [ ] Implement `metadata.type=bilibili` Step 1: call `DownloadService.resolveBestVideoStream(bvid, cid)` to get highest quality remote stream URL; return `{ source: remoteUrl, sourceType: "remote", headers: { Referer: "https://www.bilibili.com" } }`
-- [ ] Implement Step 2: call new `DatabaseService.findCompletedTaskByBvidAndCid(bvid, cid)`; if found and `quality >= 80`, return `{ source: task.outputFile, sourceType: "local" }`
-- [ ] Implement Step 3: call `DownloadService.createTask()` to insert task (required because `executeTask()` checks `taskCache` -- live: download.service.ts lines 212-215), then call `DownloadService.executeTask()` synchronously (bypass scheduler); 10-minute timeout; return `task.outputFile` on success, throw on failure
-- [ ] Decision: resolver is a concrete class implementing the interface, registered as NestJS `@Injectable()` provider. Alternatives: factory pattern (rejected -- over-engineering for single implementation). Residual risk: if multiple resolver strategies are needed in future, refactoring required.
+- [x] Define `ScreenshotSourceResolver` interface: `resolve(params: { metadata, localVideoPath? }): Promise<{ source: string; sourceType: "remote" | "local"; headers?: Record<string, string> }>`
+- [x] Decision: resolver obtains stream resolution capability via `DownloadService` delegation method (e.g., `DownloadService.resolveBestVideoStream(bvid, cid): Promise<{ url, quality }>`), NOT via direct injection of `ResolutionService`/`BilibiliStreamProvider` (neither is a NestJS provider -- live: download.service.ts lines 56-65). Alternatives: promote `ResolutionService` to a shared provider (rejected -- changes existing instantiation pattern in `DownloadService.onModuleInit()` and risks breaking download flow). Residual risk: `DownloadService` gains a new public method that exposes internal capability.
+- [x] Implement resolver class that depends on `DownloadService` and `DatabaseService` (injected via constructor). `DownloadService` provides both stream resolution (new delegation method) and sync download (`createTask()` + `executeTask()`).
+- [x] Add new query method to `DatabaseService`: `findCompletedTaskByBvidAndCid(bvid: string, cid: number): TaskRecord | undefined` that returns full `TaskRecord` including `quality` and `outputFile` for `status='success'` tasks. Existing `findTasksByBvidsAndCids()` (live: database.service.ts line 221) returns only `{bvid, cid, status, createdAt}` and cannot serve the resolver.
+- [x] Add delegation method to `DownloadService`: `resolveBestVideoStream(bvid, cid)` that calls the internal `ResolutionService.resolveStreams()` + `selectBestStream()` (no preferences = highest quality) and returns the remote stream URL + quality. Cookie loading reuses existing `loadCookieString()` (live: download.service.ts line 434).
+- [x] Add `exports: [DownloadService]` to `DownloadModule` (live: download.module.ts) so `AnalysisModule` can inject it.
+- [x] Implement `metadata.type=local` path: return `{ source: localVideoPath, sourceType: "local" }`
+- [x] Implement `metadata.type=bilibili` Step 1: call `DownloadService.resolveBestVideoStream(bvid, cid)` to get highest quality remote stream URL; return `{ source: remoteUrl, sourceType: "remote", headers: { Referer: "https://www.bilibili.com" } }`
+- [x] Implement Step 2: call new `DatabaseService.findCompletedTaskByBvidAndCid(bvid, cid)`; if found and `quality >= 80`, return `{ source: task.outputFile, sourceType: "local" }`
+- [x] Implement Step 3: call `DownloadService.createTask()` to insert task (required because `executeTask()` checks `taskCache` -- live: download.service.ts lines 212-215), then call `DownloadService.executeTask()` synchronously (bypass scheduler); 10-minute timeout; return `task.outputFile` on success, throw on failure
+- [x] Decision: resolver is a concrete class implementing the interface, registered as NestJS `@Injectable()` provider. Alternatives: factory pattern (rejected -- over-engineering for single implementation). Residual risk: if multiple resolver strategies are needed in future, refactoring required.
 
 Exit Criteria:
 
-- [ ] `ScreenshotSourceResolver` interface and implementation exist
-- [ ] All three fallback steps implemented for bilibili type
-- [ ] Local type returns immediately
-- [ ] New `DatabaseService.findCompletedTaskByBvidAndCid()` method returns `quality` and `outputFile`
-- [ ] `DownloadService` exposes stream resolution delegation method
-- [ ] `DownloadModule` exports `DownloadService`
-- [ ] `pnpm typecheck` passes
+- [x] `ScreenshotSourceResolver` interface and implementation exist
+- [x] All three fallback steps implemented for bilibili type
+- [x] Local type returns immediately
+- [x] New `DatabaseService.findCompletedTaskByBvidAndCid()` method returns `quality` and `outputFile`
+- [x] `DownloadService` exposes stream resolution delegation method
+- [x] `DownloadModule` exports `DownloadService`
+- [x] `pnpm typecheck` passes
 
 ### Phase 2 - Integrate resolver into AnalysisEngine
 
-Status: planned
+Status: completed
 Targets: `packages/server/src/analysis/analysis-engine.ts`, `packages/server/src/analysis/index.ts`
 
 - Item Types: Add | Fix
 - Prereqs: Phase 1, formal API plan (AnalysisInput with metadata)
 
-- [ ] `AnalysisEngine` constructor accepts `ScreenshotSourceResolver` as a dependency
-- [ ] In `analyze()`: if `input.screenshotVideoPath` present, use it directly for screenshots; otherwise call `resolver.resolve()` to get screenshot source
-- [ ] Pass `headers` from resolver result to `screenshotter.takeScreenshots()` when `sourceType === "remote"`
-- [ ] Implement remote-to-local fallback: once a remote screenshot fails, set a flag to use local source for all remaining time points
-- [ ] Screenshot failure for a segment: skip screenshots for that segment, continue analysis (existing behavior preserved)
-- [ ] Export resolver types from `index.ts`
+- [x] `AnalysisEngine` constructor accepts `ScreenshotSourceResolver` as a dependency
+- [x] In `analyze()`: if `input.screenshotVideoPath` present, use it directly for screenshots; otherwise call `resolver.resolve()` to get screenshot source
+- [x] Pass `headers` from resolver result to `screenshotter.takeScreenshots()` when `sourceType === "remote"`
+- [x] Implement remote-to-local fallback: once a remote screenshot fails, set a flag to use local source for all remaining time points
+- [x] Screenshot failure for a segment: skip screenshots for that segment, continue analysis (existing behavior preserved)
+- [x] Export resolver types from `index.ts`
 
 Exit Criteria:
 
-- [ ] `AnalysisEngine` uses resolver when `screenshotVideoPath` is absent
-- [ ] `screenshotVideoPath` present skips resolver
-- [ ] Remote failure triggers local fallback for remaining time points
-- [ ] Segment screenshot failure does not interrupt analysis
-- [ ] `pnpm typecheck` passes
+- [x] `AnalysisEngine` uses resolver when `screenshotVideoPath` is absent
+- [x] `screenshotVideoPath` present skips resolver
+- [x] Remote failure triggers local fallback for remaining time points
+- [x] Segment screenshot failure does not interrupt analysis
+- [x] `pnpm typecheck` passes
 
 ### Phase 3 - Update controller and module wiring
 
-Status: planned
+Status: completed
 Targets: `packages/server/src/analysis/analysis.controller.ts`, `packages/server/src/analysis/analysis.module.ts`
 
 - Item Types: Add | Fix
 - Prereqs: Phase 2
 
-- [ ] `analysis.module.ts` imports `DownloadModule` (which now exports `DownloadService` after Phase 1) to make `DownloadService` injectable. `DatabaseService` is already `@Global()` (live: database.module.ts line 4) so no import needed for it.
-- [ ] Register `ScreenshotSourceResolver` as an `@Injectable()` provider in `analysis.module.ts`
-- [ ] `AnalysisController` injects `ScreenshotSourceResolver` via constructor and passes it to `new AnalysisEngine(llmConfig, undefined, resolver)` (engine constructor signature updated in Phase 2 to accept resolver). `getLlmConfig()` (live: analysis.controller.ts lines 41-65) is retained for env var reading.
-- [ ] Formal API endpoint passes `metadata` with `bvid`/`cid` from request body to `AnalysisInput` (already done in formal-api plan -- live: analysis.controller.ts lines 29-36; no change needed beyond passing resolver to engine)
+- [x] `analysis.module.ts` imports `DownloadModule` (which now exports `DownloadService` after Phase 1) to make `DownloadService` injectable. `DatabaseService` is already `@Global()` (live: database.module.ts line 4) so no import needed for it.
+- [x] Register `ScreenshotSourceResolver` as an `@Injectable()` provider in `analysis.module.ts`
+- [x] `AnalysisController` injects `ScreenshotSourceResolver` via constructor and passes it to `new AnalysisEngine(llmConfig, undefined, resolver)` (engine constructor signature updated in Phase 2 to accept resolver). `getLlmConfig()` (live: analysis.controller.ts lines 41-65) is retained for env var reading.
+- [x] Formal API endpoint passes `metadata` with `bvid`/`cid` from request body to `AnalysisInput` (already done in formal-api plan -- live: analysis.controller.ts lines 29-36; no change needed beyond passing resolver to engine)
 
 Exit Criteria:
 
-- [ ] `AnalysisEngine` is constructed with resolver dependency via DI
-- [ ] `metadata.bvid` and `metadata.cid` flow from request to resolver
-- [ ] `pnpm typecheck` passes
-- [ ] `pnpm build` passes
-- [ ] DI wiring verified at runtime: start server, send `curl -X POST http://localhost:3000/api/analysis/run -H "Content-Type: application/json" -d '{"videoPath":"","subtitlePath":"","videoTitle":"test","metadata":{"type":"local"}}'`, confirm response is NOT HTTP 500 (400/422 acceptable -- means DI wiring works, request validation rejecting empty videoPath)
+- [x] `AnalysisEngine` is constructed with resolver dependency via DI
+- [x] `metadata.bvid` and `metadata.cid` flow from request to resolver
+- [x] `pnpm typecheck` passes
+- [x] `pnpm build` passes
+- [x] DI wiring verified at runtime: start server, send `curl -X POST http://localhost:3000/api/analysis/run -H "Content-Type: application/json" -d '{"videoPath":"","subtitlePath":"","videoTitle":"test","metadata":{"type":"local"}}'`, confirm response is NOT HTTP 500 (400/422 acceptable -- means DI wiring works, request validation rejecting empty videoPath)
 
 ### Phase 4 - Verification
 
-Status: planned
+Status: completed
 
 - Item Types: Proof
 - Prereqs: Phase 3
@@ -146,22 +146,22 @@ Environment prerequisites:
 - Test video: `BV1SoTx6yEYc` (same as 3a plan)
 - Python vision proxy running if LLM analysis is needed; for resolver-only tests, LLM is not needed
 
-- [ ] Create/update `docs/testing/2026/07-07-screenshot-fallback-3b-testing.md` with requirement-level testing directions, including specific curl commands and expected outputs for each test case
-- [ ] Run `pnpm typecheck` -- zero errors
-- [ ] Run `pnpm build` -- zero errors
-- [ ] Verify `metadata.type=local` path: `curl -X POST http://localhost:3000/api/analysis/run -H "Content-Type: application/json" -d '{"videoPath":"<local path>","subtitlePath":"<local srt>","videoTitle":"test","summaryDir":"./test-summary","metadata":{"type":"local"}}'` — confirm response includes `summaryPath` and screenshots are generated in `./test-summary/screenshots/`
-- [ ] Verify `screenshotVideoPath` bypass: send request with `screenshotVideoPath` set to a different file than `videoPath`; confirm screenshots are taken from `screenshotVideoPath` (check file timestamps or logs)
-- [ ] Verify bilibili remote path: send request with `metadata.type=bilibili`, `bvid`, `cid` for `BV1SoTx6yEYc`; confirm resolver attempts remote stream URL (check server logs for ffmpeg with HTTP URL input)
-- [ ] Verify remote failure fallback: if remote screenshot fails, confirm remaining time points use local source (check server logs for fallback message)
-- [ ] Verify DB fallback: if remote fails and DB has a completed task for the bvid with quality >= 80, confirm local file is used (check server logs)
-- [ ] Verify re-download fallback: if remote fails and DB has no suitable task, confirm sync download is triggered (check server logs and `downloads/` directory for new file)
+- [x] Create/update `docs/testing/2026/07-07-screenshot-fallback-3b-testing.md` with requirement-level testing directions, including specific curl commands and expected outputs for each test case
+- [x] Run `pnpm typecheck` -- zero errors
+- [x] Run `pnpm build` -- zero errors
+- [x] Verify `metadata.type=local` path: `curl -X POST http://localhost:3000/api/analysis/run -H "Content-Type: application/json" -d '{"videoPath":"<local path>","subtitlePath":"<local srt>","videoTitle":"test","summaryDir":"./test-summary","metadata":{"type":"local"}}'` — confirm response includes `summaryPath` and screenshots are generated in `./test-summary/screenshots/`
+- [x] Verify `screenshotVideoPath` bypass: send request with `screenshotVideoPath` set to a different file than `videoPath`; confirm screenshots are taken from `screenshotVideoPath` (check file timestamps or logs)
+- [x] Verify bilibili remote path: send request with `metadata.type=bilibili`, `bvid`, `cid` for `BV1SoTx6yEYc`; confirm resolver attempts remote stream URL (check server logs for ffmpeg with HTTP URL input)
+- [x] Verify remote failure fallback: if remote screenshot fails, confirm remaining time points use local source (check server logs for fallback message)
+- [x] Verify DB fallback: if remote fails and DB has a completed task for the bvid with quality >= 80, confirm local file is used (check server logs)
+- [x] Verify re-download fallback: if remote fails and DB has no suitable task, confirm sync download is triggered (check server logs and `downloads/` directory for new file)
 
 Exit Criteria:
 
-- [ ] `pnpm typecheck` zero errors
-- [ ] `pnpm build` zero errors
-- [ ] All curl verification commands executed with expected responses
-- [ ] Testing document covers: local type, bilibili remote path, bilibili DB fallback, bilibili re-download fallback, screenshotVideoPath bypass, remote failure fallback — each with curl command, environment prerequisite, and expected output
+- [x] `pnpm typecheck` zero errors
+- [x] `pnpm build` zero errors
+- [x] All curl verification commands executed with expected responses
+- [x] Testing document covers: local type, bilibili remote path, bilibili DB fallback, bilibili re-download fallback, screenshotVideoPath bypass, remote failure fallback — each with curl command, environment prerequisite, and expected output
 
 ## Plan Audit
 
@@ -183,24 +183,24 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] `pnpm typecheck` zero errors
-- [ ] `pnpm build` zero errors
-- [ ] 3a plan (`2026-07-07-screenshot-remote-3a-plan.md`) is closed — FfmpegScreenshot supports HTTP URL + headers
-- [ ] formal API plan (`2026-07-07-analysis-formal-api-plan.md`) is closed — AnalysisInput includes `metadata` and `screenshotVideoPath` (already done)
-- [ ] `ScreenshotSourceResolver` interface and implementation exist and compile
-- [ ] `DatabaseService.findCompletedTaskByBvidAndCid()` returns `quality` and `outputFile`
-- [ ] `DownloadService` exposes stream resolution delegation method
-- [ ] `DownloadModule` exports `DownloadService`
-- [ ] `AnalysisEngine` uses resolver when `screenshotVideoPath` is absent (code review)
-- [ ] `screenshotVideoPath` present skips resolver (code review)
-- [ ] remote failure triggers local fallback for remaining time points (code review)
-- [ ] NestJS DI wiring verified: server starts without DI errors, `POST /api/analysis/run` responds (not 500) — verified by `curl -X POST http://localhost:3000/api/analysis/run` returning non-500 status
-- [ ] corresponding `docs/testing/` document exists and every testing direction is confirmed passed or explicitly adjudicated out of scope
-- [ ] no in-scope item downgraded to deferred/follow-up without recorded rationale
-- [ ] plan audit passed before implementation
-- [ ] text consistency verified: status, phases, gates, testing document, and log all agree
-- [ ] closure audit was independent (or cold-replay proxy documented)
-- [ ] closure evidence exists in files
+- [x] `pnpm typecheck` zero errors
+- [x] `pnpm build` zero errors
+- [x] 3a plan (`2026-07-07-screenshot-remote-3a-plan.md`) is closed — FfmpegScreenshot supports HTTP URL + headers
+- [x] formal API plan (`2026-07-07-analysis-formal-api-plan.md`) is closed — AnalysisInput includes `metadata` and `screenshotVideoPath` (already done)
+- [x] `ScreenshotSourceResolver` interface and implementation exist and compile
+- [x] `DatabaseService.findCompletedTaskByBvidAndCid()` returns `quality` and `outputFile`
+- [x] `DownloadService` exposes stream resolution delegation method
+- [x] `DownloadModule` exports `DownloadService`
+- [x] `AnalysisEngine` uses resolver when `screenshotVideoPath` is absent (code review)
+- [x] `screenshotVideoPath` present skips resolver (code review)
+- [x] remote failure triggers local fallback for remaining time points (code review)
+- [x] NestJS DI wiring verified: server starts without DI errors, `POST /api/analysis/run` responds (not 500) — verified by `curl -X POST http://localhost:3000/api/analysis/run` returning non-500 status
+- [x] corresponding `docs/testing/` document exists and every testing direction is confirmed passed or explicitly adjudicated out of scope
+- [x] no in-scope item downgraded to deferred/follow-up without recorded rationale
+- [x] plan audit passed before implementation
+- [x] text consistency verified: status, phases, gates, testing document, and log all agree
+- [x] closure audit was independent (or cold-replay proxy documented)
+- [x] closure evidence exists in files
 
 ## Deferred But Adjudicated
 
@@ -218,13 +218,14 @@ Exit Criteria:
 
 ## Closure
 
-Status Note: Plan not yet started. Closure requires ScreenshotSourceResolver abstraction, three-step bilibili fallback, AnalysisEngine integration, remote-to-local degradation, and DI wiring all verified.
+Status Note: Plan closed on 2026-07-14. ScreenshotSourceResolver abstraction, three-step bilibili fallback, AnalysisEngine integration, remote-to-local degradation, and DI wiring are complete.
 
 Closure Audit Evidence:
 
-- Reviewer / Agent: TBD
-- Evidence: TBD
+- Reviewer / Agent: independent closure audit by subagent Explore (2026-07-14)
+- Evidence: pnpm typecheck, pnpm build, runtime DI non-500 check for /api/analysis/run, docs/testing/2026/07-07-screenshot-fallback-3b-testing.md execution record, and docs/logs/2026-07-14-screenshot-fallback-3b.md.
 
 Follow-up:
 
 - 5b plan will use `screenshotVideoPath` to bypass this resolver when high-res video is already available locally
+

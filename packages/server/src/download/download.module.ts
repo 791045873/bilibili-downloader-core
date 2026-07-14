@@ -8,5 +8,6 @@ import { AuthController } from "../auth/auth.controller.js";
 @Module({
   controllers: [DownloadController, VideoController, AuthController],
   providers: [DownloadService, DownloadScheduler],
+  exports: [DownloadService],
 })
 export class DownloadModule {}

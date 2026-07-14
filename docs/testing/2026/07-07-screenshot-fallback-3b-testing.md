@@ -167,3 +167,20 @@ curl -X POST http://localhost:3000/api/analysis/run \
 - bilibili 远端验证：curl + 服务器日志确认 ffmpeg HTTP URL 输入
 - DB fallback 验证：curl + 服务器日志确认 fallback 消息
 - re-download 验证：curl + `downloads/` 目录确认新文件
+
+## 2026-07-14 执行记录
+
+- 结果：部分运行验证通过，端到端回退链路在当前环境下按前置条件裁定为待人工复验。
+- 通过：`pnpm typecheck`（零错误；存在 Node engine warning: 期望 24.16.0，当前 22.22.3）。
+- 通过：`pnpm build`（零错误；存在同样 engine warning）。
+- 通过：Nest 启动日志显示 `AnalysisModule` 与 `DownloadModule` 装配成功，`POST /api/analysis/run` 返回 `400`（非 `500`），满足 DI 装配验证方向。
+- 通过（代码审查）：
+  - `AnalysisEngine` 通过构造函数依赖 `ScreenshotSourceResolver`，未直接依赖 `DatabaseService`/`DownloadService`。
+  - `screenshotVideoPath` 存在时跳过 resolver。
+  - 远端失败后使用 `useLocalFallbackForRest` 使剩余时间点全部走本地。
+  - `DatabaseService.findCompletedTaskByBvidAndCid()` 返回完整 `TaskRecord`（含 `quality`、`outputFile`）。
+  - `DownloadModule` 已导出 `DownloadService`，`AnalysisModule` 已导入 `DownloadModule`。
+- 待人工复验（环境前置未满足）：
+  - bilibili 远端截图真实链路（需要有效 `COOKIE_FILE` 和可稳定访问 B 站流）。
+  - DB fallback 命中与 quality 阈值分支（需要预置 `status=success` 且 quality>=80 的样本任务）。
+  - re-download fallback 分支（需要构造远端失败且 DB 无可用任务场景）。

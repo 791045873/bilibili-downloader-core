@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Post } from "@nestjs/common";
 import { isAbsolute, join } from "node:path";
 import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
 import type { LlmConfig } from "@bilibili-downloader/adapters/llm";
+import { DefaultScreenshotSourceResolver } from "./screenshot-source-resolver.js";
 
 interface AnalysisRequest {
   /** LLM 分析用视频文件绝对路径（低分辨率或唯一可用分辨率） */
@@ -23,6 +24,8 @@ interface AnalysisRequest {
 
 @Controller("api/analysis")
 export class AnalysisController {
+  constructor(private readonly screenshotSourceResolver: DefaultScreenshotSourceResolver) {}
+
   @Post("/run")
   async runAnalyze(@Body() body: AnalysisRequest) {
     validateRequest(body);
@@ -34,7 +37,11 @@ export class AnalysisController {
       metadata: body.metadata,
       screenshotVideoPath: body.screenshotVideoPath,
     };
-    const engine = new AnalysisEngine(this.getLlmConfig());
+    const engine = new AnalysisEngine(
+      this.getLlmConfig(),
+      undefined,
+      this.screenshotSourceResolver,
+    );
     return engine.analyze(input);
   }
 

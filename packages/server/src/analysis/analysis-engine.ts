@@ -12,6 +12,7 @@ import { parseSrtFile, type SrtEntry } from "@bilibili-downloader/adapters/parse
 import { FfmpegScreenshot } from "@bilibili-downloader/adapters/ffmpeg";
 import { QwenClient, type LlmConfig, type MultimodalContent } from "@bilibili-downloader/adapters/llm";
 import { generateMarkdown, type DocumentInput } from "./document-generator.js";
+import type { ScreenshotSourceResolver } from "./screenshot-source-resolver.js";
 
 function formatSubtitleEntry(entry: SrtEntry): string {
   return `[${entry.index}] ${entry.text}`;
@@ -91,14 +92,17 @@ export class AnalysisEngine {
   private readonly llmClient: QwenClient;
   private readonly screenshotter: FfmpegScreenshot;
   private readonly llmConfig: LlmConfig;
+  private readonly screenshotSourceResolver?: ScreenshotSourceResolver;
 
   constructor(
     llmConfig: LlmConfig,
     httpClient?: typeof fetch,
+    screenshotSourceResolver?: ScreenshotSourceResolver,
   ) {
     this.llmConfig = llmConfig;
     this.llmClient = new QwenClient(llmConfig, httpClient);
     this.screenshotter = new FfmpegScreenshot();
+    this.screenshotSourceResolver = screenshotSourceResolver;
   }
 
   async analyze(input: AnalysisInput): Promise<AnalysisOutput> {
@@ -151,6 +155,16 @@ export class AnalysisEngine {
       return await this.writeEmptySummary(input, screenshots);
     }
 
+    const resolvedSource = input.screenshotVideoPath
+      ? {
+        source: input.screenshotVideoPath,
+        sourceType: "local" as const,
+        headers: undefined,
+      }
+      : await this.resolveScreenshotSource(input);
+    const localFallbackPath = input.screenshotVideoPath ?? input.videoPath;
+    let useLocalFallbackForRest = false;
+
     const processedSegments: DocumentInput["segments"] = [];
 
     // 3. 按 LLM 返回的精确时间戳直接截图，不再做二次多模态选图
@@ -165,15 +179,38 @@ export class AnalysisEngine {
 
       let segmentScreenshots: string[] = [];
       try {
+        const screenshotPath = useLocalFallbackForRest
+          ? localFallbackPath
+          : resolvedSource.source;
+        const screenshotHeaders = useLocalFallbackForRest
+          ? undefined
+          : resolvedSource.headers;
+
         const result = await this.screenshotter.takeScreenshots({
-          videoPath: input.videoPath,
+          videoPath: screenshotPath,
           timePoints: [seconds],
           outputDir: screenshotsDir,
           filenamePrefix: `segment-${si}`,
+          headers: screenshotHeaders,
         });
         segmentScreenshots = result.outputFiles;
         screenshots.push(...segmentScreenshots);
       } catch (err) {
+        if (!useLocalFallbackForRest && resolvedSource.sourceType === "remote") {
+          useLocalFallbackForRest = true;
+          try {
+            const retryResult = await this.screenshotter.takeScreenshots({
+              videoPath: localFallbackPath,
+              timePoints: [seconds],
+              outputDir: screenshotsDir,
+              filenamePrefix: `segment-${si}`,
+            });
+            segmentScreenshots = retryResult.outputFiles;
+            screenshots.push(...segmentScreenshots);
+          } catch (retryErr) {
+            console.error(`段落 ${si} 远端与本地截图均失败: ${(retryErr as Error).message}`);
+          }
+        }
         console.error(`段落 ${si} 截图失败: ${(err as Error).message}`);
       }
 
@@ -206,6 +243,21 @@ export class AnalysisEngine {
       segmentCount: processedSegments.length,
       emptySummary: processedSegments.length === 0,
     };
+  }
+
+  private async resolveScreenshotSource(input: AnalysisInput): Promise<{
+    source: string;
+    sourceType: "remote" | "local";
+    headers?: Record<string, string>;
+  }> {
+    if (!this.screenshotSourceResolver) {
+      return { source: input.videoPath, sourceType: "local" };
+    }
+
+    return this.screenshotSourceResolver.resolve({
+      metadata: input.metadata,
+      localVideoPath: input.videoPath,
+    });
   }
 
   private async writeEmptySummary(
