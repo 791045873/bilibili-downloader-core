@@ -14,6 +14,9 @@ export interface TaskRecord {
   codec?: string;
   outputPath?: string;
   subtitleLang?: string;
+  autoSummary?: number;
+  summaryStatus?: string;
+  summaryOutput?: string;
   status: string;
   progress?: number;
   speed?: string;
@@ -24,6 +27,19 @@ export interface TaskRecord {
   durationMs?: number;
   createdAt?: string;
   updatedAt?: string;
+  completedAt?: string;
+}
+
+export interface AnalysisSubTaskRecord {
+  id?: number;
+  taskId: number;
+  bvid?: string;
+  cid?: number;
+  quality?: number;
+  status: string;
+  outputFile?: string;
+  errorMessage?: string;
+  createdAt: string;
   completedAt?: string;
 }
 
@@ -59,6 +75,9 @@ export class DatabaseService {
         codec TEXT,
         outputPath TEXT,
         subtitle_lang TEXT,
+        auto_summary INTEGER DEFAULT 0,
+        summary_status TEXT DEFAULT 'none',
+        summary_output TEXT,
         status TEXT NOT NULL DEFAULT 'created',
         progress REAL DEFAULT 0,
         speed TEXT,
@@ -78,9 +97,44 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_task_bvid_cid ON task(bvid, cid);
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS analysis_sub_task (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id INTEGER NOT NULL,
+        bvid TEXT,
+        cid INTEGER,
+        quality INTEGER,
+        status TEXT NOT NULL DEFAULT 'created',
+        output_file TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        completed_at TEXT,
+        FOREIGN KEY (task_id) REFERENCES task(id)
+      )
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_analysis_sub_task_task_id
+      ON analysis_sub_task(task_id);
+    `);
+
     // 已有数据库升级: 补充 subtitle_lang 列
     try {
       this.db.exec(`ALTER TABLE task ADD COLUMN subtitle_lang TEXT`);
+    } catch {
+      // 列已存在的忽略
+    }
+    try {
+      this.db.exec(`ALTER TABLE task ADD COLUMN auto_summary INTEGER DEFAULT 0`);
+    } catch {
+      // 列已存在的忽略
+    }
+    try {
+      this.db.exec(`ALTER TABLE task ADD COLUMN summary_status TEXT DEFAULT 'none'`);
+    } catch {
+      // 列已存在的忽略
+    }
+    try {
+      this.db.exec(`ALTER TABLE task ADD COLUMN summary_output TEXT`);
     } catch {
       // 列已存在的忽略
     }
@@ -88,14 +142,43 @@ export class DatabaseService {
 
   // ==================== CRUD ====================
 
+  private readonly taskSelectSql = `
+    SELECT
+      id,
+      bvid,
+      cid,
+      title,
+      quality,
+      codec,
+      outputPath,
+      subtitle_lang AS subtitleLang,
+      auto_summary AS autoSummary,
+      summary_status AS summaryStatus,
+      summary_output AS summaryOutput,
+      status,
+      progress,
+      speed,
+      outputFile,
+      fileSize,
+      errorCode,
+      errorMessage,
+      durationMs,
+      createdAt,
+      updatedAt,
+      completedAt
+    FROM task
+  `;
+
   /** 插入新任务，返回自增 id */
   insertTask(record: TaskRecord): number {
     const now = new Date().toISOString();
     const stmt = this.db.prepare(`
       INSERT INTO task (bvid, cid, title, quality, codec, outputPath, subtitle_lang, status, progress, speed,
+            auto_summary, summary_status, summary_output,
                         outputFile, fileSize, errorCode, errorMessage, durationMs,
                         createdAt, updatedAt, completedAt)
       VALUES (@bvid, @cid, @title, @quality, @codec, @outputPath, @subtitleLang, @status, @progress, @speed,
+              @autoSummary, @summaryStatus, @summaryOutput,
               @outputFile, @fileSize, @errorCode, @errorMessage, @durationMs,
               @createdAt, @updatedAt, @completedAt)
     `);
@@ -110,6 +193,9 @@ export class DatabaseService {
       status: record.status ?? "created",
       progress: record.progress ?? 0,
       speed: record.speed ?? null,
+      autoSummary: record.autoSummary ?? 0,
+      summaryStatus: record.summaryStatus ?? "none",
+      summaryOutput: record.summaryOutput ?? null,
       outputFile: record.outputFile ?? null,
       fileSize: record.fileSize ?? null,
       errorCode: record.errorCode ?? null,
@@ -137,6 +223,9 @@ export class DatabaseService {
     id: number,
     fields: {
       status: string;
+    autoSummary?: number;
+    summaryStatus?: string;
+    summaryOutput?: string;
       outputFile?: string;
       fileSize?: number;
       errorCode?: string;
@@ -147,6 +236,12 @@ export class DatabaseService {
   ): void {
     const now = new Date().toISOString();
     const setClauses: string[] = ["status = @status", "updatedAt = @updatedAt"];
+    if (fields.autoSummary !== undefined)
+      setClauses.push("auto_summary = @autoSummary");
+    if (fields.summaryStatus !== undefined)
+      setClauses.push("summary_status = @summaryStatus");
+    if (fields.summaryOutput !== undefined)
+      setClauses.push("summary_output = @summaryOutput");
     if (fields.outputFile !== undefined)
       setClauses.push("outputFile = @outputFile");
     if (fields.fileSize !== undefined) setClauses.push("fileSize = @fileSize");
@@ -165,6 +260,9 @@ export class DatabaseService {
       .run({
         id,
         status: fields.status,
+        autoSummary: fields.autoSummary ?? null,
+        summaryStatus: fields.summaryStatus ?? null,
+        summaryOutput: fields.summaryOutput ?? null,
         outputFile: fields.outputFile ?? null,
         fileSize: fields.fileSize ?? null,
         errorCode: fields.errorCode ?? null,
@@ -182,13 +280,13 @@ export class DatabaseService {
   /** 获取所有任务 */
   getTasks(): TaskRecord[] {
     return this.db
-      .prepare("SELECT * FROM task ORDER BY createdAt DESC")
+      .prepare(`${this.taskSelectSql} ORDER BY createdAt DESC`)
       .all() as TaskRecord[];
   }
 
   /** 获取单个任务 */
   getTaskById(id: number): TaskRecord | undefined {
-    return this.db.prepare("SELECT * FROM task WHERE id = ?").get(id) as
+    return this.db.prepare(`${this.taskSelectSql} WHERE id = ?`).get(id) as
       | TaskRecord
       | undefined;
   }
@@ -197,7 +295,7 @@ export class DatabaseService {
   findNextCreatedTask(): TaskRecord | undefined {
     return this.db
       .prepare(
-        "SELECT * FROM task WHERE status = 'created' ORDER BY createdAt ASC LIMIT 1",
+        `${this.taskSelectSql} WHERE status = 'created' ORDER BY createdAt ASC LIMIT 1`,
       )
       .get() as TaskRecord | undefined;
   }
@@ -244,5 +342,77 @@ export class DatabaseService {
       },
       [] as Pick<TaskRecord, "bvid" | "cid" | "status" | "createdAt">[],
     );
+  }
+
+  insertAnalysisSubTask(record: AnalysisSubTaskRecord): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO analysis_sub_task (
+        task_id, bvid, cid, quality, status, output_file, error_message, created_at, completed_at
+      )
+      VALUES (
+        @taskId, @bvid, @cid, @quality, @status, @outputFile, @errorMessage, @createdAt, @completedAt
+      )
+    `);
+    const result = stmt.run({
+      taskId: record.taskId,
+      bvid: record.bvid ?? null,
+      cid: record.cid ?? null,
+      quality: record.quality ?? null,
+      status: record.status ?? "created",
+      outputFile: record.outputFile ?? null,
+      errorMessage: record.errorMessage ?? null,
+      createdAt: record.createdAt,
+      completedAt: record.completedAt ?? null,
+    });
+    return Number(result.lastInsertRowid);
+  }
+
+  updateAnalysisSubTaskStatus(
+    id: number,
+    fields: {
+      status: string;
+      outputFile?: string;
+      errorMessage?: string;
+      completedAt?: string;
+    },
+  ): void {
+    const setClauses: string[] = ["status = @status"];
+    if (fields.outputFile !== undefined)
+      setClauses.push("output_file = @outputFile");
+    if (fields.errorMessage !== undefined)
+      setClauses.push("error_message = @errorMessage");
+    if (fields.completedAt !== undefined)
+      setClauses.push("completed_at = @completedAt");
+
+    this.db
+      .prepare(`UPDATE analysis_sub_task SET ${setClauses.join(", ")} WHERE id = @id`)
+      .run({
+        id,
+        status: fields.status,
+        outputFile: fields.outputFile ?? null,
+        errorMessage: fields.errorMessage ?? null,
+        completedAt: fields.completedAt ?? null,
+      });
+  }
+
+  getAnalysisSubTasksByTaskId(taskId: number): AnalysisSubTaskRecord[] {
+    return this.db
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          bvid,
+          cid,
+          quality,
+          status,
+          output_file AS outputFile,
+          error_message AS errorMessage,
+          created_at AS createdAt,
+          completed_at AS completedAt
+        FROM analysis_sub_task
+        WHERE task_id = ?
+        ORDER BY created_at ASC
+      `)
+      .all(taskId) as AnalysisSubTaskRecord[];
   }
 }

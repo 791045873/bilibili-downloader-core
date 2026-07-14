@@ -132,3 +132,13 @@
 - `pnpm typecheck` —— 零错误
 - `pnpm build` —— 零错误
 - 手动验证：使用已有 `tasks.db` 启动 server，执行 `PRAGMA table_info(task)` 与 `PRAGMA table_info(analysis_sub_task)` 确认列与默认值
+
+## 2026-07-14 Verification Record
+
+- `pnpm typecheck` passed (zero errors)
+- `pnpm build` passed (zero errors)
+- 启动 server 后，`DatabaseService.initSchema()` 执行成功，无迁移报错
+- `PRAGMA table_info(task)` 确认存在新列：`auto_summary`(INTEGER, default 0), `summary_status`(TEXT, default 'none'), `summary_output`(TEXT)
+- `PRAGMA table_info(analysis_sub_task)` 确认 10 列完整，且 `task_id` / `created_at` / `status` 满足约束
+- `PRAGMA index_list(analysis_sub_task)` 确认存在索引：`idx_analysis_sub_task_task_id`
+- 当前库 task 行数为 0，因此“已有数据不变/已有行默认值”反状态检查在本环境无样本；该项保留为后续有历史数据环境复核

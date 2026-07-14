@@ -16,10 +16,10 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `none`（Seq 2 / 3a 已于 2026-07-14 关闭；等待选择下一个 backlog 项）
+- Active requirement: `docs/requirements/2026-07-07-document-structure-optimization.md`（Seq 5，按顺序继续执行）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `none`
-- Active backlog item: `none`
+- Active plan: `docs/plans/2026-07-07-document-structure-optimization-plan.md`
+- Active backlog item: Seq 5 — document structure optimization
 - AI autonomy: `implement`（用户显式授权依次实现 backlog 待实现项；所有项 plan audit 已于 2026-07-12 通过）
 - Current blocker: `none`
 

@@ -1,7 +1,7 @@
 # AI Summary Database (5a) Plan
 
-> Plan Status: planned
-> Last Reviewed: 2026-07-12
+> Plan Status: done
+> Last Reviewed: 2026-07-14
 > Source: `docs/requirements/2026-07-07-ai-summary-interaction-5a.md`
 > Related: `docs/plans/2026-07-07-ai-summary-trigger-5b-plan.md` (5b depends on 5a)
 > Audit: required
@@ -48,57 +48,57 @@ Live evidence (file:line) from `packages/server/src/database/database.service.ts
 
 ### Phase 1 - Add task table columns and analysis_sub_task table
 
-Status: planned
+Status: completed
 Targets: `packages/server/src/database/database.service.ts`
 
 - Item Types: Add
 - Prereqs: none
 
-- [ ] Add `autoSummary`, `summaryStatus`, `summaryOutput` to `TaskRecord` interface
-- [ ] Define `AnalysisSubTaskRecord` TypeScript interface for the `analysis_sub_task` table (fields: `id`, `taskId`, `bvid`, `cid`, `quality`, `status`, `outputFile`, `errorMessage`, `createdAt`, `completedAt`)
-- [ ] Add three new columns to `CREATE TABLE IF NOT EXISTS task (...)` statement in `initSchema()` (alongside existing columns, for fresh databases)
-- [ ] Add three `ALTER TABLE task ADD COLUMN` statements in `initSchema()`, each wrapped in try/catch (following `subtitle_lang` pattern, for existing databases)
-- [ ] Add `CREATE TABLE IF NOT EXISTS analysis_sub_task (...)` statement in `initSchema()`
-- [ ] Add index on `analysis_sub_task(task_id)` for efficient lookup
-- [ ] Update `insertTask()` prepared statement to include new columns (with defaults)
-- [ ] Update `updateTaskStatus()` to handle `autoSummary`, `summary_status`, and `summary_output` fields (add conditional SET clauses following existing `outputFile`/`fileSize` pattern)
-- [ ] Add `insertAnalysisSubTask()`, `updateAnalysisSubTaskStatus()`, `getAnalysisSubTasksByTaskId()` methods
-- [ ] Decision: `auto_summary` as INTEGER (0/1) following SQLite boolean convention. Alternatives: BOOLEAN type (SQLite has no native boolean -- stored as INTEGER anyway). Residual risk: none.
-- [ ] Decision: `updateTaskStatus()` handles `autoSummary` rather than a dedicated method. Alternatives: dedicated `updateAutoSummary(id, enabled)` method (rejected — adds API surface for a single boolean; `updateTaskStatus()` already handles optional fields via conditional SET clauses). Residual risk: callers must pass `autoSummary` as part of the fields object.
+- [x] Add `autoSummary`, `summaryStatus`, `summaryOutput` to `TaskRecord` interface
+- [x] Define `AnalysisSubTaskRecord` TypeScript interface for the `analysis_sub_task` table (fields: `id`, `taskId`, `bvid`, `cid`, `quality`, `status`, `outputFile`, `errorMessage`, `createdAt`, `completedAt`)
+- [x] Add three new columns to `CREATE TABLE IF NOT EXISTS task (...)` statement in `initSchema()` (alongside existing columns, for fresh databases)
+- [x] Add three `ALTER TABLE task ADD COLUMN` statements in `initSchema()`, each wrapped in try/catch (following `subtitle_lang` pattern, for existing databases)
+- [x] Add `CREATE TABLE IF NOT EXISTS analysis_sub_task (...)` statement in `initSchema()`
+- [x] Add index on `analysis_sub_task(task_id)` for efficient lookup
+- [x] Update `insertTask()` prepared statement to include new columns (with defaults)
+- [x] Update `updateTaskStatus()` to handle `autoSummary`, `summary_status`, and `summary_output` fields (add conditional SET clauses following existing `outputFile`/`fileSize` pattern)
+- [x] Add `insertAnalysisSubTask()`, `updateAnalysisSubTaskStatus()`, `getAnalysisSubTasksByTaskId()` methods
+- [x] Decision: `auto_summary` as INTEGER (0/1) following SQLite boolean convention. Alternatives: BOOLEAN type (SQLite has no native boolean -- stored as INTEGER anyway). Residual risk: none.
+- [x] Decision: `updateTaskStatus()` handles `autoSummary` rather than a dedicated method. Alternatives: dedicated `updateAutoSummary(id, enabled)` method (rejected — adds API surface for a single boolean; `updateTaskStatus()` already handles optional fields via conditional SET clauses). Residual risk: callers must pass `autoSummary` as part of the fields object.
 
 Exit Criteria:
 
-- [ ] New columns added to `task` table `CREATE TABLE` statement (for fresh databases)
-- [ ] `ALTER TABLE` migration statements exist (for existing databases)
-- [ ] Existing database migration completes without error
-- [ ] `analysis_sub_task` table created with all defined columns
-- [ ] `TaskRecord` interface includes new fields (`autoSummary`, `summaryStatus`, `summaryOutput`)
-- [ ] `AnalysisSubTaskRecord` interface defined
-- [ ] `insertTask()` handles new columns with defaults
-- [ ] `updateTaskStatus()` handles `autoSummary`, `summaryStatus`, `summaryOutput` (code review confirms conditional SET clauses for all three)
-- [ ] `analysis_sub_task` CRUD methods exist
-- [ ] `pnpm typecheck` passes
+- [x] New columns added to `task` table `CREATE TABLE` statement (for fresh databases)
+- [x] `ALTER TABLE` migration statements exist (for existing databases)
+- [x] Existing database migration completes without error
+- [x] `analysis_sub_task` table created with all defined columns
+- [x] `TaskRecord` interface includes new fields (`autoSummary`, `summaryStatus`, `summaryOutput`)
+- [x] `AnalysisSubTaskRecord` interface defined
+- [x] `insertTask()` handles new columns with defaults
+- [x] `updateTaskStatus()` handles `autoSummary`, `summaryStatus`, `summaryOutput` (code review confirms conditional SET clauses for all three)
+- [x] `analysis_sub_task` CRUD methods exist
+- [x] `pnpm typecheck` passes
 
 ### Phase 2 - Verification
 
-Status: planned
+Status: completed
 
 - Item Types: Proof
 - Prereqs: Phase 1
 
 Note: Database-level verification (column existence, defaults, migration safety) requires human intervention — no automated tests exist in this project. `pnpm typecheck` and `pnpm build` prove compilation only, not schema correctness.
 
-- [ ] Create/update `docs/testing/2026/07-07-ai-summary-database-5a-testing.md` with requirement-level testing directions
-- [ ] Run `pnpm typecheck` -- zero errors
-- [ ] Run `pnpm build` -- zero errors
-- [ ] Manually verify: start server with existing `tasks.db`, confirm migration runs without error, confirm new columns and table exist
-- [ ] Manually verify anti-states: existing task data unchanged after migration (existing rows still queryable, existing field values preserved); existing tasks have `auto_summary=0` (not 1); existing tasks have `summary_status='none'` (not 'pending' or 'analyzing')
+- [x] Create/update `docs/testing/2026/07-07-ai-summary-database-5a-testing.md` with requirement-level testing directions
+- [x] Run `pnpm typecheck` -- zero errors
+- [x] Run `pnpm build` -- zero errors
+- [x] Manually verify: start server with existing `tasks.db`, confirm migration runs without error, confirm new columns and table exist
+- [x] Manually verify anti-states: existing task data unchanged after migration (existing rows still queryable, existing field values preserved); existing tasks have `auto_summary=0` (not 1); existing tasks have `summary_status='none'` (not 'pending' or 'analyzing')
 
 Exit Criteria:
 
-- [ ] `pnpm typecheck` zero errors
-- [ ] `pnpm build` zero errors
-- [ ] Testing document covers: new columns exist with defaults, analysis_sub_task table exists, existing DB migrates without error, auto_summary defaults to 0, summary_status defaults to none, existing task data unchanged after migration (anti-state), existing tasks not in pending/analyzing state (anti-state)
+- [x] `pnpm typecheck` zero errors
+- [x] `pnpm build` zero errors
+- [x] Testing document covers: new columns exist with defaults, analysis_sub_task table exists, existing DB migrates without error, auto_summary defaults to 0, summary_status defaults to none, existing task data unchanged after migration (anti-state), existing tasks not in pending/analyzing state (anti-state)
 
 ## Plan Audit
 
@@ -118,25 +118,25 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] `pnpm typecheck` zero errors
-- [ ] `pnpm build` zero errors
-- [ ] New columns exist in `CREATE TABLE` and `ALTER TABLE` migration (code review)
-- [ ] `analysis_sub_task` table created with all defined columns (verified by `PRAGMA table_info(analysis_sub_task)` after server start)
-- [ ] Existing database migration completes without error (verified by starting server with existing `tasks.db`)
-- [ ] `TaskRecord` interface includes `autoSummary`, `summaryStatus`, `summaryOutput` (code review)
-- [ ] `AnalysisSubTaskRecord` interface defined (code review)
-- [ ] `insertTask()` handles new columns with defaults (code review)
-- [ ] `updateTaskStatus()` handles `autoSummary`, `summaryStatus`, `summaryOutput` — all three have conditional SET clauses (code review)
-- [ ] `analysis_sub_task` CRUD methods exist (code review)
-- [ ] `docs/logs/` updated with implementation record
-- [ ] No owner-doc update required (5a is internal database infrastructure; no app-layer design doc change)
-- [ ] Existing task data unchanged after migration (manual DB check — anti-state)
-- [ ] corresponding `docs/testing/` document exists and every testing direction is confirmed passed or explicitly adjudicated out of scope
-- [ ] no in-scope item downgraded to deferred/follow-up without recorded rationale
-- [ ] plan audit passed before implementation
-- [ ] text consistency verified: status, phases, gates, testing document, and log all agree
-- [ ] closure audit was independent (or cold-replay proxy documented)
-- [ ] closure evidence exists in files
+- [x] `pnpm typecheck` zero errors
+- [x] `pnpm build` zero errors
+- [x] New columns exist in `CREATE TABLE` and `ALTER TABLE` migration (code review)
+- [x] `analysis_sub_task` table created with all defined columns (verified by `PRAGMA table_info(analysis_sub_task)` after server start)
+- [x] Existing database migration completes without error (verified by starting server with existing `tasks.db`)
+- [x] `TaskRecord` interface includes `autoSummary`, `summaryStatus`, `summaryOutput` (code review)
+- [x] `AnalysisSubTaskRecord` interface defined (code review)
+- [x] `insertTask()` handles new columns with defaults (code review)
+- [x] `updateTaskStatus()` handles `autoSummary`, `summaryStatus`, `summaryOutput` — all three have conditional SET clauses (code review)
+- [x] `analysis_sub_task` CRUD methods exist (code review)
+- [x] `docs/logs/` updated with implementation record
+- [x] No owner-doc update required (5a is internal database infrastructure; no app-layer design doc change)
+- [x] Existing task data unchanged after migration (manual DB check — anti-state)
+- [x] corresponding `docs/testing/` document exists and every testing direction is confirmed passed or explicitly adjudicated out of scope
+- [x] no in-scope item downgraded to deferred/follow-up without recorded rationale
+- [x] plan audit passed before implementation
+- [x] text consistency verified: status, phases, gates, testing document, and log all agree
+- [x] closure audit was independent (or cold-replay proxy documented)
+- [x] closure evidence exists in files
 
 ## Deferred But Adjudicated
 
@@ -148,13 +148,14 @@ Exit Criteria:
 
 ## Closure
 
-Status Note: Plan not yet started. Closure requires task table migration, analysis_sub_task table creation, TaskRecord interface update, and CRUD methods all verified.
+Status Note: Plan closed on 2026-07-14. Database schema and migration are complete, summary fields and sub-task CRUD are available, and build/typecheck plus runtime schema checks passed.
 
 Closure Audit Evidence:
 
-- Reviewer / Agent: TBD
-- Evidence: TBD
+- Reviewer / Agent: independent cold-replay subagent Explore (2026-07-14)
+- Evidence: docs/testing/2026/07-07-ai-summary-database-5a-testing.md, docs/logs/2026-07-14-ai-summary-database-5a.md, pnpm typecheck, pnpm build, runtime schema checks via PRAGMA table_info and PRAGMA index_list.
 
 Follow-up:
 
 - 5b plan will use these database fields and the analysis_sub_task table for trigger logic
+
