@@ -24,6 +24,12 @@ export interface ParseResult {
 
   /** 合集/收藏夹 media_id */
   mediaId?: number;
+
+  /** 用户空间 mid */
+  mid?: number;
+
+  /** UGC 合集 season_id */
+  seasonId?: number;
 }
 
 export enum ResourceType {
@@ -31,6 +37,8 @@ export enum ResourceType {
   Bangumi = "bangumi",
   Cheese = "cheese",
   Favorites = "favorites",
+  UserSpace = "user-space",
+  UgcSeason = "ugc-season",
 }
 
 export class ResourceParseError extends Error {

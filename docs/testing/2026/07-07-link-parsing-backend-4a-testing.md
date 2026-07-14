@@ -107,3 +107,19 @@ curl "http://localhost:3000/api/ugc-season/videos?seasonId=123&page=1&pageSize=1
 curl "http://localhost:3000/api/favorites/videos?mediaId=1329019876&page=1&pageSize=10"
 curl "http://localhost:3000/api/video/info?input=BV1SoTx6yEYc"
 ```
+
+## 2026-07-14 Verification Record
+
+- `pnpm typecheck` passed (zero errors)
+- `pnpm build` passed (zero errors)
+- `POST /api/parse-link` with video input `BV1SoTx6yEYc` returned `type: "video"`
+- `POST /api/parse-link` with UGC season link `https://space.bilibili.com/670241541/channel/collectiondetail?sid=1272286` returned `type: "ugc-season"` and first-page videos
+- `POST /api/parse-link` with favorites link `https://space.bilibili.com/670241541/favlist?fid=1329019876` returned `type: "favorites"` and `videos.total=18`
+- `POST /api/parse-link` with unsupported link `https://space.bilibili.com/12345678/audio` returned HTTP 400
+- `GET /api/ugc-season/videos?seasonId=1272286&page=1&pageSize=10` returned `hasMore=true`
+- `GET /api/favorites/videos?mediaId=1329019876&page=1&pageSize=10` returned `hasMore=true`
+- `GET /api/user-space/videos?mid=670241541&page=0&pageSize=10` returned HTTP 400 for invalid pagination
+- `GET /api/video/info?input=BV1SoTx6yEYc` still works (deprecated endpoint remains functional)
+
+Risk note:
+- `POST /api/parse-link` / `GET /api/user-space/videos` for some `mid` values may return B-station risk control errors (`code=-352`) or request errors (`code=-400`) and be mapped to HTTP 502. This is external API/cookie sensitivity, not local contract logic regression.

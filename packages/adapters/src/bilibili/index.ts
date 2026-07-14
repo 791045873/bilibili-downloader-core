@@ -4,6 +4,7 @@ export { createBilibiliApiAdapter, type BilibiliApiAdapter } from "./bilibili-ap
 export { BilibiliStreamProvider } from "./stream-provider.js";
 export { BilibiliResourceParser } from "./resource-parser.js";
 export { BilibiliFavoritesProvider } from "./favorites-provider.js";
+export { BilibiliSpaceProvider } from "./space-provider.js";
 export { BilibiliSubtitleProvider } from "./subtitle-provider.js";
 export { createBilibiliWebClient, type BilibiliWebClient } from "./web-client.js";
 export { wbiSign, getWbiKeys, type WbiKeys } from "./wbi-sign.js";

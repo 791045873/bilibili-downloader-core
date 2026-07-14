@@ -24,12 +24,21 @@ import { matchBv } from "./matcher/bv-matcher.js";
 import { matchBangumi } from "./matcher/bangumi-matcher.js";
 import { matchFavorites } from "./matcher/favorites-matcher.js";
 import { matchCheese } from "./matcher/cheese-matcher.js";
+import { matchUgcSeason } from "./matcher/ugc-season-matcher.js";
+import { matchSpace } from "./matcher/space-matcher.js";
 import { isUrl, normalizeUrl } from "./matcher/url-normalizer.js";
 
 /**
  * matcher 管道 - 按优先级排列，新增类型追加到末尾即可
  */
-const MATCHERS = [matchBv, matchBangumi, matchFavorites, matchCheese] as const;
+const MATCHERS = [
+  matchBv,
+  matchBangumi,
+  matchFavorites,
+  matchCheese,
+  matchUgcSeason,
+  matchSpace,
+] as const;
 
 export class BilibiliResourceParser implements ResourceParserPort {
   constructor(private readonly webClient: BilibiliWebClient) {}

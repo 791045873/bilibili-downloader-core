@@ -8,6 +8,7 @@ export class VideoController {
 
   /**
    * 获取视频元信息 + 分P列表 + 合集信息
+    * @deprecated 请使用 POST /api/parse-link 作为统一链接识别入口
    */
   @Get("/info")
   async getVideoInfo(@Query("input") input: string) {

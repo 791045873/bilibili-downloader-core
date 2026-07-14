@@ -3,6 +3,7 @@
 // ============================================================
 
 export * from "./ResourceParserPort.js";
+export * from "./ParseLinkPort.js";
 export * from "./StreamProviderPort.js";
 export * from "./MediaDownloaderPort.js";
 export * from "./MediaMergerPort.js";
