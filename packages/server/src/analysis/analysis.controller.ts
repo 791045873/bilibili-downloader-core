@@ -1,8 +1,17 @@
-import { BadRequestException, Body, Controller, Post } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  ConflictException,
+  Controller,
+  NotFoundException,
+  Post,
+} from "@nestjs/common";
 import { isAbsolute, join } from "node:path";
 import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
 import type { LlmConfig } from "@bilibili-downloader/adapters/llm";
 import { DefaultScreenshotSourceResolver } from "./screenshot-source-resolver.js";
+import { DatabaseService } from "../database/database.service.js";
+import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 
 interface AnalysisRequest {
   /** LLM 分析用视频文件绝对路径（低分辨率或唯一可用分辨率） */
@@ -24,7 +33,11 @@ interface AnalysisRequest {
 
 @Controller("api/analysis")
 export class AnalysisController {
-  constructor(private readonly screenshotSourceResolver: DefaultScreenshotSourceResolver) {}
+  constructor(
+    private readonly screenshotSourceResolver: DefaultScreenshotSourceResolver,
+    private readonly analysisTriggerService: AnalysisTriggerService,
+    private readonly databaseService: DatabaseService,
+  ) {}
 
   @Post("/run")
   async runAnalyze(@Body() body: AnalysisRequest) {
@@ -43,6 +56,29 @@ export class AnalysisController {
       this.screenshotSourceResolver,
     );
     return engine.analyze(input);
+  }
+
+  @Post("/trigger")
+  async triggerAiSummary(@Body() body: { bvid?: string; cid?: number }) {
+    if (!body?.bvid || typeof body.cid !== "number") {
+      throw new BadRequestException("bvid/cid 必填");
+    }
+
+    const task = this.databaseService.findLatestTaskByBvidAndCid(body.bvid, body.cid);
+    if (!task) {
+      throw new NotFoundException("任务不存在");
+    }
+    if (task.autoSummary) {
+      throw new ConflictException("该任务已开启 AI 总结");
+    }
+
+    this.databaseService.updateTaskStatus(task.id!, {
+      status: task.status,
+      autoSummary: 1,
+    });
+
+    await this.analysisTriggerService.trigger(task.id!);
+    return { message: "AI 总结触发中" };
   }
 
   private getLlmConfig(): LlmConfig {

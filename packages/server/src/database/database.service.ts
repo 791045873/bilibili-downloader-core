@@ -318,20 +318,20 @@ export class DatabaseService {
   /** 按 bvid+cid 批量查询最新任务（用于前端入队去重判定） */
   findTasksByBvidsAndCids(
     pairs: { bvid: string; cid: number }[],
-  ): Pick<TaskRecord, "bvid" | "cid" | "status" | "createdAt">[] {
+  ): Pick<TaskRecord, "id" | "bvid" | "cid" | "status" | "createdAt" | "autoSummary">[] {
     if (pairs.length === 0) return [];
     const placeholders = pairs.map(() => "(?, ?)").join(", ");
     const params = pairs.flatMap((p) => [p.bvid, p.cid]);
     return (
       this.db
         .prepare(
-          `SELECT bvid, cid, status, createdAt FROM task
+          `SELECT id, bvid, cid, status, createdAt, auto_summary AS autoSummary FROM task
            WHERE (bvid, cid) IN (${placeholders})
            ORDER BY createdAt DESC`,
         )
         .all(...params) as Pick<
         TaskRecord,
-        "bvid" | "cid" | "status" | "createdAt"
+        "id" | "bvid" | "cid" | "status" | "createdAt" | "autoSummary"
       >[]
     ).reduce(
       (acc, row) => {
@@ -340,8 +340,20 @@ export class DatabaseService {
         }
         return acc;
       },
-      [] as Pick<TaskRecord, "bvid" | "cid" | "status" | "createdAt">[],
+      [] as Pick<TaskRecord, "id" | "bvid" | "cid" | "status" | "createdAt" | "autoSummary">[],
     );
+  }
+
+  /** 按 bvid+cid 查询最新任务 */
+  findLatestTaskByBvidAndCid(bvid: string, cid: number): TaskRecord | undefined {
+    return this.db
+      .prepare(
+        `${this.taskSelectSql}
+         WHERE bvid = ? AND cid = ?
+         ORDER BY createdAt DESC
+         LIMIT 1`,
+      )
+      .get(bvid, cid) as TaskRecord | undefined;
   }
 
   /** 查询某个视频分P最近完成下载任务（用于截图源本地回退） */

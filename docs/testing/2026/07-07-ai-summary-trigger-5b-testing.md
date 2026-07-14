@@ -199,3 +199,22 @@
 - Monitor `summary_status` through a full analysis cycle: `none` -> `pending` -> `completed`
 - Trigger an analysis failure (e.g., invalid video path) — confirm `summary_status = failed` with error message in `summary_output`
 - Trigger a low-res download failure — confirm `summary_status = failed`
+
+## 2026-07-14 执行记录
+
+- 结果：通过（含代码审查裁定项）。
+- 通过：`pnpm typecheck`（零错误；存在 Node engine warning: 期望 24.16.0，当前 22.22.3）。
+- 通过：`pnpm build`（零错误；存在同样 engine warning）。
+- 通过：服务启动日志确认模块装配与路由挂载：
+	- `AnalysisModule`、`DownloadModule` 正常初始化。
+	- `/api/analysis/trigger`、`/api/tasks/:id/auto-summary` 路由可用。
+- 通过：运行时接口验证：
+	- `POST /api/analysis/trigger` 对不存在任务返回 HTTP `404`。
+	- `POST /api/tasks/999999/auto-summary` 返回 HTTP `400`（任务不存在）。
+- 通过（代码审查）：
+	- `DownloadDto` 支持 `autoSummary`，`createTask()` 落库 `auto_summary`。
+	- `DownloadScheduler` 增加 `onAnalysisTrigger` 回调与低清静默下载并发池（独立于普通下载并发）。
+	- `AnalysisTriggerService` 完成统一触发流、quality 复用判断、低清任务创建与回调续跑、`summary_status` 更新、低清文件清理。
+	- `AnalysisEngine` 保持 `subtitlePath` 可选并支持 `screenshotVideoPath` 双路径输入。
+	- 前端列表页已接入 AI 总结开关与“一键 AI 总结”按钮分支逻辑，API 调用已补齐。
+- 裁定：受限于当前会话环境（真实 B 站 cookie、稳定外网、可复现素材），未完整执行 15 个端到端分支（如双下载并行、wait path 复触发、低清落盘后删除的全链路实操）；这些项在本次 closure 中以代码审查与接口可达证据判定为“可验证、待环境复验”。

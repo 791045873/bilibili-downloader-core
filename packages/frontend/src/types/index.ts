@@ -162,6 +162,7 @@ export interface TaskEntry {
   errorCode?: string;
   errorMessage?: string;
   durationMs?: number;
+  autoSummary?: number;
   createdAt?: string;
   completedAt?: string;
 }

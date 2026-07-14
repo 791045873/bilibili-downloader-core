@@ -11,6 +11,8 @@ export class DownloadDto {
   outputPath?: string;
   /** 字幕语言选择: "none"|"zh"|"en"|"all" */
   subtitleLang?: string;
+  /** 下载完成后自动触发 AI 总结 */
+  autoSummary?: boolean;
 }
 
 /** 独立单视频下载请求（流已选好） */

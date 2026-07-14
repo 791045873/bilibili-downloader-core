@@ -23,6 +23,11 @@ import {
 } from "../database/database.service.js";
 import type { DownloadDto } from "./download.dto.js";
 
+interface LowResDownloadResult {
+  outputFile: string;
+  quality: number;
+}
+
 // ---------- 公开类型（旧前端兼容） ----------
 
 export interface TaskEntry {
@@ -204,6 +209,67 @@ export class DownloadService implements OnModuleInit {
     return { url: best.url, quality: best.quality };
   }
 
+  /** 静默下载低分辨率视频（不进入任务队列，不写 taskCache） */
+  async executeLowResDownload(
+    bvid: string,
+    cid: number,
+    title: string,
+  ): Promise<LowResDownloadResult> {
+    const parsed = await this.resourceParser.parse(bvid);
+    const cookieString = this.cookieFile
+      ? await this.loadCookieString(this.cookieFile)
+      : undefined;
+
+    const streams = await this.resolutionService.resolveStreams({
+      bvid,
+      cid,
+      resourceType: parsed.type,
+      cookieString,
+    });
+
+    if (streams.videoStreams.length === 0 || streams.audioStreams.length === 0) {
+      throw new Error("低清晰度下载失败：缺少可用的视频或音频流");
+    }
+
+    const lowVideo = [...streams.videoStreams].sort((a, b) => a.quality - b.quality)[0];
+    const bestAudio = this.resolutionService.selectBestStream(streams.audioStreams);
+    if (!bestAudio) {
+      throw new Error("低清晰度下载失败：缺少可用音频流");
+    }
+
+    const llmDir = process.env.ANALYSIS_LLM_VIDEO_DIR
+      ? resolve(process.env.ANALYSIS_LLM_VIDEO_DIR)
+      : join(this.outputDir, ".analysis-llm");
+    await this.fileStore.ensureOutputDir(llmDir);
+
+    const outputFile = join(
+      llmDir,
+      `${sanitizeFileName(title)}-${bvid}-${cid}-q${lowVideo.quality}.mp4`,
+    );
+
+    const executionUseCase = new DownloadExecutionUseCase(this.executionDeps);
+    const request: DownloadExecutionRequest = {
+      bvid,
+      cid,
+      title,
+      outputFile,
+      videoStream: lowVideo,
+      audioStream: bestAudio,
+      cookieString,
+      subtitleLanguages: "none",
+    };
+
+    const result = await executionUseCase.execute(request);
+    if (result.status !== TaskStatus.Success || !result.outputFile) {
+      throw new Error(result.errorMessage || "低清晰度下载执行失败");
+    }
+
+    return {
+      outputFile: result.outputFile,
+      quality: lowVideo.quality,
+    };
+  }
+
   // ==================== 下载任务 ====================
 
   /** 创建下载任务（仅落库，不执行，由 Scheduler 调度） */
@@ -217,6 +283,7 @@ export class DownloadService implements OnModuleInit {
       codec: dto.codec,
       outputPath: dto.outputPath,
       subtitleLang: dto.subtitleLang,
+      autoSummary: dto.autoSummary ? 1 : 0,
       status: TaskStatus.Created,
       createdAt: now,
     });

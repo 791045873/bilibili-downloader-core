@@ -6,9 +6,10 @@ import {
   createDownload,
   getFavoritesVideos,
   getUserSpaceVideos,
-  getVideoInfo,
   getUgcSeasonVideos,
   parseLink,
+  setAutoSummary,
+  triggerAiSummary,
 } from "../api";
 import { useSettingsStore } from "../stores/settings";
 import { useDownloadQueueStore } from "../stores/useDownloadQueueStore";
@@ -28,6 +29,8 @@ interface ListItem {
   groupColorClass: string;
   selected: boolean;
   enqueued: boolean;
+  queuedTaskId?: number;
+  autoSummaryEnabled: boolean;
   highlighted: boolean;
 }
 
@@ -94,6 +97,7 @@ function normalizeSinglePage(
       groupColorClass: groupColorClass(groupKey),
       selected: false,
       enqueued: false,
+      autoSummaryEnabled: false,
       highlighted: Boolean(currentBvid && currentBvid === video.bvid),
     };
   });
@@ -121,6 +125,7 @@ function normalizeVideoPages(
         groupColorClass: groupColorClass(bvid),
         selected: false,
         enqueued: false,
+        autoSummaryEnabled: false,
         highlighted,
       },
     ];
@@ -138,6 +143,7 @@ function normalizeVideoPages(
     groupColorClass: groupColorClass(bvid),
     selected: false,
     enqueued: false,
+    autoSummaryEnabled: false,
     highlighted,
   }));
 }
@@ -245,16 +251,25 @@ async function markEnqueued() {
   const response = await checkTasks(
     items.value.map((item) => ({ bvid: item.bvid, cid: item.cid })),
   );
-  const keySet = new Set(response.map((r) => `${r.bvid}-${r.cid}`));
+  const itemMap = new Map<string, (typeof response)[number]>(
+    response.map((r) => [`${r.bvid}-${r.cid}`, r]),
+  );
   items.value = items.value.map((item) => {
     const key = `${item.bvid}-${item.cid}`;
-    const enqueued = keySet.has(key);
+    const task = itemMap.get(key);
+    const enqueued = Boolean(task);
     return {
       ...item,
       enqueued,
+      queuedTaskId: task?.id,
+      autoSummaryEnabled: (task?.autoSummary ?? 0) === 1,
       selected: enqueued ? false : item.selected,
     };
   });
+}
+
+function toggleAutoSummary(item: ListItem, checked: boolean) {
+  item.autoSummaryEnabled = checked;
 }
 
 function toggleSelect(item: ListItem, checked: boolean) {
@@ -281,6 +296,7 @@ async function doAddToQueue(outputPath: string) {
         codec: settingsStore.settings.defaultCodec,
         subtitleLang: settingsStore.settings.downloadSubtitle ? "zh" : "none",
         outputPath,
+        autoSummary: item.autoSummaryEnabled,
       }).catch(() => ({ id: -1, message: "" })),
     );
     const responses = await Promise.all(requests);
@@ -298,6 +314,37 @@ async function doAddToQueue(outputPath: string) {
     });
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : "加入队列失败";
+  }
+}
+
+async function handleOneClickAiSummary(item: ListItem) {
+  if (item.autoSummaryEnabled && item.enqueued) return;
+
+  try {
+    if (!item.enqueued) {
+      await triggerAiSummary({ bvid: item.bvid, cid: item.cid });
+      item.enqueued = true;
+      item.autoSummaryEnabled = true;
+      await markEnqueued();
+      return;
+    }
+
+    if (!item.queuedTaskId) {
+      await markEnqueued();
+    }
+
+    const queuedTaskId = item.queuedTaskId;
+    if (!queuedTaskId) {
+      throw new Error("无法定位任务 ID");
+    }
+
+    if (!item.autoSummaryEnabled) {
+      await setAutoSummary(queuedTaskId, true);
+      item.autoSummaryEnabled = true;
+      await triggerAiSummary({ bvid: item.bvid, cid: item.cid }).catch(() => undefined);
+    }
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : "AI 总结操作失败";
   }
 }
 
@@ -353,12 +400,7 @@ onMounted(async () => {
         >
           返回首页
         </button>
-        <button
-          class="rounded-md bg-zinc-700 px-3 py-1.5 text-xs text-zinc-200 cursor-not-allowed"
-          disabled
-        >
-          AI 总结
-        </button>
+        <span class="rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300">AI 总结</span>
       </div>
     </div>
 
@@ -407,6 +449,24 @@ onMounted(async () => {
                 <span v-if="item.highlighted" class="text-xs text-rose-400">当前视频</span>
               </div>
               <p class="mt-1 text-xs text-zinc-500">时长：{{ formatDuration(item.duration) }}</p>
+              <div class="mt-2 flex flex-wrap items-center gap-3">
+                <label class="flex items-center gap-1 text-xs text-zinc-300">
+                  <input
+                    type="checkbox"
+                    :checked="item.autoSummaryEnabled"
+                    @change="toggleAutoSummary(item, ($event.target as HTMLInputElement).checked)"
+                  />
+                  AI 总结开关
+                </label>
+                <button
+                  class="rounded-md px-2 py-1 text-xs"
+                  :class="item.autoSummaryEnabled && item.enqueued ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed' : 'bg-rose-600 text-white hover:bg-rose-500'"
+                  :disabled="item.autoSummaryEnabled && item.enqueued"
+                  @click="handleOneClickAiSummary(item)"
+                >
+                  一键 AI 总结
+                </button>
+              </div>
             </div>
           </div>
         </div>

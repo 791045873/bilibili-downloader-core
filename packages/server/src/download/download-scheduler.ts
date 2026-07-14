@@ -4,6 +4,14 @@ import { DatabaseService } from "../database/database.service.js";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import type { DownloadDto } from "./download.dto.js";
 
+export interface LowResDownloadJob {
+  taskId: number;
+  analysisSubTaskId: number;
+  bvid: string;
+  cid: number;
+  title: string;
+}
+
 /**
  * 下载任务调度器
  *
@@ -17,13 +25,24 @@ import type { DownloadDto } from "./download.dto.js";
 export class DownloadScheduler implements OnModuleInit {
   private readonly logger = new Logger(DownloadScheduler.name);
   private readonly maxConcurrency: number;
+  private readonly maxConcurrentLowRes: number;
   private readonly runningSet = new Set<number>();
+  private readonly lowResRunningSet = new Set<number>();
+  private readonly lowResQueue: LowResDownloadJob[] = [];
+
+  onAnalysisTrigger?: (taskId: number) => void;
+  onLowResFinished?: (
+    taskId: number,
+    analysisSubTaskId: number,
+    result: { success: true; outputFile: string; quality: number } | { success: false; error: string },
+  ) => void;
 
   constructor(
     private readonly downloadService: DownloadService,
     private readonly db: DatabaseService,
   ) {
     this.maxConcurrency = Number(process.env.MAX_CONCURRENT_DOWNLOADS) || 2;
+    this.maxConcurrentLowRes = Number(process.env.MAX_CONCURRENT_LOW_RES_DOWNLOADS) || 1;
   }
 
   async onModuleInit(): Promise<void> {
@@ -42,11 +61,14 @@ export class DownloadScheduler implements OnModuleInit {
     this.downloadService.onTaskFinished = (taskId: number) => {
       this.runningSet.delete(taskId);
       this.tryScheduleNext();
+      this.onAnalysisTrigger?.(taskId);
     };
 
     // 启动调度
     this.tryScheduleNext();
-    this.logger.log(`下载调度器已启动，最大并发: ${this.maxConcurrency}`);
+    this.logger.log(
+      `下载调度器已启动，高分辨率并发: ${this.maxConcurrency}，低分辨率并发: ${this.maxConcurrentLowRes}`,
+    );
   }
 
   /** 创建下载任务 + 触发调度 */
@@ -78,6 +100,17 @@ export class DownloadScheduler implements OnModuleInit {
     return this.downloadService.deleteTask(id);
   }
 
+  scheduleLowResDownload(job: LowResDownloadJob): void {
+    const existsInQueue = this.lowResQueue.some(
+      (j) => j.taskId === job.taskId && j.analysisSubTaskId === job.analysisSubTaskId,
+    );
+    const existsRunning = this.lowResRunningSet.has(job.analysisSubTaskId);
+    if (existsInQueue || existsRunning) return;
+
+    this.lowResQueue.push(job);
+    this.tryScheduleLowRes();
+  }
+
   // ==================== 调度核心 ====================
 
   private tryScheduleNext(): void {
@@ -95,6 +128,38 @@ export class DownloadScheduler implements OnModuleInit {
       this.downloadService.executeTask(task).catch((err) => {
         this.logger.error(`任务 ${id} 执行失败`, err);
       });
+    }
+  }
+
+  private tryScheduleLowRes(): void {
+    while (
+      this.lowResRunningSet.size < this.maxConcurrentLowRes
+      && this.lowResQueue.length > 0
+    ) {
+      const job = this.lowResQueue.shift()!;
+      this.lowResRunningSet.add(job.analysisSubTaskId);
+
+      this.downloadService
+        .executeLowResDownload(job.bvid, job.cid, job.title)
+        .then((result) => {
+          this.onLowResFinished?.(job.taskId, job.analysisSubTaskId, {
+            success: true,
+            outputFile: result.outputFile,
+            quality: result.quality,
+          });
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.error(`低分辨率下载失败: task=${job.taskId}, subTask=${job.analysisSubTaskId}, ${msg}`);
+          this.onLowResFinished?.(job.taskId, job.analysisSubTaskId, {
+            success: false,
+            error: msg,
+          });
+        })
+        .finally(() => {
+          this.lowResRunningSet.delete(job.analysisSubTaskId);
+          this.tryScheduleLowRes();
+        });
     }
   }
 }

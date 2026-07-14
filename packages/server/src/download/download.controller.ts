@@ -52,6 +52,31 @@ export class DownloadController {
     return this.scheduler.resumeTask(numId);
   }
 
+  @Post("/tasks/:id/auto-summary")
+  setAutoSummary(
+    @Param("id") id: string,
+    @Body() body: { enabled?: boolean },
+  ) {
+    const numId = Number.parseInt(id, 10);
+    if (Number.isNaN(numId)) {
+      throw new BadRequestException("无效的任务 ID");
+    }
+    if (typeof body?.enabled !== "boolean") {
+      throw new BadRequestException("enabled 必须为布尔值");
+    }
+
+    const task = this.downloadService.getTaskById(numId);
+    if (!task) {
+      throw new BadRequestException("任务不存在");
+    }
+
+    this.databaseService.updateTaskStatus(numId, {
+      status: task.status,
+      autoSummary: body.enabled ? 1 : 0,
+    });
+    return { message: "auto_summary 已更新" };
+  }
+
   @Delete("/tasks/:id")
   deleteTask(@Param("id") id: string) {
     const numId = Number.parseInt(id, 10);
