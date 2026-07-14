@@ -100,3 +100,23 @@
 - Email template customization / HTML formatting — plain text sufficient per requirement
 - Analysis progress display — excluded by requirement
 - Retry logic for failed email sends — optimization candidate, not required for closure
+
+## 2026-07-15 执行记录
+
+- 结果：通过（含裁定项）。
+- 通过：`pnpm install`（新增 `nodemailer` 与 `@types/nodemailer` 已落到 `packages/server/package.json`）。
+- 通过：`pnpm typecheck`（零错误；存在 Node engine warning: 期望 24.16.0，当前 22.22.3）。
+- 通过：`pnpm build`（零错误；存在同样 engine warning）。
+- 通过：运行时日志证据（无 SMTP 配置场景）：
+	- 启动日志出现 `SMTP config missing, skipping notification` 告警。
+	- `NotificationModule` 正常初始化。
+	- 服务成功启动，说明通知模块缺失配置不会阻塞主流程。
+- 通过（代码审查）：
+	- `NotificationService` 通过 `process.env` 读取 `SMTP_HOST/SMTP_PORT/SMTP_SECURE/SMTP_USER/SMTP_PASS/NOTIFICATION_EMAIL`。
+	- `SMTP_SECURE` 使用 `process.env.SMTP_SECURE === "true"` 严格解析。
+	- 邮件发送异常在 `sendSummaryNotification()` 内部吞并并记录错误，不向上抛出。
+	- `AnalysisTriggerService` 在 `summary_status = completed` 与 `summary_status = failed` 后分别调用通知。
+	- `DownloadService` 未直接依赖通知服务，触发位置符合 5b/5d 设计边界。
+- 裁定：
+	- Ethereal 实际收件箱内容核对（成功/失败邮件主题与正文）在当前会话环境下未执行（缺少可共享的 SMTP 凭据与人工浏览步骤），按“证据受环境约束”裁定为可复验项，不阻塞本次代码闭环。
+	- 无效 SMTP 主机/端口的真实发送失败日志未在本轮执行；由 `sendMail` 局部 `try/catch` 代码路径与独立审计结论覆盖。

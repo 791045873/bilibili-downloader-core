@@ -33,7 +33,7 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 | 6 | 2 | P1 | 视频分析-截图源回退（3b） | `docs/requirements/2026-07-07-screenshot-source-fallback-3b.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-screenshot-fallback-3b-plan.md` | `done` | `plan-first` | `none (closed with independent closure audit on 2026-07-14)` | 2026-07-14 |
 | 7 | 2 | P1 | 视频分析-多链接解析前端（4b） | `docs/requirements/2026-07-07-multi-link-parsing-4b.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-link-parsing-frontend-4b-plan.md` | `done` | `plan-first` | `none (closed with independent closure audit on 2026-07-14)` | 2026-07-14 |
 | 8 | 3 | P1 | 视频分析-AI 总结触发（5b） | `docs/requirements/2026-07-07-ai-summary-interaction-5b.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-ai-summary-trigger-5b-plan.md` | `done` | `plan-first` | `none (closed with independent closure audit on 2026-07-14)` | 2026-07-14 |
-| 9 | 4 | P2 | 视频分析-AI 总结邮件通知（5d） | `docs/requirements/2026-07-07-ai-summary-interaction-5d.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-ai-summary-email-5d-plan.md` | `in-progress` | `plan-first` | `none (plan audit passed 2026-07-12)；依赖 Seq 8 (5b) 实现完成` | 2026-07-14 |
+| 9 | 4 | P2 | 视频分析-AI 总结邮件通知（5d） | `docs/requirements/2026-07-07-ai-summary-interaction-5d.md` | `docs/design/app-overview.md`（待扩展） | `docs/plans/2026-07-07-ai-summary-email-5d-plan.md` | `done` | `plan-first` | `none (closed with independent closure audit on 2026-07-15)` | 2026-07-15 |
 
 ## 推荐实现顺序（2026-07-07 视频分析增强系列）
 

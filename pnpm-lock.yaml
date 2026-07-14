@@ -154,6 +154,9 @@ importers:
       better-sqlite3:
         specifier: ^12.10.0
         version: 12.10.0
+      nodemailer:
+        specifier: ^7.0.5
+        version: 7.0.13
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -173,6 +176,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.19
+      '@types/nodemailer':
+        specifier: ^6.4.17
+        version: 6.4.24
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
@@ -1229,6 +1235,9 @@ packages:
 
   '@types/node@22.19.19':
     resolution: {integrity: sha512-dyh/xO2Fh5bYrfWaaqGrRQQGkNdmYw6AmaAUvYeUMNTWQtvb796ikLdmTchRmOlOiIJ1TDXfWgVx1QkUlQ6Hew==, tarball: https://registry.npmjs.org/@types/node/-/node-22.19.19.tgz}
+
+  '@types/nodemailer@6.4.24':
+    resolution: {integrity: sha512-Ww4u0rT9wQNXh4JiQaIwx3QWdcOFXzOjQA2zc+jtFYNmQiT4mIUqcDin51bDFdkzKubFnQCZNK7FIHlPKQ/q9w==, tarball: https://registry.npmjs.org/@types/nodemailer/-/nodemailer-6.4.24.tgz}
 
   '@types/qrcode-terminal@0.12.2':
     resolution: {integrity: sha512-v+RcIEJ+Uhd6ygSQ0u5YYY7ZM+la7GgPbs0V/7l/kFs2uO4S8BcIUEMoP7za4DNIqNnUD5npf0A/7kBhrCKG5Q==, tarball: https://registry.npmjs.org/@types/qrcode-terminal/-/qrcode-terminal-0.12.2.tgz}
@@ -2785,6 +2794,10 @@ packages:
   node-releases@2.0.44:
     resolution: {integrity: sha512-5WUyunoPMsvvEhS8AxHtRzP+oA8UCkJ7YRxatWKjngndhDGLiqEVAQKWjFAiAiuL8zMRGzGSJxFnLetoa43qGQ==, tarball: https://registry.npmjs.org/node-releases/-/node-releases-2.0.44.tgz}
 
+  nodemailer@7.0.13:
+    resolution: {integrity: sha512-PNDFSJdP+KFgdsG3ZzMXCgquO7I6McjY2vlqILjtJd0hy8wEvtugS9xKRF2NWlPNGxvLCXlTNIae4serI7dinw==, tarball: https://registry.npmjs.org/nodemailer/-/nodemailer-7.0.13.tgz}
+    engines: {node: '>=6.0.0'}
+
   oauth-sign@0.9.0:
     resolution: {integrity: sha512-fexhUFFPTGV8ybAtSIGbV6gOkSv8UtRbDBnAyLQw4QPKkgNlsH2ByPGtMUqdWkos6YCRmAqViwgZrJc/mRDzZQ==, tarball: https://registry.npmjs.org/oauth-sign/-/oauth-sign-0.9.0.tgz}
 
@@ -4316,6 +4329,10 @@ snapshots:
   '@types/node@22.19.19':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/nodemailer@6.4.24':
+    dependencies:
+      '@types/node': 22.19.19
 
   '@types/qrcode-terminal@0.12.2': {}
 
@@ -6149,6 +6166,8 @@ snapshots:
       lodash: 4.18.1
 
   node-releases@2.0.44: {}
+
+  nodemailer@7.0.13: {}
 
   oauth-sign@0.9.0: {}
 

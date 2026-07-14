@@ -7,6 +7,7 @@ import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
 import { DatabaseService, type TaskRecord } from "../database/database.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { DownloadService } from "../download/download.service.js";
+import { NotificationService } from "../notification/notification.service.js";
 
 @Injectable()
 export class AnalysisTriggerService implements OnModuleInit {
@@ -17,6 +18,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     private readonly db: DatabaseService,
     private readonly downloadScheduler: DownloadScheduler,
     private readonly downloadService: DownloadService,
+    private readonly notificationService: NotificationService,
   ) {
     this.llmVideoDir = process.env.ANALYSIS_LLM_VIDEO_DIR
       ? resolve(process.env.ANALYSIS_LLM_VIDEO_DIR)
@@ -151,12 +153,24 @@ export class AnalysisTriggerService implements OnModuleInit {
         summaryStatus: "completed",
         summaryOutput: result.summaryPath,
       });
+      await this.notificationService.sendSummaryNotification({
+        title: input.videoTitle,
+        success: true,
+        videoUrl: input.metadata.videoUrl,
+        markdownPath: result.summaryPath,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.db.updateTaskStatus(taskId, {
         status: task.status,
         summaryStatus: "failed",
         summaryOutput: msg,
+      });
+      await this.notificationService.sendSummaryNotification({
+        title: task.title || `${task.bvid}-${task.cid}`,
+        success: false,
+        videoUrl: metadataVideoUrl,
+        errorMessage: msg,
       });
     } finally {
       if (llmVideoPath && llmVideoPath.startsWith(this.llmVideoDir)) {
