@@ -8,7 +8,7 @@ export class VideoController {
 
   /**
    * 获取视频元信息 + 分P列表 + 合集信息
-    * @deprecated 请使用 POST /api/parse-link 作为统一链接识别入口
+   * @deprecated 请使用 POST /api/parse-link 作为统一链接识别入口
    */
   @Get("/info")
   async getVideoInfo(@Query("input") input: string) {
@@ -46,9 +46,7 @@ export class VideoController {
 
   /** 批量解析视频流 */
   @Post("/parse-all")
-  async parseAllVideos(
-    @Body() body: { bvid: string; cids: number[] },
-  ) {
+  async parseAllVideos(@Body() body: { bvid: string; cids: number[] }) {
     if (!body.bvid || !body.cids?.length) {
       return { error: "缺少 bvid 或 cids 参数" };
     }

@@ -61,17 +61,16 @@ export class DefaultScreenshotSourceResolver implements ScreenshotSourceResolver
         headers: { Referer: "https://www.bilibili.com" },
       };
     } catch (error) {
-      this.logger.warn(`远端截图源解析失败，降级到本地策略: ${(error as Error).message}`);
+      this.logger.warn(
+        `远端截图源解析失败，降级到本地策略: ${(error as Error).message}`,
+      );
     }
 
     const completedTask = this.databaseService.findCompletedTaskByBvidAndCid(
       bvid,
       cid,
     );
-    if (
-      completedTask?.outputFile
-      && (completedTask.quality ?? 0) >= 80
-    ) {
+    if (completedTask?.outputFile && (completedTask.quality ?? 0) >= 80) {
       return { source: completedTask.outputFile, sourceType: "local" };
     }
 

@@ -34,7 +34,9 @@ export class DownloadScheduler implements OnModuleInit {
   onLowResFinished?: (
     taskId: number,
     analysisSubTaskId: number,
-    result: { success: true; outputFile: string; quality: number } | { success: false; error: string },
+    result:
+      | { success: true; outputFile: string; quality: number }
+      | { success: false; error: string },
   ) => void;
 
   constructor(
@@ -42,7 +44,8 @@ export class DownloadScheduler implements OnModuleInit {
     private readonly db: DatabaseService,
   ) {
     this.maxConcurrency = Number(process.env.MAX_CONCURRENT_DOWNLOADS) || 2;
-    this.maxConcurrentLowRes = Number(process.env.MAX_CONCURRENT_LOW_RES_DOWNLOADS) || 1;
+    this.maxConcurrentLowRes =
+      Number(process.env.MAX_CONCURRENT_LOW_RES_DOWNLOADS) || 1;
   }
 
   async onModuleInit(): Promise<void> {
@@ -72,7 +75,9 @@ export class DownloadScheduler implements OnModuleInit {
   }
 
   /** 创建下载任务 + 触发调度 */
-  async createDownload(dto: DownloadDto): Promise<{ id: number; message: string }> {
+  async createDownload(
+    dto: DownloadDto,
+  ): Promise<{ id: number; message: string }> {
     const result = await this.downloadService.createTask(dto);
     this.tryScheduleNext();
     return result;
@@ -102,7 +107,9 @@ export class DownloadScheduler implements OnModuleInit {
 
   scheduleLowResDownload(job: LowResDownloadJob): void {
     const existsInQueue = this.lowResQueue.some(
-      (j) => j.taskId === job.taskId && j.analysisSubTaskId === job.analysisSubTaskId,
+      (j) =>
+        j.taskId === job.taskId &&
+        j.analysisSubTaskId === job.analysisSubTaskId,
     );
     const existsRunning = this.lowResRunningSet.has(job.analysisSubTaskId);
     if (existsInQueue || existsRunning) return;
@@ -133,8 +140,8 @@ export class DownloadScheduler implements OnModuleInit {
 
   private tryScheduleLowRes(): void {
     while (
-      this.lowResRunningSet.size < this.maxConcurrentLowRes
-      && this.lowResQueue.length > 0
+      this.lowResRunningSet.size < this.maxConcurrentLowRes &&
+      this.lowResQueue.length > 0
     ) {
       const job = this.lowResQueue.shift()!;
       this.lowResRunningSet.add(job.analysisSubTaskId);
@@ -150,7 +157,9 @@ export class DownloadScheduler implements OnModuleInit {
         })
         .catch((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
-          this.logger.error(`低分辨率下载失败: task=${job.taskId}, subTask=${job.analysisSubTaskId}, ${msg}`);
+          this.logger.error(
+            `低分辨率下载失败: task=${job.taskId}, subTask=${job.analysisSubTaskId}, ${msg}`,
+          );
           this.onLowResFinished?.(job.taskId, job.analysisSubTaskId, {
             success: false,
             error: msg,

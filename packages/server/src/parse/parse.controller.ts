@@ -98,7 +98,10 @@ function toPositiveInt(value: string, name: string): number {
   return n;
 }
 
-function parsePagination(pageRaw: string, pageSizeRaw: string): { page: number; pageSize: number } {
+function parsePagination(
+  pageRaw: string,
+  pageSizeRaw: string,
+): { page: number; pageSize: number } {
   const page = toPositiveInt(pageRaw, "page");
   const pageSize = toPositiveInt(pageSizeRaw, "pageSize");
   return { page, pageSize };

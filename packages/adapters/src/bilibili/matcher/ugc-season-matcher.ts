@@ -1,6 +1,10 @@
-import { ResourceType, type ParseResult } from "@bilibili-downloader/core/ports";
+import {
+  ResourceType,
+  type ParseResult,
+} from "@bilibili-downloader/core/ports";
 
-const UGC_SEASON_REGEX = /^https:\/\/space\.bilibili\.com\/(\d+)\/channel\/collectiondetail(?:\?[^#]*)?$/;
+const UGC_SEASON_REGEX =
+  /^https:\/\/space\.bilibili\.com\/(\d+)\/channel\/collectiondetail(?:\?[^#]*)?$/;
 const SID_REGEX = /(?:\?|&)sid=(\d+)/;
 
 export function matchUgcSeason(input: string): ParseResult | null {

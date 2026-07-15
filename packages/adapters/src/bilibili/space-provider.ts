@@ -97,14 +97,19 @@ export class BilibiliSpaceProvider {
 
   constructor(private readonly webClient: BilibiliWebClient) {}
 
-  async getUserInfo(mid: number, cookieString?: string): Promise<SpaceUserInfo> {
+  async getUserInfo(
+    mid: number,
+    cookieString?: string,
+  ): Promise<SpaceUserInfo> {
     const response = await this.webClient.requestJson<UserInfoResponse>(
       `${API.USER_INFO}?mid=${mid}`,
       cookieString,
     );
 
     if (response.code !== 0) {
-      throw new Error(`获取用户信息失败: code=${response.code}, ${response.message}`);
+      throw new Error(
+        `获取用户信息失败: code=${response.code}, ${response.message}`,
+      );
     }
 
     return {
@@ -137,7 +142,9 @@ export class BilibiliSpaceProvider {
     );
 
     if (response.code !== 0) {
-      throw new Error(`获取用户投稿失败: code=${response.code}, ${response.message}`);
+      throw new Error(
+        `获取用户投稿失败: code=${response.code}, ${response.message}`,
+      );
     }
 
     const items = (response.data?.list?.vlist ?? []).map(mapVideoSummary);
@@ -154,14 +161,19 @@ export class BilibiliSpaceProvider {
     };
   }
 
-  async getUserSeasons(mid: number, cookieString?: string): Promise<UgcSeasonSummary[]> {
+  async getUserSeasons(
+    mid: number,
+    cookieString?: string,
+  ): Promise<UgcSeasonSummary[]> {
     const response = await this.webClient.requestJson<SeasonsListResponse>(
       `${API.USER_SEASONS}?mid=${mid}&page_num=1&page_size=50`,
       cookieString,
     );
 
     if (response.code !== 0) {
-      throw new Error(`获取用户合集失败: code=${response.code}, ${response.message}`);
+      throw new Error(
+        `获取用户合集失败: code=${response.code}, ${response.message}`,
+      );
     }
 
     const seasons = response.data?.items_lists?.seasons_list ?? [];
@@ -185,7 +197,9 @@ export class BilibiliSpaceProvider {
     );
 
     if (response.code !== 0) {
-      throw new Error(`获取合集视频失败: code=${response.code}, ${response.message}`);
+      throw new Error(
+        `获取合集视频失败: code=${response.code}, ${response.message}`,
+      );
     }
 
     const items = (response.data?.archives ?? []).map(mapVideoSummary);
@@ -206,7 +220,10 @@ export class BilibiliSpaceProvider {
   }
 
   private async initWbiKeys(cookieString?: string): Promise<void> {
-    const navData = await this.webClient.requestJson<NavResponse>(API.NAV, cookieString);
+    const navData = await this.webClient.requestJson<NavResponse>(
+      API.NAV,
+      cookieString,
+    );
     const imgUrl = navData.data.wbi_img.img_url;
     const subUrl = navData.data.wbi_img.sub_url;
 

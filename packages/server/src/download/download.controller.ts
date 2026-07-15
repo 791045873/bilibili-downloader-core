@@ -53,10 +53,7 @@ export class DownloadController {
   }
 
   @Post("/tasks/:id/auto-summary")
-  setAutoSummary(
-    @Param("id") id: string,
-    @Body() body: { enabled?: boolean },
-  ) {
+  setAutoSummary(@Param("id") id: string, @Body() body: { enabled?: boolean }) {
     const numId = Number.parseInt(id, 10);
     if (Number.isNaN(numId)) {
       throw new BadRequestException("无效的任务 ID");

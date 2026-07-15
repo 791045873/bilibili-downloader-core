@@ -40,7 +40,9 @@ export class NotificationService {
     });
   }
 
-  async sendSummaryNotification(input: SummaryNotificationInput): Promise<void> {
+  async sendSummaryNotification(
+    input: SummaryNotificationInput,
+  ): Promise<void> {
     if (!this.transporter || !this.notificationEmail || !this.smtpUser) {
       return;
     }
@@ -49,9 +51,7 @@ export class NotificationService {
       ? `AI 总结完成：${input.title}`
       : `AI 总结失败：${input.title}`;
 
-    const lines: string[] = [
-      `视频标题: ${input.title}`,
-    ];
+    const lines: string[] = [`视频标题: ${input.title}`];
 
     if (input.videoUrl && input.videoUrl.trim().length > 0) {
       lines.push(`原始链接: ${input.videoUrl}`);
@@ -80,11 +80,11 @@ export class NotificationService {
 
   private hasValidConfig(): boolean {
     return Boolean(
-      this.smtpHost
-      && this.smtpPort > 0
-      && this.smtpUser
-      && this.smtpPass
-      && this.notificationEmail,
+      this.smtpHost &&
+      this.smtpPort > 0 &&
+      this.smtpUser &&
+      this.smtpPass &&
+      this.notificationEmail,
     );
   }
 }

@@ -2,17 +2,19 @@ import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 
-import { createBilibiliWebClient, BilibiliStreamProvider } from "../packages/adapters/dist/bilibili/index.js";
+import {
+  createBilibiliWebClient,
+  BilibiliStreamProvider,
+} from "../packages/adapters/dist/bilibili/index.js";
 import { FfmpegScreenshot } from "../packages/adapters/dist/ffmpeg/index.js";
 
-const DEFAULT_BVIDS = [
-  "BV1SoTx6yEYc",
-  "BV1xx411c7mD",
-  "BV1GJ411x7h7",
-];
+const DEFAULT_BVIDS = ["BV1SoTx6yEYc", "BV1xx411c7mD", "BV1GJ411x7h7"];
 
 function parseBvids(argv) {
-  const argBvids = argv.slice(2).map((v) => v.trim()).filter(Boolean);
+  const argBvids = argv
+    .slice(2)
+    .map((v) => v.trim())
+    .filter(Boolean);
   if (argBvids.length > 0) {
     return argBvids;
   }
@@ -40,8 +42,15 @@ async function runOneBvid(bvid) {
     throw new Error(`视频 ${bvid} 未返回视频流`);
   }
 
-  const lowQuality = [...streams.videoStreams].sort((a, b) => a.quality - b.quality)[0];
-  const outputDir = join(process.cwd(), "summaryDir", "screenshots", "no-cookie-test");
+  const lowQuality = [...streams.videoStreams].sort(
+    (a, b) => a.quality - b.quality,
+  )[0];
+  const outputDir = join(
+    process.cwd(),
+    "summaryDir",
+    "screenshots",
+    "no-cookie-test",
+  );
   await mkdir(outputDir, { recursive: true });
 
   const result = await screenshotter.takeScreenshots({

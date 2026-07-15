@@ -124,12 +124,16 @@ export class DatabaseService {
       // 列已存在的忽略
     }
     try {
-      this.db.exec(`ALTER TABLE task ADD COLUMN auto_summary INTEGER DEFAULT 0`);
+      this.db.exec(
+        `ALTER TABLE task ADD COLUMN auto_summary INTEGER DEFAULT 0`,
+      );
     } catch {
       // 列已存在的忽略
     }
     try {
-      this.db.exec(`ALTER TABLE task ADD COLUMN summary_status TEXT DEFAULT 'none'`);
+      this.db.exec(
+        `ALTER TABLE task ADD COLUMN summary_status TEXT DEFAULT 'none'`,
+      );
     } catch {
       // 列已存在的忽略
     }
@@ -223,9 +227,9 @@ export class DatabaseService {
     id: number,
     fields: {
       status: string;
-    autoSummary?: number;
-    summaryStatus?: string;
-    summaryOutput?: string;
+      autoSummary?: number;
+      summaryStatus?: string;
+      summaryOutput?: string;
       outputFile?: string;
       fileSize?: number;
       errorCode?: string;
@@ -318,7 +322,10 @@ export class DatabaseService {
   /** 按 bvid+cid 批量查询最新任务（用于前端入队去重判定） */
   findTasksByBvidsAndCids(
     pairs: { bvid: string; cid: number }[],
-  ): Pick<TaskRecord, "id" | "bvid" | "cid" | "status" | "createdAt" | "autoSummary">[] {
+  ): Pick<
+    TaskRecord,
+    "id" | "bvid" | "cid" | "status" | "createdAt" | "autoSummary"
+  >[] {
     if (pairs.length === 0) return [];
     const placeholders = pairs.map(() => "(?, ?)").join(", ");
     const params = pairs.flatMap((p) => [p.bvid, p.cid]);
@@ -340,12 +347,18 @@ export class DatabaseService {
         }
         return acc;
       },
-      [] as Pick<TaskRecord, "id" | "bvid" | "cid" | "status" | "createdAt" | "autoSummary">[],
+      [] as Pick<
+        TaskRecord,
+        "id" | "bvid" | "cid" | "status" | "createdAt" | "autoSummary"
+      >[],
     );
   }
 
   /** 按 bvid+cid 查询最新任务 */
-  findLatestTaskByBvidAndCid(bvid: string, cid: number): TaskRecord | undefined {
+  findLatestTaskByBvidAndCid(
+    bvid: string,
+    cid: number,
+  ): TaskRecord | undefined {
     return this.db
       .prepare(
         `${this.taskSelectSql}
@@ -412,7 +425,9 @@ export class DatabaseService {
       setClauses.push("completed_at = @completedAt");
 
     this.db
-      .prepare(`UPDATE analysis_sub_task SET ${setClauses.join(", ")} WHERE id = @id`)
+      .prepare(
+        `UPDATE analysis_sub_task SET ${setClauses.join(", ")} WHERE id = @id`,
+      )
       .run({
         id,
         status: fields.status,
@@ -424,7 +439,8 @@ export class DatabaseService {
 
   getAnalysisSubTasksByTaskId(taskId: number): AnalysisSubTaskRecord[] {
     return this.db
-      .prepare(`
+      .prepare(
+        `
         SELECT
           id,
           task_id AS taskId,
@@ -439,7 +455,8 @@ export class DatabaseService {
         FROM analysis_sub_task
         WHERE task_id = ?
         ORDER BY created_at ASC
-      `)
+      `,
+      )
       .all(taskId) as AnalysisSubTaskRecord[];
   }
 }

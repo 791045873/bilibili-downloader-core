@@ -12,9 +12,7 @@ import {
   createBilibiliWebClient,
 } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliAuthProvider } from "@bilibili-downloader/adapters/bilibili-auth";
-import {
-  ResolutionService,
-} from "@bilibili-downloader/core/usecases";
+import { ResolutionService } from "@bilibili-downloader/core/usecases";
 import {
   ResourceType,
   ResourceParseError,
@@ -42,14 +40,17 @@ export class ParseService implements OnModuleInit {
 
   constructor() {
     this.outputDir = process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads");
-    this.cookieFile = process.env.COOKIE_FILE || join(this.outputDir, ".cookies.json");
+    this.cookieFile =
+      process.env.COOKIE_FILE || join(this.outputDir, ".cookies.json");
   }
 
   async onModuleInit(): Promise<void> {
     this.authProvider = new BilibiliAuthProvider();
     this.cookieString = await this.loadCookieString(this.cookieFile);
 
-    const webClient = createBilibiliWebClient({ cookieString: this.cookieString });
+    const webClient = createBilibiliWebClient({
+      cookieString: this.cookieString,
+    });
     this.resourceParser = new BilibiliResourceParser(webClient);
     this.streamProvider = new BilibiliStreamProvider(webClient);
     this.favoritesProvider = new BilibiliFavoritesProvider(webClient);
@@ -108,7 +109,12 @@ export class ParseService implements OnModuleInit {
           throw new BadRequestException("UGC 合集链接缺少 seasonId");
         }
         const [videosPage, seasons] = await Promise.all([
-          this.spaceProvider.getUgcSeasonVideos(seasonId, 1, 20, this.cookieString),
+          this.spaceProvider.getUgcSeasonVideos(
+            seasonId,
+            1,
+            20,
+            this.cookieString,
+          ),
           mid
             ? this.spaceProvider.getUserSeasons(mid, this.cookieString)
             : Promise.resolve([]),
@@ -137,7 +143,12 @@ export class ParseService implements OnModuleInit {
         }
         const [info, page] = await Promise.all([
           this.favoritesProvider.getFavoritesInfo(mediaId, this.cookieString),
-          this.favoritesProvider.getFavoritesVideos(mediaId, 1, 20, this.cookieString),
+          this.favoritesProvider.getFavoritesVideos(
+            mediaId,
+            1,
+            20,
+            this.cookieString,
+          ),
         ]);
 
         const videos: PaginatedVideos = {
@@ -167,8 +178,17 @@ export class ParseService implements OnModuleInit {
     }
   }
 
-  async getUserSpaceVideos(mid: number, page: number, pageSize: number): Promise<PaginatedVideos> {
-    return this.spaceProvider.getUserVideos(mid, page, pageSize, this.cookieString);
+  async getUserSpaceVideos(
+    mid: number,
+    page: number,
+    pageSize: number,
+  ): Promise<PaginatedVideos> {
+    return this.spaceProvider.getUserVideos(
+      mid,
+      page,
+      pageSize,
+      this.cookieString,
+    );
   }
 
   async getUgcSeasonVideos(

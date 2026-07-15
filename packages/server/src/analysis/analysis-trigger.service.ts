@@ -4,7 +4,10 @@ import { dirname, join, resolve } from "node:path";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { type LlmConfig } from "@bilibili-downloader/adapters/llm";
 import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
-import { DatabaseService, type TaskRecord } from "../database/database.service.js";
+import {
+  DatabaseService,
+  type TaskRecord,
+} from "../database/database.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { DownloadService } from "../download/download.service.js";
 import { NotificationService } from "../notification/notification.service.js";
@@ -22,17 +25,26 @@ export class AnalysisTriggerService implements OnModuleInit {
   ) {
     this.llmVideoDir = process.env.ANALYSIS_LLM_VIDEO_DIR
       ? resolve(process.env.ANALYSIS_LLM_VIDEO_DIR)
-      : join(resolve(process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads")), ".analysis-llm");
+      : join(
+          resolve(process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads")),
+          ".analysis-llm",
+        );
   }
 
   onModuleInit(): void {
     this.downloadScheduler.onAnalysisTrigger = (taskId: number) => {
       this.trigger(taskId).catch((err: unknown) => {
-        this.logger.error(`自动触发分析失败: task=${taskId}, ${(err as Error).message}`);
+        this.logger.error(
+          `自动触发分析失败: task=${taskId}, ${(err as Error).message}`,
+        );
       });
     };
 
-    this.downloadScheduler.onLowResFinished = (taskId, analysisSubTaskId, result) => {
+    this.downloadScheduler.onLowResFinished = (
+      taskId,
+      analysisSubTaskId,
+      result,
+    ) => {
       if (result.success) {
         this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
           status: "completed",
@@ -47,7 +59,9 @@ export class AnalysisTriggerService implements OnModuleInit {
           });
         }
         this.trigger(taskId).catch((err: unknown) => {
-          this.logger.error(`低清下载完成后重新触发分析失败: task=${taskId}, ${(err as Error).message}`);
+          this.logger.error(
+            `低清下载完成后重新触发分析失败: task=${taskId}, ${(err as Error).message}`,
+          );
         });
       } else {
         this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
@@ -182,7 +196,9 @@ export class AnalysisTriggerService implements OnModuleInit {
   private async shouldReuseDownloadedVideo(task: TaskRecord): Promise<boolean> {
     if (!task.bvid || !task.cid) return true;
     const parsed = await this.downloadService.parseVideo(task.bvid, task.cid);
-    const qualityIds = parsed.videoQualityList.map((q) => q.id).sort((a, b) => a - b);
+    const qualityIds = parsed.videoQualityList
+      .map((q) => q.id)
+      .sort((a, b) => a - b);
     if (qualityIds.length <= 1) return true;
 
     const downloadedQuality = task.quality ?? qualityIds[qualityIds.length - 1];

@@ -64,7 +64,10 @@ export class AnalysisController {
       throw new BadRequestException("bvid/cid 必填");
     }
 
-    const task = this.databaseService.findLatestTaskByBvidAndCid(body.bvid, body.cid);
+    const task = this.databaseService.findLatestTaskByBvidAndCid(
+      body.bvid,
+      body.cid,
+    );
     if (!task) {
       throw new NotFoundException("任务不存在");
     }
@@ -112,16 +115,25 @@ function validateRequest(body: AnalysisRequest): void {
   if (typeof body.videoPath !== "string" || !isAbsolute(body.videoPath)) {
     throw new BadRequestException("videoPath 必填且必须为绝对路径");
   }
-  if (typeof body.videoTitle !== "string" || body.videoTitle.trim().length === 0) {
+  if (
+    typeof body.videoTitle !== "string" ||
+    body.videoTitle.trim().length === 0
+  ) {
     throw new BadRequestException("videoTitle 必填且不能为空字符串");
   }
   if (body.subtitlePath !== undefined) {
-    if (typeof body.subtitlePath !== "string" || !isAbsolute(body.subtitlePath)) {
+    if (
+      typeof body.subtitlePath !== "string" ||
+      !isAbsolute(body.subtitlePath)
+    ) {
       throw new BadRequestException("subtitlePath 如传入必须为绝对路径");
     }
   }
   if (body.screenshotVideoPath !== undefined) {
-    if (typeof body.screenshotVideoPath !== "string" || !isAbsolute(body.screenshotVideoPath)) {
+    if (
+      typeof body.screenshotVideoPath !== "string" ||
+      !isAbsolute(body.screenshotVideoPath)
+    ) {
       throw new BadRequestException("screenshotVideoPath 如传入必须为绝对路径");
     }
   }
@@ -132,14 +144,29 @@ function validateRequest(body: AnalysisRequest): void {
     throw new BadRequestException("metadata.type 必须为 bilibili 或 local");
   }
   if (body.metadata.type === "bilibili") {
-    if (typeof body.metadata.videoUrl !== "string" || body.metadata.videoUrl.trim().length === 0) {
-      throw new BadRequestException("metadata.type=bilibili 时 videoUrl 必填且非空");
+    if (
+      typeof body.metadata.videoUrl !== "string" ||
+      body.metadata.videoUrl.trim().length === 0
+    ) {
+      throw new BadRequestException(
+        "metadata.type=bilibili 时 videoUrl 必填且非空",
+      );
     }
-    if (typeof body.metadata.bvid !== "string" || body.metadata.bvid.trim().length === 0) {
-      throw new BadRequestException("metadata.type=bilibili 时 bvid 必填且非空");
+    if (
+      typeof body.metadata.bvid !== "string" ||
+      body.metadata.bvid.trim().length === 0
+    ) {
+      throw new BadRequestException(
+        "metadata.type=bilibili 时 bvid 必填且非空",
+      );
     }
-    if (typeof body.metadata.cid !== "number" || !Number.isFinite(body.metadata.cid)) {
-      throw new BadRequestException("metadata.type=bilibili 时 cid 必填且为数字");
+    if (
+      typeof body.metadata.cid !== "number" ||
+      !Number.isFinite(body.metadata.cid)
+    ) {
+      throw new BadRequestException(
+        "metadata.type=bilibili 时 cid 必填且为数字",
+      );
     }
   }
 }

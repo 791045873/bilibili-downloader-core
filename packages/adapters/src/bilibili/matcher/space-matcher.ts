@@ -1,4 +1,7 @@
-import { ResourceType, type ParseResult } from "@bilibili-downloader/core/ports";
+import {
+  ResourceType,
+  type ParseResult,
+} from "@bilibili-downloader/core/ports";
 
 const SPACE_REGEX = /^https:\/\/space\.bilibili\.com\/(\d+)(?:\/video)?\/?$/;
 

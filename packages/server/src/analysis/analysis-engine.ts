@@ -8,9 +8,16 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
-import { parseSrtFile, type SrtEntry } from "@bilibili-downloader/adapters/parser";
+import {
+  parseSrtFile,
+  type SrtEntry,
+} from "@bilibili-downloader/adapters/parser";
 import { FfmpegScreenshot } from "@bilibili-downloader/adapters/ffmpeg";
-import { QwenClient, type LlmConfig, type MultimodalContent } from "@bilibili-downloader/adapters/llm";
+import {
+  QwenClient,
+  type LlmConfig,
+  type MultimodalContent,
+} from "@bilibili-downloader/adapters/llm";
 import { generateMarkdown, type DocumentInput } from "./document-generator.js";
 import type { ScreenshotSourceResolver } from "./screenshot-source-resolver.js";
 
@@ -22,7 +29,10 @@ function transTimestampToSeconds(timestamp: string): number | undefined {
   const normalized = timestamp.trim();
   const parts = normalized.split(":").map((part) => Number.parseInt(part, 10));
 
-  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part) || part < 0)) {
+  if (
+    parts.length !== 3 ||
+    parts.some((part) => !Number.isFinite(part) || part < 0)
+  ) {
     return undefined;
   }
 
@@ -78,13 +88,13 @@ interface SubtitleAnalysis {
 /** 构建字幕分析的系统 Prompt */
 function buildAnalysisSystemPrompt(): string {
   return [
-    "这是一个穿搭博主的教学视频和该视频对应的文本内容。"+
-    "博主在这个视频中讲述了自己关于穿搭方面的技巧与思路，并向观众展示了真实的穿搭例子。"+
-    "请你完整、仔细地从视频与文本中总结这些技巧与思路，并给出其对应的展示案例在视频中的时间戳。"+
-    "请严格按照 JSON 格式输出，格式如下："+
-    "{summary: Array<{title: string, content: string, timestamp: string, frameDescription: string}>}"+
-    "summary中的title是总结的穿搭技巧或思路的标题, content是穿搭技巧或思路的具体内容, timestamp是对应的展示案例的时间戳(格式为hh:mm:ss,例如00:02:30代表2分20秒), frameDescription是该时间戳画面的文本描述"+
-    "有可能某一个穿搭技巧、思路的实际展示持续了较长时间，请你从其中选择最能展现该穿搭技巧、思路的时刻记录为时间戳。"
+    "这是一个穿搭博主的教学视频和该视频对应的文本内容。" +
+      "博主在这个视频中讲述了自己关于穿搭方面的技巧与思路，并向观众展示了真实的穿搭例子。" +
+      "请你完整、仔细地从视频与文本中总结这些技巧与思路，并给出其对应的展示案例在视频中的时间戳。" +
+      "请严格按照 JSON 格式输出，格式如下：" +
+      "{summary: Array<{title: string, content: string, timestamp: string, frameDescription: string}>}" +
+      "summary中的title是总结的穿搭技巧或思路的标题, content是穿搭技巧或思路的具体内容, timestamp是对应的展示案例的时间戳(格式为hh:mm:ss,例如00:02:30代表2分20秒), frameDescription是该时间戳画面的文本描述" +
+      "有可能某一个穿搭技巧、思路的实际展示持续了较长时间，请你从其中选择最能展现该穿搭技巧、思路的时刻记录为时间戳。",
   ].join("\n");
 }
 
@@ -120,7 +130,9 @@ export class AnalysisEngine {
     }
 
     if (!this.llmClient.usesVisionProxy()) {
-      throw new Error("视频分析需要配置 QWEN_VISION_PROXY_URL，以便通过 Python 薄代理读取本地视频文件");
+      throw new Error(
+        "视频分析需要配置 QWEN_VISION_PROXY_URL，以便通过 Python 薄代理读取本地视频文件",
+      );
     }
 
     // 2. LLM: 视频 + 字幕分析，直接返回用于截图的时间戳
@@ -157,10 +169,10 @@ export class AnalysisEngine {
 
     const resolvedSource = input.screenshotVideoPath
       ? {
-        source: input.screenshotVideoPath,
-        sourceType: "local" as const,
-        headers: undefined,
-      }
+          source: input.screenshotVideoPath,
+          sourceType: "local" as const,
+          headers: undefined,
+        }
       : await this.resolveScreenshotSource(input);
     const localFallbackPath = input.screenshotVideoPath ?? input.videoPath;
     let useLocalFallbackForRest = false;
@@ -173,7 +185,9 @@ export class AnalysisEngine {
       const seconds = transTimestampToSeconds(item.timestamp);
 
       if (seconds === undefined) {
-        console.error(`段落 ${si} 返回了无效时间戳，跳过截图: ${item.timestamp}`);
+        console.error(
+          `段落 ${si} 返回了无效时间戳，跳过截图: ${item.timestamp}`,
+        );
         continue;
       }
 
@@ -196,7 +210,10 @@ export class AnalysisEngine {
         segmentScreenshots = result.outputFiles;
         screenshots.push(...segmentScreenshots);
       } catch (err) {
-        if (!useLocalFallbackForRest && resolvedSource.sourceType === "remote") {
+        if (
+          !useLocalFallbackForRest &&
+          resolvedSource.sourceType === "remote"
+        ) {
           useLocalFallbackForRest = true;
           try {
             const retryResult = await this.screenshotter.takeScreenshots({
@@ -208,7 +225,9 @@ export class AnalysisEngine {
             segmentScreenshots = retryResult.outputFiles;
             screenshots.push(...segmentScreenshots);
           } catch (retryErr) {
-            console.error(`段落 ${si} 远端与本地截图均失败: ${(retryErr as Error).message}`);
+            console.error(
+              `段落 ${si} 远端与本地截图均失败: ${(retryErr as Error).message}`,
+            );
           }
         }
         console.error(`段落 ${si} 截图失败: ${(err as Error).message}`);
@@ -228,13 +247,19 @@ export class AnalysisEngine {
     // 4. 生成 Markdown
     const doc = generateMarkdown({
       videoTitle: input.videoTitle,
-      videoUrl: input.metadata.type === "bilibili" ? (input.metadata.videoUrl ?? "") : "",
+      videoUrl:
+        input.metadata.type === "bilibili"
+          ? (input.metadata.videoUrl ?? "")
+          : "",
       modelName: this.llmConfig.visionModelName ?? this.llmConfig.modelName,
       createdAt: new Date().toString(),
       segments: processedSegments,
     });
 
-    const summaryPath = join(input.summaryDir, `${input.videoTitle}-summary.md`);
+    const summaryPath = join(
+      input.summaryDir,
+      `${input.videoTitle}-summary.md`,
+    );
     await writeFile(summaryPath, doc, "utf-8");
 
     return {
@@ -266,12 +291,18 @@ export class AnalysisEngine {
   ): Promise<AnalysisOutput> {
     const doc = generateMarkdown({
       videoTitle: input.videoTitle,
-      videoUrl: input.metadata.type === "bilibili" ? (input.metadata.videoUrl ?? "") : "",
+      videoUrl:
+        input.metadata.type === "bilibili"
+          ? (input.metadata.videoUrl ?? "")
+          : "",
       modelName: this.llmConfig.visionModelName ?? this.llmConfig.modelName,
       createdAt: new Date().toString(),
       segments: [],
     });
-    const summaryPath = join(input.summaryDir, `${input.videoTitle}-summary.md`);
+    const summaryPath = join(
+      input.summaryDir,
+      `${input.videoTitle}-summary.md`,
+    );
     await writeFile(summaryPath, doc, "utf-8");
     return {
       summaryPath,
@@ -282,15 +313,18 @@ export class AnalysisEngine {
   }
 }
 
-function normalizeSummaryItems(analysis: SubtitleAnalysis | undefined): SubtitleAnalysis["summary"] {
-  return (analysis?.summary ?? []).filter((item) => (
-    typeof item.title === "string"
-    && item.title.trim().length > 0
-    && typeof item.content === "string"
-    && item.content.trim().length > 0
-    && typeof item.timestamp === "string"
-    && item.timestamp.trim().length > 0
-    && typeof item.frameDescription === "string"
-    && item.frameDescription.trim().length > 0
-  ));
+function normalizeSummaryItems(
+  analysis: SubtitleAnalysis | undefined,
+): SubtitleAnalysis["summary"] {
+  return (analysis?.summary ?? []).filter(
+    (item) =>
+      typeof item.title === "string" &&
+      item.title.trim().length > 0 &&
+      typeof item.content === "string" &&
+      item.content.trim().length > 0 &&
+      typeof item.timestamp === "string" &&
+      item.timestamp.trim().length > 0 &&
+      typeof item.frameDescription === "string" &&
+      item.frameDescription.trim().length > 0,
+  );
 }

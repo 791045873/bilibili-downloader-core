@@ -227,12 +227,19 @@ export class DownloadService implements OnModuleInit {
       cookieString,
     });
 
-    if (streams.videoStreams.length === 0 || streams.audioStreams.length === 0) {
+    if (
+      streams.videoStreams.length === 0 ||
+      streams.audioStreams.length === 0
+    ) {
       throw new Error("低清晰度下载失败：缺少可用的视频或音频流");
     }
 
-    const lowVideo = [...streams.videoStreams].sort((a, b) => a.quality - b.quality)[0];
-    const bestAudio = this.resolutionService.selectBestStream(streams.audioStreams);
+    const lowVideo = [...streams.videoStreams].sort(
+      (a, b) => a.quality - b.quality,
+    )[0];
+    const bestAudio = this.resolutionService.selectBestStream(
+      streams.audioStreams,
+    );
     if (!bestAudio) {
       throw new Error("低清晰度下载失败：缺少可用音频流");
     }
@@ -594,10 +601,15 @@ function toSubtitleLanguages(
 ): "none" | "all" | string[] {
   if (!lang) return "none";
   switch (lang) {
-    case "none": return "none";
-    case "all": return "all";
-    case "zh": return ["zh-CN"];
-    case "en": return ["en-US"];
-    default: return "none";
+    case "none":
+      return "none";
+    case "all":
+      return "all";
+    case "zh":
+      return ["zh-CN"];
+    case "en":
+      return ["en-US"];
+    default:
+      return "none";
   }
 }

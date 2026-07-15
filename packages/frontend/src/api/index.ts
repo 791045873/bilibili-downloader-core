@@ -137,21 +137,36 @@ export async function clearTasks(): Promise<void> {
 
 export async function checkTasks(
   items: { bvid: string; cid: number }[],
-): Promise<{ id: number; bvid: string; cid: number; status: string; createdAt: string; autoSummary?: number }[]> {
+): Promise<
+  {
+    id: number;
+    bvid: string;
+    cid: number;
+    status: string;
+    createdAt: string;
+    autoSummary?: number;
+  }[]
+> {
   return request("/tasks/check", {
     method: "POST",
     body: JSON.stringify({ items }),
   });
 }
 
-export async function triggerAiSummary(req: { bvid: string; cid: number }): Promise<{ message: string }> {
+export async function triggerAiSummary(req: {
+  bvid: string;
+  cid: number;
+}): Promise<{ message: string }> {
   return request("/analysis/trigger", {
     method: "POST",
     body: JSON.stringify(req),
   });
 }
 
-export async function setAutoSummary(taskId: number, enabled: boolean): Promise<{ message: string }> {
+export async function setAutoSummary(
+  taskId: number,
+  enabled: boolean,
+): Promise<{ message: string }> {
   return request(`/tasks/${taskId}/auto-summary`, {
     method: "POST",
     body: JSON.stringify({ enabled }),
