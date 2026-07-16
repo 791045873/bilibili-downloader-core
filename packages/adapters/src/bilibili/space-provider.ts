@@ -74,9 +74,9 @@ interface NavResponse {
 
 const API = {
   NAV: `${BILI_API_BASE}/x/web-interface/nav`,
-  USER_INFO: `${BILI_API_BASE}/x/space/acc/info`,
+  USER_INFO: `${BILI_API_BASE}/x/space/wbi/acc/info`,
   USER_VIDEOS: `${BILI_API_BASE}/x/space/wbi/arc/search`,
-  USER_SEASONS: `${BILI_API_BASE}/x/polymer/web-space/seasons_series_list`,
+  USER_SEASONS: `${BILI_API_BASE}/x/polymer/web-space/seasons_series`,
   SEASON_VIDEOS: `${BILI_API_BASE}/x/polymer/web-space/seasons_archives_list`,
 } as const;
 
@@ -101,8 +101,9 @@ export class BilibiliSpaceProvider {
     mid: number,
     cookieString?: string,
   ): Promise<SpaceUserInfo> {
+    const params = await this.signWbi({ mid }, cookieString);
     const response = await this.webClient.requestJson<UserInfoResponse>(
-      `${API.USER_INFO}?mid=${mid}`,
+      `${API.USER_INFO}?${toQueryString(params)}`,
       cookieString,
     );
 
