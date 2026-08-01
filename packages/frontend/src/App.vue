@@ -10,6 +10,11 @@ const isHome = computed(() => route.name === "home");
 const authStore = useAuthStore();
 const { user } = storeToRefs(authStore);
 
+function imageSrc(url?: string): string {
+  if (!url) return "";
+  return `/api/video/cover?url=${encodeURIComponent(url)}`;
+}
+
 onMounted(() => {
   authStore.checkLogin();
 });
@@ -47,7 +52,7 @@ onMounted(() => {
           </router-link>
           <div v-else class="flex items-center gap-2">
             <img
-              :src="user.face"
+              :src="imageSrc(user.face)"
               :alt="user.name"
               class="w-7 h-7 rounded-full object-cover border border-zinc-700"
             />

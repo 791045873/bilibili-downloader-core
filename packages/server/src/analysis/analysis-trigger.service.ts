@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import isNil from "lodash";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
@@ -99,8 +100,9 @@ export class AnalysisTriggerService implements OnModuleInit {
     if (lowResSubTask && lowResSubTask.status !== "completed") {
       return;
     }
-
-    if (!task.outputFile || !task.bvid || !task.cid) {
+    const a = isNil(task.outputFile);
+    const b = isNil(task.bvid);
+    if (a || b) {
       this.db.updateTaskStatus(taskId, {
         status: task.status,
         summaryStatus: "failed",
@@ -110,6 +112,8 @@ export class AnalysisTriggerService implements OnModuleInit {
     }
 
     const highResPath = task.outputFile;
+    const taskBvid = task.bvid;
+    const taskCid = task.cid;
     let llmVideoPath = highResPath;
     const screenshotVideoPath = highResPath;
 
@@ -122,8 +126,8 @@ export class AnalysisTriggerService implements OnModuleInit {
         await mkdir(this.llmVideoDir, { recursive: true });
         const subTaskId = this.db.insertAnalysisSubTask({
           taskId,
-          bvid: task.bvid,
-          cid: task.cid,
+          bvid: taskBvid,
+          cid: taskCid,
           quality: 0,
           status: "created",
           createdAt: new Date().toISOString(),
@@ -131,30 +135,28 @@ export class AnalysisTriggerService implements OnModuleInit {
         this.downloadScheduler.scheduleLowResDownload({
           taskId,
           analysisSubTaskId: subTaskId,
-          bvid: task.bvid,
-          cid: task.cid,
-          title: task.title ?? `${task.bvid}-${task.cid}`,
+          bvid: taskBvid!,
+          cid: taskCid!,
+          title: task.title ?? `${taskBvid}-${taskCid}`,
         });
         return;
       }
     }
 
     const summaryDir = this.resolveSummaryDir(task);
-    const metadataVideoUrl = task.bvid
-      ? `https://www.bilibili.com/video/${task.bvid}`
-      : undefined;
+    const metadataVideoUrl = `https://www.bilibili.com/video/${taskBvid}`;
 
     const input: AnalysisInput = {
-      videoPath: llmVideoPath,
+      videoPath: llmVideoPath!,
       screenshotVideoPath,
       subtitlePath: undefined,
       summaryDir,
-      videoTitle: task.title || `${task.bvid}-${task.cid}`,
+      videoTitle: task.title || `${taskBvid}-${taskCid}`,
       metadata: {
         type: "bilibili",
         videoUrl: metadataVideoUrl,
-        bvid: task.bvid,
-        cid: task.cid,
+        bvid: taskBvid,
+        cid: taskCid,
       },
     };
 
@@ -181,7 +183,7 @@ export class AnalysisTriggerService implements OnModuleInit {
         summaryOutput: msg,
       });
       await this.notificationService.sendSummaryNotification({
-        title: task.title || `${task.bvid}-${task.cid}`,
+        title: task.title || `${taskBvid}-${taskCid}`,
         success: false,
         videoUrl: metadataVideoUrl,
         errorMessage: msg,

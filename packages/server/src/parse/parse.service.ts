@@ -91,7 +91,7 @@ export class ParseService implements OnModuleInit {
         const [user, videos, seasons] = await Promise.all([
           this.spaceProvider.getUserInfo(mid, this.cookieString),
           this.spaceProvider.getUserVideos(mid, 1, 20, this.cookieString),
-          this.spaceProvider.getUserSeasons(mid, this.cookieString),
+          this.spaceProvider.getUserSeasons(mid, 1, 20, this.cookieString),
         ]);
         const result: UserSpaceResult = {
           mid: user.mid,
@@ -116,7 +116,7 @@ export class ParseService implements OnModuleInit {
             this.cookieString,
           ),
           mid
-            ? this.spaceProvider.getUserSeasons(mid, this.cookieString)
+            ? this.spaceProvider.getUserSeasons(mid, 1, 20, this.cookieString)
             : Promise.resolve([]),
         ]);
 

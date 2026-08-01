@@ -507,13 +507,14 @@ export class DownloadService implements OnModuleInit {
   // ==================== 图片代理 ====================
 
   /**
-   * 代理 B站图片（绕过防盗链）
+   * 代理 B站静态图片（绕过防盗链）
    * 浏览器端无法在 <img> 上加 Referer 请求头，通过服务端代理转发
    */
-  async proxyCoverImage(
+  async proxyBilibiliImage(
     url: string,
   ): Promise<{ data: Buffer; contentType: string }> {
-    const response = await fetch(url, {
+    const normalizedUrl = this.normalizeBilibiliImageUrl(url);
+    const response = await fetch(normalizedUrl, {
       headers: {
         Referer: "https://www.bilibili.com",
         "User-Agent":
@@ -526,6 +527,33 @@ export class DownloadService implements OnModuleInit {
     const data = Buffer.from(await response.arrayBuffer());
     const contentType = response.headers.get("content-type") ?? "image/jpeg";
     return { data, contentType };
+  }
+
+  private normalizeBilibiliImageUrl(url: string): string {
+    const normalized = url.startsWith("//") ? `https:${url}` : url;
+
+    let parsed: URL;
+    try {
+      parsed = new URL(normalized);
+    } catch {
+      throw new Error("无效的图片地址");
+    }
+
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      throw new Error("不支持的图片协议");
+    }
+
+    if (!this.isAllowedBilibiliImageHost(parsed.hostname)) {
+      throw new Error("仅支持代理哔哩哔哩静态图片资源");
+    }
+
+    return parsed.toString();
+  }
+
+  private isAllowedBilibiliImageHost(hostname: string): boolean {
+    return ["hdslb.com", "biliimg.com"].some(
+      (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+    );
   }
 
   // ==================== 工具 ====================

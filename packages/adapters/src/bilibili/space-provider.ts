@@ -76,7 +76,7 @@ const API = {
   NAV: `${BILI_API_BASE}/x/web-interface/nav`,
   USER_INFO: `${BILI_API_BASE}/x/space/wbi/acc/info`,
   USER_VIDEOS: `${BILI_API_BASE}/x/space/wbi/arc/search`,
-  USER_SEASONS: `${BILI_API_BASE}/x/polymer/web-space/seasons_series`,
+  USER_SEASONS: `${BILI_API_BASE}/x/polymer/web-space/seasons_series_list`,
   SEASON_VIDEOS: `${BILI_API_BASE}/x/polymer/web-space/seasons_archives_list`,
 } as const;
 
@@ -164,10 +164,21 @@ export class BilibiliSpaceProvider {
 
   async getUserSeasons(
     mid: number,
+    page = 1,
+    pageSize = 20,
     cookieString?: string,
   ): Promise<UgcSeasonSummary[]> {
+    const params = await this.signWbi(
+      {
+        mid,
+        page_num: page,
+        page_size: pageSize,
+      },
+      cookieString,
+    );
+
     const response = await this.webClient.requestJson<SeasonsListResponse>(
-      `${API.USER_SEASONS}?mid=${mid}&page_num=1&page_size=50`,
+      `${API.USER_SEASONS}?${toQueryString(params)}`,
       cookieString,
     );
 

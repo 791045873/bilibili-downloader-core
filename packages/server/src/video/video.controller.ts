@@ -17,7 +17,7 @@ export class VideoController {
   }
 
   /**
-   * 代理 B站封面图片（绕过防盗链 Referer 检查）
+   * 代理 B站静态图片（封面、头像等，绕过防盗链 Referer 检查）
    */
   @Get("/cover")
   async getCover(@Query("url") url: string, @Res() res: Response) {
@@ -26,7 +26,7 @@ export class VideoController {
       return;
     }
     try {
-      const { data, contentType } = await this.service.proxyCoverImage(url);
+      const { data, contentType } = await this.service.proxyBilibiliImage(url);
       res.setHeader("Content-Type", contentType);
       res.setHeader("Cache-Control", "public, max-age=86400");
       res.send(data);

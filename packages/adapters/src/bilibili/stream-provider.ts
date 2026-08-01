@@ -48,9 +48,7 @@ const DEFAULT_FNVAL = 4048;
 export class BilibiliStreamProvider implements StreamProviderPort {
   private wbiKeys: WbiKeys | null = null;
 
-  constructor(
-    private readonly webClient: BilibiliWebClient,
-  ) {}
+  constructor(private readonly webClient: BilibiliWebClient) {}
 
   /**
    * 初始化 WBI Keys (从 Nav API 获取)
@@ -84,7 +82,7 @@ export class BilibiliStreamProvider implements StreamProviderPort {
 
     const v = data.data;
     const publishTime =
-      v.pubdate ?? v.ctime
+      (v.pubdate ?? v.ctime)
         ? new Date((v.pubdate ?? v.ctime!) * 1000).toISOString().split("T")[0]
         : "";
 
@@ -196,7 +194,7 @@ export class BilibiliStreamProvider implements StreamProviderPort {
     cookieString?: string,
   ): Promise<BiliPlayUrlResponse> {
     const response = await this.getVideoPlayUrl(input, cookieString);
-    if(response.code === -404) {
+    if (response.code === -404 || response.code === -400) {
       return this.getVideoPlayUrlWebPage(input, cookieString);
     }
     return response;
@@ -309,8 +307,7 @@ export class BilibiliStreamProvider implements StreamProviderPort {
   ): MediaStreamInfo {
     const url = stream.baseUrl || stream.base_url || "";
     const mimeType = stream.mimeType || stream.mime_type || "";
-    const format =
-      mimeType.split("/")[1] ?? (type === "video" ? "m4s" : "m4a");
+    const format = mimeType.split("/")[1] ?? (type === "video" ? "m4s" : "m4a");
 
     return {
       url,
@@ -335,9 +332,7 @@ export class BilibiliStreamProvider implements StreamProviderPort {
 
 function toQueryString(params: Record<string, string>): string {
   return Object.entries(params)
-    .map(
-      ([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`,
-    )
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join("&");
 }
 

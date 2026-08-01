@@ -1,17 +1,22 @@
 import {
+  BadGatewayException,
   BadRequestException,
   Body,
   ConflictException,
   Controller,
+  Logger,
   NotFoundException,
   Post,
 } from "@nestjs/common";
 import { isAbsolute, join } from "node:path";
 import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
 import type { LlmConfig } from "@bilibili-downloader/adapters/llm";
+import type { VideoPage } from "@bilibili-downloader/core/ports";
 import { DefaultScreenshotSourceResolver } from "./screenshot-source-resolver.js";
 import { DatabaseService } from "../database/database.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
+import { DownloadScheduler } from "../download/download-scheduler.js";
+import { DownloadService } from "../download/download.service.js";
 
 interface AnalysisRequest {
   /** LLM 分析用视频文件绝对路径（低分辨率或唯一可用分辨率） */
@@ -33,10 +38,14 @@ interface AnalysisRequest {
 
 @Controller("api/analysis")
 export class AnalysisController {
+  private readonly logger = new Logger(AnalysisController.name);
+
   constructor(
     private readonly screenshotSourceResolver: DefaultScreenshotSourceResolver,
     private readonly analysisTriggerService: AnalysisTriggerService,
     private readonly databaseService: DatabaseService,
+    private readonly downloadScheduler: DownloadScheduler,
+    private readonly downloadService: DownloadService,
   ) {}
 
   @Post("/run")
@@ -69,7 +78,13 @@ export class AnalysisController {
       body.cid,
     );
     if (!task) {
-      throw new NotFoundException("任务不存在");
+      const created = await this.createOneClickAiSummaryTask(
+        body.bvid,
+        body.cid,
+      );
+      return {
+        message: `${created.message}，下载完成后将自动触发 AI 总结`,
+      };
     }
     if (task.autoSummary) {
       throw new ConflictException("该任务已开启 AI 总结");
@@ -82,6 +97,99 @@ export class AnalysisController {
 
     await this.analysisTriggerService.trigger(task.id!);
     return { message: "AI 总结触发中" };
+  }
+
+  private async createOneClickAiSummaryTask(bvid: string, cid: number) {
+    try {
+      const [resolvedVideo, parsed] = await Promise.all([
+        this.downloadService.getVideoInfo(bvid),
+        this.downloadService.parseVideo(bvid, cid),
+      ]);
+
+      const highestQuality = parsed.videoQualityList[0];
+      const lowestQuality = parsed.videoQualityList.at(-1);
+      if (!highestQuality) {
+        throw new Error("无法获取可用清晰度");
+      }
+
+      const title = this.buildTaskTitle(
+        resolvedVideo.videoInfo.title,
+        resolvedVideo.videoInfo.pages,
+        cid,
+      );
+
+      const created = await this.downloadScheduler.createDownload({
+        bvid,
+        cid,
+        title,
+        quality: highestQuality.id,
+        codec: highestQuality.codecList[0],
+        autoSummary: true,
+      });
+
+      if (
+        lowestQuality &&
+        parsed.videoQualityList.length > 1 &&
+        lowestQuality.id !== highestQuality.id
+      ) {
+        this.scheduleInitialLowResDownload({
+          taskId: created.id,
+          bvid,
+          cid,
+          title,
+          quality: lowestQuality.id,
+        });
+      }
+
+      return created;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BadGatewayException(`创建 AI 总结下载任务失败: ${msg}`);
+    }
+  }
+
+  private scheduleInitialLowResDownload(input: {
+    taskId: number;
+    bvid: string;
+    cid: number;
+    title: string;
+    quality: number;
+  }): void {
+    try {
+      const analysisSubTaskId = this.databaseService.insertAnalysisSubTask({
+        taskId: input.taskId,
+        bvid: input.bvid,
+        cid: input.cid,
+        quality: input.quality,
+        status: "created",
+        createdAt: new Date().toISOString(),
+      });
+
+      this.downloadScheduler.scheduleLowResDownload({
+        taskId: input.taskId,
+        analysisSubTaskId,
+        bvid: input.bvid,
+        cid: input.cid,
+        title: input.title,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `预创建低清分析子任务失败: task=${input.taskId}, ${msg}`,
+      );
+    }
+  }
+
+  private buildTaskTitle(
+    mainTitle: string,
+    pages: VideoPage[],
+    cid: number,
+  ): string {
+    const matchedPage = pages.find((page) => page.cid === cid);
+    if (!matchedPage || pages.length <= 1) {
+      return mainTitle;
+    }
+    return `${mainTitle} P${matchedPage.page}`;
   }
 
   private getLlmConfig(): LlmConfig {

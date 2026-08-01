@@ -26,17 +26,17 @@ async function bootstrap() {
   }
 
   console.log(`   当前模式: 本地开发（前端需单独运行 Vite）`);
-  console.log("   前端开发地址: 请查看 Vite 启动日志（默认 http://localhost:5173）\n");
+  console.log(
+    "   前端开发地址: 请查看 Vite 启动日志（默认 http://localhost:5173）\n",
+  );
 }
 
 bootstrap().catch((err: unknown) => {
-  if (
-    err instanceof Error &&
-    "code" in err &&
-    err.code === "EADDRINUSE"
-  ) {
+  if (err instanceof Error && "code" in err && err.code === "EADDRINUSE") {
     console.error(`端口 ${PORT} 已被占用，后端服务未能启动。`);
-    console.error("如果你在本地联调，请确认是否已有旧的 server 进程仍在运行。\n");
+    console.error(
+      "如果你在本地联调，请确认是否已有旧的 server 进程仍在运行。\n",
+    );
     process.exit(1);
   }
 
