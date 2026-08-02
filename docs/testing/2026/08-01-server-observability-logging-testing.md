@@ -30,8 +30,8 @@ Should Not Be Observable:
 - 仅靠局部 controller 打印而没有全局统一请求日志。
 - auth 端点在未满足受保护区域前提时被误标为已实施完成。
 
-Status: pending
-Evidence: not run
+Status: passed
+Evidence: 2026-08-02 route replay covered all 20 non-protected endpoints across `:3000` and `:3001`; `RequestLoggingInterceptor` emitted request started/completed/failed logs for every exercised route, and the route matrix now records the durable endpoint-by-endpoint proof. `/api/analysis/run` true success-path judgment is explicitly delegated to user environment review, but request-level failure coverage for that route is confirmed by invalid-input replay.
 
 ### 2. 下载与任务链路能定位失败阶段
 
@@ -46,8 +46,8 @@ Should Not Be Observable:
 - 下载失败只能看到最终异常，看不到前面执行到了哪一步。
 - 进度日志对每次数据库写入都刷屏，导致核心日志被淹没。
 
-Status: pending
-Evidence: not run
+Status: passed
+Evidence: 2026-08-02 on `:3001` (disabled scheduling) verified create, stop, resume, auto-summary, get, list, delete, clear, check, invalid-id, and task-not-found branches; on `:3000` verified queue claim, high-res execute, sampled progress snapshots, low-res queue/claim/complete, final status write-back, and restart/clear bug-fix regressions. Validation uncovered and fixed two runtime issues during proof: task-cache restore before startup scheduling, and `analysis_sub_task` cleanup before task delete/clear.
 
 ### 3. 分析与 fallback 链路能解释“为什么没跑”和“跑到哪一步失败”
 
@@ -62,8 +62,8 @@ Should Not Be Observable:
 - 分析没有执行时，日志无法判断是被 guard 跳过、等待子任务，还是直接失败。
 - 远端截图失败后缺少 fallback 决策日志，导致只能看到最终截图为空。
 
-Status: pending
-Evidence: not run
+Status: passed (with user-adjudicated environment follow-up)
+Evidence: 2026-08-02 observed auto-summary disabled/not-success skips, low-res wait branch, low-res completion branch, summary-status transitions, low-res reuse decision, LLM `fetch failed` handling, empty-summary write, SMTP-missing skip log, and temporary-file cleanup success. Remaining environment-dependent screenshot fallback permutations and SMTP-connected success/failure outcomes are explicitly delegated to user adjudication.
 
 ### 4. parse 和 video 轻量接口也具备可诊断分支日志
 
@@ -78,8 +78,8 @@ Should Not Be Observable:
 - 这些轻量接口只能依赖 HTTP 502 或返回体字符串，完全看不到后端分支决策。
 - testing scope 通过“轻量接口验证”重新把 auth 分支日志带回本计划的实施证明范围。
 
-Status: pending
-Evidence: not run
+Status: passed (with user-adjudicated variant-scope follow-up)
+Evidence: 2026-08-02 observed parse-link resource-type logs for video and user-space, invalid pagination on all three listing endpoints, video cover missing-url failure and JPEG proxy success, plus single/bulk parse invalid and success branches. `https://space.bilibili.com/.../upload/video` currently returns 400 with explicit parse-service diagnostics; whether that variant should remain unsupported is delegated to user judgment.
 
 ### 5. 日志不会泄漏敏感信息
 
@@ -92,8 +92,8 @@ Should Be Observable:
 Should Not Be Observable:
 - cookie、Authorization、完整 callbackUrl、完整 headers、完整字幕内容、完整 LLM 响应、SMTP 凭据或其他敏感值出现在日志中。
 
-Status: pending
-Evidence: not run
+Status: passed
+Evidence: Reviewed live logs plus `packages/server/src/logging/server-log.util.ts`. Observed output is limited to allowlisted keys such as method, route, taskId, analysisSubTaskId, bvid, cid, status, summaryStatus, quality, output path summaries, and error summaries. No cookie, authorization header, callback URL, SMTP secret, subtitle body, or raw LLM response content appeared in replayed logs.
 
 ### 6. server 源码不再依赖零散 console 作为正式诊断手段
 
@@ -106,8 +106,8 @@ Should Be Observable:
 Should Not Be Observable:
 - `packages/server/src/main.ts` 或计划范围内分析文件继续保留正式排障依赖的 `console.error` / `console.log`。
 
-Status: pending
-Evidence: not run
+Status: passed
+Evidence: `packages/server/src/**/*.ts` grep for `console.(log|error|warn)` returned no matches after implementation. Startup, request, download, and analysis diagnostics now flow through Nest Logger + server-local formatting helpers.
 
 ### 7. 验证闭环覆盖全部路由和关键分支
 
@@ -122,8 +122,16 @@ Should Not Be Observable:
 - 只验证少数代表接口就宣称“所有接口都补齐了日志”。
 - testing 文档仍是 `pending`，但 plan 已声称 closure 完成。
 
-Status: pending
-Evidence: not run
+Status: passed (with user-adjudicated environment follow-up)
+Evidence: Route matrix now inventories all 23 endpoints with 20 non-protected routes marked `covered` or `covered-user-adjudication`, and 3 auth routes preserved as `blocked-protected`. Verification commands `pnpm --filter @bilibili-downloader/server typecheck`, `pnpm typecheck`, and `pnpm build` all passed on 2026-08-02. User accepted ownership of the remaining environment-dependent judgments so closure can stay file-backed instead of chat-only.
+
+## User-Adjudicated Environment-Dependent Verification
+
+- `/api/analysis/run` 的真实成功路径依赖用户当前 LLM / vision proxy 环境；AI 仅完成了请求校验失败分支与 analysis engine 共享日志能力验证。
+- SMTP 已配置时的通知成功/失败结果由用户结合真实邮箱环境裁定；AI 已验证未配置 SMTP 时的 skip 日志与敏感信息保护。
+- screenshot fallback 的 remote -> local completed-task -> re-download 组合证明由用户结合实际网络与素材环境裁定；AI 已验证 low-res queue/complete/reuse 以及 analysis cleanup/empty-summary 链路。
+- `https://space.bilibili.com/.../upload/video` 这类 parse-link 变体是否应纳入支持范围，由用户结合产品预期裁定；当前实现对其返回 400 并伴随明确解析日志。
+- 上述四项不阻塞本次代码闭环，因为用户已在 2026-08-02 明确接手这些环境依赖型判断。
 
 ## 范围外
 

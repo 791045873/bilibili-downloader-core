@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import nodemailer, { type Transporter } from "nodemailer";
+import { createLogMessage } from "../logging/server-log.util.js";
 
 export interface SummaryNotificationInput {
   title: string;
@@ -44,6 +45,15 @@ export class NotificationService {
     input: SummaryNotificationInput,
   ): Promise<void> {
     if (!this.transporter || !this.notificationEmail || !this.smtpUser) {
+      this.logger.warn(
+        createLogMessage(
+          "Skipping summary notification because SMTP is not configured",
+          {
+            title: input.title,
+            success: input.success,
+          },
+        ),
+      );
       return;
     }
 
@@ -72,9 +82,25 @@ export class NotificationService {
         subject,
         text: lines.join("\n"),
       });
+      this.logger.log(
+        createLogMessage("Summary notification sent", {
+          title: input.title,
+          success: input.success,
+          summaryPath: input.markdownPath,
+          sourceType: "smtp",
+        }),
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Send notification failed: ${msg}`);
+      this.logger.error(
+        createLogMessage("Summary notification failed", {
+          title: input.title,
+          success: input.success,
+          error: msg,
+          sourceType: "smtp",
+        }),
+        err instanceof Error ? err.stack : undefined,
+      );
     }
   }
 

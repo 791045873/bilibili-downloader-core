@@ -8,6 +8,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
+import { Logger } from "@nestjs/common";
 import {
   parseSrtFile,
   type SrtEntry,
@@ -20,6 +21,7 @@ import {
 } from "@bilibili-downloader/adapters/llm";
 import { generateMarkdown, type DocumentInput } from "./document-generator.js";
 import type { ScreenshotSourceResolver } from "./screenshot-source-resolver.js";
+import { createLogMessage } from "../logging/server-log.util.js";
 
 function formatSubtitleEntry(entry: SrtEntry): string {
   return `[${entry.index}] ${entry.text}`;
@@ -99,6 +101,7 @@ function buildAnalysisSystemPrompt(): string {
 }
 
 export class AnalysisEngine {
+  private readonly logger = new Logger(AnalysisEngine.name);
   private readonly llmClient: QwenClient;
   private readonly screenshotter: FfmpegScreenshot;
   private readonly llmConfig: LlmConfig;
@@ -116,6 +119,19 @@ export class AnalysisEngine {
   }
 
   async analyze(input: AnalysisInput): Promise<AnalysisOutput> {
+    this.logger.log(
+      createLogMessage("Analysis engine started", {
+        bvid: input.metadata.bvid,
+        cid: input.metadata.cid,
+        videoPath: input.videoPath,
+        subtitlePath: input.subtitlePath,
+        summaryDir: input.summaryDir,
+        hasSubtitle: Boolean(input.subtitlePath),
+        hasScreenshotVideoPath: Boolean(input.screenshotVideoPath),
+        sourceType: input.metadata.type,
+      }),
+    );
+
     await mkdir(input.summaryDir, { recursive: true });
     const screenshotsDir = join(input.summaryDir, "screenshots");
     await mkdir(screenshotsDir, { recursive: true });
@@ -127,6 +143,13 @@ export class AnalysisEngine {
     if (input.subtitlePath !== undefined && existsSync(input.subtitlePath)) {
       const srtEntries = await parseSrtFile(input.subtitlePath);
       fullSubtitleText = srtEntries.map(formatSubtitleEntry).join("\n");
+      this.logger.log(
+        createLogMessage("Loaded subtitle file for analysis", {
+          bvid: input.metadata.bvid,
+          cid: input.metadata.cid,
+          subtitlePath: input.subtitlePath,
+        }),
+      );
     }
 
     if (!this.llmClient.usesVisionProxy()) {
@@ -158,12 +181,28 @@ export class AnalysisEngine {
         ],
       })) as unknown as SubtitleAnalysis;
     } catch (err) {
-      console.error(`LLM 视频和字幕分析失败: ${(err as Error).message}`);
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        createLogMessage("LLM multimodal analysis failed", {
+          bvid: input.metadata.bvid,
+          cid: input.metadata.cid,
+          videoPath: input.videoPath,
+          error: message,
+        }),
+        err instanceof Error ? err.stack : undefined,
+      );
       return await this.writeEmptySummary(input, screenshots);
     }
 
     const summaryItems = normalizeSummaryItems(analysis);
     if (summaryItems.length === 0) {
+      this.logger.warn(
+        createLogMessage("Analysis returned no summary items", {
+          bvid: input.metadata.bvid,
+          cid: input.metadata.cid,
+          emptySummary: true,
+        }),
+      );
       return await this.writeEmptySummary(input, screenshots);
     }
 
@@ -177,6 +216,15 @@ export class AnalysisEngine {
     const localFallbackPath = input.screenshotVideoPath ?? input.videoPath;
     let useLocalFallbackForRest = false;
 
+    this.logger.log(
+      createLogMessage("Resolved screenshot source for analysis", {
+        bvid: input.metadata.bvid,
+        cid: input.metadata.cid,
+        videoPath: resolvedSource.source,
+        sourceType: resolvedSource.sourceType,
+      }),
+    );
+
     const processedSegments: DocumentInput["segments"] = [];
 
     // 3. 按 LLM 返回的精确时间戳直接截图，不再做二次多模态选图
@@ -185,8 +233,15 @@ export class AnalysisEngine {
       const seconds = transTimestampToSeconds(item.timestamp);
 
       if (seconds === undefined) {
-        console.error(
-          `段落 ${si} 返回了无效时间戳，跳过截图: ${item.timestamp}`,
+        this.logger.warn(
+          createLogMessage(
+            `Skipping screenshot for summary segment ${si} due to invalid timestamp`,
+            {
+              bvid: input.metadata.bvid,
+              cid: input.metadata.cid,
+              reason: item.timestamp,
+            },
+          ),
         );
         continue;
       }
@@ -215,6 +270,19 @@ export class AnalysisEngine {
           resolvedSource.sourceType === "remote"
         ) {
           useLocalFallbackForRest = true;
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.warn(
+            createLogMessage(
+              `Remote screenshot capture failed for summary segment ${si}, switching to local fallback`,
+              {
+                bvid: input.metadata.bvid,
+                cid: input.metadata.cid,
+                videoPath: localFallbackPath,
+                sourceType: "local",
+                error: message,
+              },
+            ),
+          );
           try {
             const retryResult = await this.screenshotter.takeScreenshots({
               videoPath: localFallbackPath,
@@ -225,12 +293,36 @@ export class AnalysisEngine {
             segmentScreenshots = retryResult.outputFiles;
             screenshots.push(...segmentScreenshots);
           } catch (retryErr) {
-            console.error(
-              `段落 ${si} 远端与本地截图均失败: ${(retryErr as Error).message}`,
+            const retryMessage =
+              retryErr instanceof Error ? retryErr.message : String(retryErr);
+            this.logger.error(
+              createLogMessage(
+                `Remote and local screenshot capture both failed for summary segment ${si}`,
+                {
+                  bvid: input.metadata.bvid,
+                  cid: input.metadata.cid,
+                  error: retryMessage,
+                },
+              ),
+              retryErr instanceof Error ? retryErr.stack : undefined,
             );
           }
         }
-        console.error(`段落 ${si} 截图失败: ${(err as Error).message}`);
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          createLogMessage(
+            `Screenshot capture failed for summary segment ${si}`,
+            {
+              bvid: input.metadata.bvid,
+              cid: input.metadata.cid,
+              sourceType: useLocalFallbackForRest
+                ? "local"
+                : resolvedSource.sourceType,
+              error: message,
+            },
+          ),
+          err instanceof Error ? err.stack : undefined,
+        );
       }
 
       processedSegments.push({
@@ -261,6 +353,16 @@ export class AnalysisEngine {
       `${input.videoTitle}-summary.md`,
     );
     await writeFile(summaryPath, doc, "utf-8");
+
+    this.logger.log(
+      createLogMessage("Analysis summary written", {
+        bvid: input.metadata.bvid,
+        cid: input.metadata.cid,
+        summaryPath,
+        segmentCount: processedSegments.length,
+        emptySummary: processedSegments.length === 0,
+      }),
+    );
 
     return {
       summaryPath,
@@ -304,6 +406,14 @@ export class AnalysisEngine {
       `${input.videoTitle}-summary.md`,
     );
     await writeFile(summaryPath, doc, "utf-8");
+    this.logger.warn(
+      createLogMessage("Wrote empty analysis summary", {
+        bvid: input.metadata.bvid,
+        cid: input.metadata.cid,
+        summaryPath,
+        emptySummary: true,
+      }),
+    );
     return {
       summaryPath,
       screenshotFiles: existingScreenshots,

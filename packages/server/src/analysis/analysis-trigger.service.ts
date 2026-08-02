@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
-import isNil from "lodash";
+import isNil from "lodash/isNil.js";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
@@ -12,6 +12,7 @@ import {
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { DownloadService } from "../download/download.service.js";
 import { NotificationService } from "../notification/notification.service.js";
+import { createLogMessage } from "../logging/server-log.util.js";
 
 @Injectable()
 export class AnalysisTriggerService implements OnModuleInit {
@@ -35,8 +36,13 @@ export class AnalysisTriggerService implements OnModuleInit {
   onModuleInit(): void {
     this.downloadScheduler.onAnalysisTrigger = (taskId: number) => {
       this.trigger(taskId).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
         this.logger.error(
-          `自动触发分析失败: task=${taskId}, ${(err as Error).message}`,
+          createLogMessage("Automatic analysis trigger failed", {
+            taskId,
+            error: message,
+          }),
+          err instanceof Error ? err.stack : undefined,
         );
       });
     };
@@ -47,6 +53,14 @@ export class AnalysisTriggerService implements OnModuleInit {
       result,
     ) => {
       if (result.success) {
+        this.logger.log(
+          createLogMessage("Low resolution analysis download finished", {
+            taskId,
+            analysisSubTaskId,
+            outputFile: result.outputFile,
+            quality: result.quality,
+          }),
+        );
         this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
           status: "completed",
           outputFile: result.outputFile,
@@ -60,11 +74,27 @@ export class AnalysisTriggerService implements OnModuleInit {
           });
         }
         this.trigger(taskId).catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
           this.logger.error(
-            `低清下载完成后重新触发分析失败: task=${taskId}, ${(err as Error).message}`,
+            createLogMessage(
+              "Analysis retrigger after low resolution download failed",
+              {
+                taskId,
+                analysisSubTaskId,
+                error: message,
+              },
+            ),
+            err instanceof Error ? err.stack : undefined,
           );
         });
       } else {
+        this.logger.error(
+          createLogMessage("Low resolution analysis download failed", {
+            taskId,
+            analysisSubTaskId,
+            error: result.error,
+          }),
+        );
         this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
           status: "failed",
           errorMessage: result.error,
@@ -83,10 +113,52 @@ export class AnalysisTriggerService implements OnModuleInit {
   }
 
   async trigger(taskId: number): Promise<void> {
+    this.logger.log(
+      createLogMessage("Analysis trigger started", {
+        taskId,
+      }),
+    );
+
     const task = this.db.getTaskById(taskId);
-    if (!task) return;
-    if (!task.autoSummary) return;
-    if (task.status !== TaskStatus.Success) return;
+    if (!task) {
+      this.logger.warn(
+        createLogMessage(
+          "Analysis trigger skipped because task was not found",
+          {
+            taskId,
+          },
+        ),
+      );
+      return;
+    }
+    if (!task.autoSummary) {
+      this.logger.log(
+        createLogMessage(
+          "Analysis trigger skipped because auto summary is disabled",
+          {
+            taskId,
+            bvid: task.bvid,
+            cid: task.cid,
+            status: task.status,
+          },
+        ),
+      );
+      return;
+    }
+    if (task.status !== TaskStatus.Success) {
+      this.logger.log(
+        createLogMessage(
+          "Analysis trigger skipped because download task is not successful",
+          {
+            taskId,
+            bvid: task.bvid,
+            cid: task.cid,
+            status: task.status,
+          },
+        ),
+      );
+      return;
+    }
 
     this.db.updateTaskStatus(taskId, {
       status: task.status,
@@ -98,11 +170,35 @@ export class AnalysisTriggerService implements OnModuleInit {
       .find((s) => s.status !== "failed");
 
     if (lowResSubTask && lowResSubTask.status !== "completed") {
+      this.logger.log(
+        createLogMessage(
+          "Analysis trigger waiting for low resolution sub task",
+          {
+            taskId,
+            analysisSubTaskId: lowResSubTask.id,
+            status: lowResSubTask.status,
+          },
+        ),
+      );
       return;
     }
-    const a = isNil(task.outputFile);
-    const b = isNil(task.bvid);
+
+    const effectiveTask = this.resolveTaskForAnalysis(taskId, task);
+
+    const a = isNil(effectiveTask.outputFile);
+    const b = isNil(effectiveTask.bvid);
     if (a || b) {
+      this.logger.error(
+        createLogMessage(
+          "Analysis trigger failed because required task fields are missing",
+          {
+            taskId,
+            bvid: effectiveTask.bvid,
+            cid: effectiveTask.cid,
+            reason: "missing-analysis-fields",
+          },
+        ),
+      );
       this.db.updateTaskStatus(taskId, {
         status: task.status,
         summaryStatus: "failed",
@@ -111,17 +207,38 @@ export class AnalysisTriggerService implements OnModuleInit {
       return;
     }
 
-    const highResPath = task.outputFile;
-    const taskBvid = task.bvid;
-    const taskCid = task.cid;
+    const highResPath = effectiveTask.outputFile;
+    const taskBvid = effectiveTask.bvid;
+    const taskCid = effectiveTask.cid;
     let llmVideoPath = highResPath;
     const screenshotVideoPath = highResPath;
 
-    const reuseHighRes = await this.shouldReuseDownloadedVideo(task);
+    const reuseDecision = await this.shouldReuseDownloadedVideo(effectiveTask);
+    const reuseHighRes = reuseDecision.reuseHighRes;
+
+    this.logger.log(
+      createLogMessage("Analysis video source decision made", {
+        taskId,
+        bvid: taskBvid,
+        cid: taskCid,
+        reuseHighRes,
+        downloadedQuality: reuseDecision.downloadedQuality,
+        availableQualityCount: reuseDecision.availableQualityCount,
+      }),
+    );
 
     if (!reuseHighRes) {
       if (lowResSubTask?.status === "completed" && lowResSubTask.outputFile) {
         llmVideoPath = lowResSubTask.outputFile;
+        this.logger.log(
+          createLogMessage("Analysis reusing completed low resolution video", {
+            taskId,
+            analysisSubTaskId: lowResSubTask.id,
+            bvid: taskBvid,
+            cid: taskCid,
+            outputFile: lowResSubTask.outputFile,
+          }),
+        );
       } else {
         await mkdir(this.llmVideoDir, { recursive: true });
         const subTaskId = this.db.insertAnalysisSubTask({
@@ -139,6 +256,15 @@ export class AnalysisTriggerService implements OnModuleInit {
           cid: taskCid!,
           title: task.title ?? `${taskBvid}-${taskCid}`,
         });
+        this.logger.log(
+          createLogMessage("Analysis scheduled low resolution video download", {
+            taskId,
+            analysisSubTaskId: subTaskId,
+            bvid: taskBvid,
+            cid: taskCid,
+            outputPath: this.llmVideoDir,
+          }),
+        );
         return;
       }
     }
@@ -164,6 +290,16 @@ export class AnalysisTriggerService implements OnModuleInit {
 
     try {
       const result = await engine.analyze(input);
+      this.logger.log(
+        createLogMessage("Analysis completed successfully", {
+          taskId,
+          bvid: taskBvid,
+          cid: taskCid,
+          summaryPath: result.summaryPath,
+          segmentCount: result.segmentCount,
+          emptySummary: result.emptySummary,
+        }),
+      );
       this.db.updateTaskStatus(taskId, {
         status: task.status,
         summaryStatus: "completed",
@@ -177,6 +313,15 @@ export class AnalysisTriggerService implements OnModuleInit {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        createLogMessage("Analysis failed", {
+          taskId,
+          bvid: taskBvid,
+          cid: taskCid,
+          error: msg,
+        }),
+        err instanceof Error ? err.stack : undefined,
+      );
       this.db.updateTaskStatus(taskId, {
         status: task.status,
         summaryStatus: "failed",
@@ -190,21 +335,95 @@ export class AnalysisTriggerService implements OnModuleInit {
       });
     } finally {
       if (llmVideoPath && llmVideoPath.startsWith(this.llmVideoDir)) {
-        await rm(llmVideoPath, { force: true }).catch(() => undefined);
+        await rm(llmVideoPath, { force: true })
+          .then(() => {
+            this.logger.log(
+              createLogMessage("Removed temporary analysis video", {
+                taskId,
+                bvid: taskBvid,
+                cid: taskCid,
+                videoPath: llmVideoPath,
+                cleanup: "removed",
+              }),
+            );
+          })
+          .catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            this.logger.warn(
+              createLogMessage("Failed to remove temporary analysis video", {
+                taskId,
+                bvid: taskBvid,
+                cid: taskCid,
+                videoPath: llmVideoPath,
+                cleanup: "remove-failed",
+                error: message,
+              }),
+            );
+          });
       }
     }
   }
 
-  private async shouldReuseDownloadedVideo(task: TaskRecord): Promise<boolean> {
-    if (!task.bvid || !task.cid) return true;
+  private resolveTaskForAnalysis(taskId: number, task: TaskRecord): TaskRecord {
+    const latestTask = this.db.getTaskById(taskId) ?? task;
+    if (!isNil(latestTask.outputFile) && !isNil(latestTask.bvid)) {
+      return latestTask;
+    }
+
+    if (!task.bvid || !task.cid) {
+      return latestTask;
+    }
+
+    const completedTask =
+      this.db.findCompletedTaskByBvidAndCid(task.bvid, task.cid) ?? latestTask;
+
+    if (
+      completedTask.id !== latestTask.id ||
+      completedTask.outputFile !== latestTask.outputFile
+    ) {
+      this.logger.warn(
+        createLogMessage(
+          "Analysis trigger reloaded task fields from latest completed task",
+          {
+            taskId,
+            bvid: completedTask.bvid,
+            cid: completedTask.cid,
+            outputFile: completedTask.outputFile,
+            status: completedTask.status,
+          },
+        ),
+      );
+    }
+
+    return completedTask;
+  }
+
+  private async shouldReuseDownloadedVideo(task: TaskRecord): Promise<{
+    reuseHighRes: boolean;
+    downloadedQuality?: number;
+    availableQualityCount: number;
+  }> {
+    if (!task.bvid || !task.cid) {
+      return { reuseHighRes: true, availableQualityCount: 0 };
+    }
     const parsed = await this.downloadService.parseVideo(task.bvid, task.cid);
     const qualityIds = parsed.videoQualityList
       .map((q) => q.id)
       .sort((a, b) => a - b);
-    if (qualityIds.length <= 1) return true;
+    if (qualityIds.length <= 1) {
+      return {
+        reuseHighRes: true,
+        downloadedQuality: task.quality,
+        availableQualityCount: qualityIds.length,
+      };
+    }
 
     const downloadedQuality = task.quality ?? qualityIds[qualityIds.length - 1];
-    return downloadedQuality <= qualityIds[0];
+    return {
+      reuseHighRes: downloadedQuality <= qualityIds[0],
+      downloadedQuality,
+      availableQualityCount: qualityIds.length,
+    };
   }
 
   private resolveSummaryDir(task: TaskRecord): string {

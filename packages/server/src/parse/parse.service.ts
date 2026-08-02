@@ -2,6 +2,7 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
+  Logger,
   OnModuleInit,
 } from "@nestjs/common";
 import {
@@ -23,9 +24,11 @@ import {
   type UserSpaceResult,
 } from "@bilibili-downloader/core/ports";
 import { join } from "node:path";
+import { createLogMessage } from "../logging/server-log.util.js";
 
 @Injectable()
 export class ParseService implements OnModuleInit {
+  private readonly logger = new Logger(ParseService.name);
   private readonly outputDir: string;
   private readonly cookieFile: string;
 
@@ -60,10 +63,26 @@ export class ParseService implements OnModuleInit {
       this.streamProvider,
       this.authProvider,
     );
+
+    this.logger.log(
+      createLogMessage("Parse service initialized", {
+        outputPath: this.outputDir,
+        fileExists: Boolean(this.cookieString),
+      }),
+    );
   }
 
   async parseLink(input: string): Promise<ParseLinkResult> {
     const parseResult = await this.resourceParser.parse(input);
+    this.logger.log(
+      createLogMessage("Resolved parse-link resource type", {
+        input,
+        type: parseResult.type,
+        mid: "mid" in parseResult ? parseResult.mid : undefined,
+        seasonId: "seasonId" in parseResult ? parseResult.seasonId : undefined,
+        mediaId: "mediaId" in parseResult ? parseResult.mediaId : undefined,
+      }),
+    );
 
     switch (parseResult.type) {
       case ResourceType.Video: {
@@ -183,6 +202,13 @@ export class ParseService implements OnModuleInit {
     page: number,
     pageSize: number,
   ): Promise<PaginatedVideos> {
+    this.logger.log(
+      createLogMessage("Fetching user space videos", {
+        mid,
+        page,
+        pageSize,
+      }),
+    );
     return this.spaceProvider.getUserVideos(
       mid,
       page,
@@ -196,6 +222,13 @@ export class ParseService implements OnModuleInit {
     page: number,
     pageSize: number,
   ): Promise<PaginatedVideos> {
+    this.logger.log(
+      createLogMessage("Fetching UGC season videos", {
+        seasonId,
+        page,
+        pageSize,
+      }),
+    );
     const pageResult = await this.spaceProvider.getUgcSeasonVideos(
       seasonId,
       page,
@@ -216,6 +249,13 @@ export class ParseService implements OnModuleInit {
     page: number,
     pageSize: number,
   ): Promise<PaginatedVideos> {
+    this.logger.log(
+      createLogMessage("Fetching favorites videos", {
+        mediaId,
+        page,
+        pageSize,
+      }),
+    );
     const [info, pageResult] = await Promise.all([
       this.favoritesProvider.getFavoritesInfo(mediaId, this.cookieString),
       this.favoritesProvider.getFavoritesVideos(
@@ -243,13 +283,29 @@ export class ParseService implements OnModuleInit {
 
   mapApiError(err: unknown): never {
     if (err instanceof BadRequestException) {
+      this.logger.warn(
+        createLogMessage("Parse service rejected request", {
+          error: err.message,
+        }),
+      );
       throw err;
     }
     if (err instanceof ResourceParseError) {
+      this.logger.warn(
+        createLogMessage("Parse service rejected unsupported resource", {
+          error: err.message,
+        }),
+      );
       throw new BadRequestException(err.message);
     }
 
     const msg = err instanceof Error ? err.message : String(err);
+    this.logger.error(
+      createLogMessage("Parse service upstream request failed", {
+        error: msg,
+      }),
+      err instanceof Error ? err.stack : undefined,
+    );
     throw new BadGatewayException(msg);
   }
 

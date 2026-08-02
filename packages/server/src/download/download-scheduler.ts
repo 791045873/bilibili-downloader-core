@@ -3,6 +3,7 @@ import { DownloadService } from "./download.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import type { DownloadDto } from "./download.dto.js";
+import { createLogMessage } from "../logging/server-log.util.js";
 
 export interface LowResDownloadJob {
   taskId: number;
@@ -51,18 +52,29 @@ export class DownloadScheduler implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     // 恢复：将上次中断的 downloading 任务标记为 failed
     const tasks = this.db.getTasks();
+    let recoveredTaskCount = 0;
     for (const t of tasks) {
       if (t.status === TaskStatus.Downloading) {
         this.db.updateTaskStatus(t.id!, {
           status: TaskStatus.Failed,
           errorMessage: "服务重启，任务中断",
         });
+        recoveredTaskCount += 1;
       }
     }
+
+    this.downloadService.restoreTaskCacheFromDatabase();
 
     // 注册回调：下载完成时自动调度下一个
     this.downloadService.onTaskFinished = (taskId: number) => {
       this.runningSet.delete(taskId);
+      this.logger.log(
+        createLogMessage("High resolution task slot released", {
+          taskId,
+          runningCount: this.runningSet.size,
+          maxConcurrency: this.maxConcurrency,
+        }),
+      );
       this.tryScheduleNext();
       this.onAnalysisTrigger?.(taskId);
     };
@@ -70,7 +82,12 @@ export class DownloadScheduler implements OnModuleInit {
     // 启动调度
     this.tryScheduleNext();
     this.logger.log(
-      `下载调度器已启动，高分辨率并发: ${this.maxConcurrency}，低分辨率并发: ${this.maxConcurrentLowRes}`,
+      createLogMessage("Download scheduler started", {
+        maxConcurrency: this.maxConcurrency,
+        maxConcurrentLowRes: this.maxConcurrentLowRes,
+        taskCount: tasks.length,
+        count: recoveredTaskCount,
+      }),
     );
   }
 
@@ -79,6 +96,17 @@ export class DownloadScheduler implements OnModuleInit {
     dto: DownloadDto,
   ): Promise<{ id: number; message: string }> {
     const result = await this.downloadService.createTask(dto);
+    this.logger.log(
+      createLogMessage("Download task queued for scheduling", {
+        taskId: result.id,
+        bvid: dto.bvid,
+        cid: dto.cid,
+        quality: dto.quality,
+        codec: dto.codec,
+        autoSummary: dto.autoSummary,
+        hasOutputPath: Boolean(dto.outputPath),
+      }),
+    );
     this.tryScheduleNext();
     return result;
   }
@@ -112,9 +140,36 @@ export class DownloadScheduler implements OnModuleInit {
         j.analysisSubTaskId === job.analysisSubTaskId,
     );
     const existsRunning = this.lowResRunningSet.has(job.analysisSubTaskId);
-    if (existsInQueue || existsRunning) return;
+    if (existsInQueue || existsRunning) {
+      this.logger.warn(
+        createLogMessage(
+          "Skipped duplicate low resolution download scheduling",
+          {
+            taskId: job.taskId,
+            analysisSubTaskId: job.analysisSubTaskId,
+            bvid: job.bvid,
+            cid: job.cid,
+            existsInQueue,
+            existsRunning,
+            queueLength: this.lowResQueue.length,
+          },
+        ),
+      );
+      return;
+    }
 
     this.lowResQueue.push(job);
+    this.logger.log(
+      createLogMessage("Queued low resolution download", {
+        taskId: job.taskId,
+        analysisSubTaskId: job.analysisSubTaskId,
+        bvid: job.bvid,
+        cid: job.cid,
+        queueLength: this.lowResQueue.length,
+        runningCount: this.lowResRunningSet.size,
+        maxConcurrentLowRes: this.maxConcurrentLowRes,
+      }),
+    );
     this.tryScheduleLowRes();
   }
 
@@ -130,10 +185,29 @@ export class DownloadScheduler implements OnModuleInit {
 
       const id = task.id!;
       this.runningSet.add(id);
+      this.logger.log(
+        createLogMessage("Claimed download task for execution", {
+          taskId: id,
+          bvid: task.bvid,
+          cid: task.cid,
+          status: TaskStatus.Downloading,
+          runningCount: this.runningSet.size,
+          maxConcurrency: this.maxConcurrency,
+        }),
+      );
 
       // fire-and-forget，不阻塞循环
       this.downloadService.executeTask(task).catch((err) => {
-        this.logger.error(`任务 ${id} 执行失败`, err);
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          createLogMessage("Download task execution crashed", {
+            taskId: id,
+            bvid: task.bvid,
+            cid: task.cid,
+            error: message,
+          }),
+          err instanceof Error ? err.stack : undefined,
+        );
       });
     }
   }
@@ -145,10 +219,31 @@ export class DownloadScheduler implements OnModuleInit {
     ) {
       const job = this.lowResQueue.shift()!;
       this.lowResRunningSet.add(job.analysisSubTaskId);
+      this.logger.log(
+        createLogMessage("Claimed low resolution download for execution", {
+          taskId: job.taskId,
+          analysisSubTaskId: job.analysisSubTaskId,
+          bvid: job.bvid,
+          cid: job.cid,
+          queueLength: this.lowResQueue.length,
+          runningCount: this.lowResRunningSet.size,
+          maxConcurrentLowRes: this.maxConcurrentLowRes,
+        }),
+      );
 
       this.downloadService
         .executeLowResDownload(job.bvid, job.cid, job.title)
         .then((result) => {
+          this.logger.log(
+            createLogMessage("Low resolution download completed", {
+              taskId: job.taskId,
+              analysisSubTaskId: job.analysisSubTaskId,
+              bvid: job.bvid,
+              cid: job.cid,
+              quality: result.quality,
+              outputFile: result.outputFile,
+            }),
+          );
           this.onLowResFinished?.(job.taskId, job.analysisSubTaskId, {
             success: true,
             outputFile: result.outputFile,
@@ -158,7 +253,14 @@ export class DownloadScheduler implements OnModuleInit {
         .catch((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
           this.logger.error(
-            `低分辨率下载失败: task=${job.taskId}, subTask=${job.analysisSubTaskId}, ${msg}`,
+            createLogMessage("Low resolution download failed", {
+              taskId: job.taskId,
+              analysisSubTaskId: job.analysisSubTaskId,
+              bvid: job.bvid,
+              cid: job.cid,
+              error: msg,
+            }),
+            err instanceof Error ? err.stack : undefined,
           );
           this.onLowResFinished?.(job.taskId, job.analysisSubTaskId, {
             success: false,
@@ -167,6 +269,15 @@ export class DownloadScheduler implements OnModuleInit {
         })
         .finally(() => {
           this.lowResRunningSet.delete(job.analysisSubTaskId);
+          this.logger.log(
+            createLogMessage("Low resolution task slot released", {
+              taskId: job.taskId,
+              analysisSubTaskId: job.analysisSubTaskId,
+              runningCount: this.lowResRunningSet.size,
+              queueLength: this.lowResQueue.length,
+              maxConcurrentLowRes: this.maxConcurrentLowRes,
+            }),
+          );
           this.tryScheduleLowRes();
         });
     }

@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import Database from "better-sqlite3";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
+import { createLogMessage } from "../logging/server-log.util.js";
 /**
  * 任务记录（对应 task 表）
  */
@@ -47,6 +48,7 @@ export interface AnalysisSubTaskRecord {
 export class DatabaseService {
   private readonly logger = new Logger(DatabaseService.name);
   private readonly db: Database.Database;
+  private readonly progressBuckets = new Map<number, number>();
 
   constructor() {
     const outputDir =
@@ -59,7 +61,12 @@ export class DatabaseService {
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
     this.initSchema();
-    this.logger.log(`SQLite 数据库已连接: ${dbPath}`);
+    this.logger.log(
+      createLogMessage("SQLite database connected", {
+        outputPath: dbPath,
+        sourceType: "sqlite",
+      }),
+    );
   }
 
   // ==================== Schema ====================
@@ -209,7 +216,20 @@ export class DatabaseService {
       updatedAt: now,
       completedAt: record.completedAt ?? null,
     });
-    return Number(result.lastInsertRowid);
+    const id = Number(result.lastInsertRowid);
+    this.logger.log(
+      createLogMessage("Persisted download task", {
+        taskId: id,
+        bvid: record.bvid,
+        cid: record.cid,
+        status: record.status,
+        quality: record.quality,
+        codec: record.codec,
+        autoSummary: record.autoSummary,
+        outputPath: record.outputPath,
+      }),
+    );
+    return id;
   }
 
   /** 更新任务进度（每秒调用一次） */
@@ -220,6 +240,18 @@ export class DatabaseService {
         "UPDATE task SET progress = @progress, speed = @speed, updatedAt = @updatedAt WHERE id = @id",
       )
       .run({ id, progress, speed: speed ?? null, updatedAt: now });
+
+    const bucket = Math.floor(Math.max(0, Math.min(progress, 100)) / 10);
+    if (this.progressBuckets.get(id) !== bucket || progress >= 100) {
+      this.progressBuckets.set(id, bucket);
+      this.logger.log(
+        createLogMessage("Persisted task progress snapshot", {
+          taskId: id,
+          progress: Math.round(progress),
+          status: "downloading",
+        }),
+      );
+    }
   }
 
   /** 更新任务状态（完成/失败时） */
@@ -238,6 +270,7 @@ export class DatabaseService {
       progress?: number;
     },
   ): void {
+    const previous = this.getTaskById(id);
     const now = new Date().toISOString();
     const setClauses: string[] = ["status = @status", "updatedAt = @updatedAt"];
     if (fields.autoSummary !== undefined)
@@ -279,6 +312,58 @@ export class DatabaseService {
             ? now
             : null,
       });
+
+    const statusChanged = previous?.status !== fields.status;
+    const summaryChanged =
+      fields.summaryStatus !== undefined &&
+      previous?.summaryStatus !== fields.summaryStatus;
+    const shouldLog =
+      statusChanged ||
+      summaryChanged ||
+      fields.errorMessage !== undefined ||
+      fields.outputFile !== undefined ||
+      fields.summaryOutput !== undefined ||
+      fields.autoSummary !== undefined ||
+      fields.durationMs !== undefined;
+
+    if (shouldLog) {
+      const details = {
+        taskId: id,
+        bvid: previous?.bvid,
+        cid: previous?.cid,
+        fromStatus: previous?.status,
+        toStatus: fields.status,
+        status: fields.status,
+        summaryStatus: fields.summaryStatus,
+        autoSummary: fields.autoSummary,
+        outputFile: fields.outputFile,
+        summaryPath:
+          fields.summaryStatus === "completed"
+            ? fields.summaryOutput
+            : undefined,
+        error:
+          fields.errorMessage ??
+          (fields.summaryStatus === "failed"
+            ? fields.summaryOutput
+            : undefined),
+        durationMs: fields.durationMs,
+        progress: fields.progress,
+      };
+
+      if (fields.status === "failed" || fields.summaryStatus === "failed") {
+        this.logger.error(
+          createLogMessage("Persisted task status change", details),
+        );
+      } else {
+        this.logger.log(
+          createLogMessage("Persisted task status change", details),
+        );
+      }
+    }
+
+    if (fields.status === "success" || fields.status === "failed") {
+      this.progressBuckets.delete(id);
+    }
   }
 
   /** 获取所有任务 */
@@ -306,12 +391,22 @@ export class DatabaseService {
 
   /** 删除任务 */
   deleteTask(id: number): void {
+    this.db.prepare("DELETE FROM analysis_sub_task WHERE task_id = ?").run(id);
     this.db.prepare("DELETE FROM task WHERE id = ?").run(id);
+    this.progressBuckets.delete(id);
+    this.logger.log(
+      createLogMessage("Deleted task row from database", {
+        taskId: id,
+      }),
+    );
   }
 
   /** 清空所有任务 */
   clearTasks(): void {
+    this.db.prepare("DELETE FROM analysis_sub_task").run();
     this.db.prepare("DELETE FROM task").run();
+    this.progressBuckets.clear();
+    this.logger.log("Cleared task table from database");
   }
 
   /** 关闭数据库连接 */
@@ -404,7 +499,18 @@ export class DatabaseService {
       createdAt: record.createdAt,
       completedAt: record.completedAt ?? null,
     });
-    return Number(result.lastInsertRowid);
+    const id = Number(result.lastInsertRowid);
+    this.logger.log(
+      createLogMessage("Persisted analysis sub task", {
+        taskId: record.taskId,
+        analysisSubTaskId: id,
+        bvid: record.bvid,
+        cid: record.cid,
+        quality: record.quality,
+        status: record.status,
+      }),
+    );
+    return id;
   }
 
   updateAnalysisSubTaskStatus(
@@ -416,6 +522,24 @@ export class DatabaseService {
       completedAt?: string;
     },
   ): void {
+    const previous = this.db
+      .prepare(
+        `
+        SELECT task_id AS taskId, bvid, cid, quality, status
+        FROM analysis_sub_task
+        WHERE id = ?
+      `,
+      )
+      .get(id) as
+      | {
+          taskId: number;
+          bvid?: string;
+          cid?: number;
+          quality?: number;
+          status: string;
+        }
+      | undefined;
+
     const setClauses: string[] = ["status = @status"];
     if (fields.outputFile !== undefined)
       setClauses.push("output_file = @outputFile");
@@ -435,6 +559,29 @@ export class DatabaseService {
         errorMessage: fields.errorMessage ?? null,
         completedAt: fields.completedAt ?? null,
       });
+
+    const details = {
+      taskId: previous?.taskId,
+      analysisSubTaskId: id,
+      bvid: previous?.bvid,
+      cid: previous?.cid,
+      quality: previous?.quality,
+      fromStatus: previous?.status,
+      toStatus: fields.status,
+      status: fields.status,
+      outputFile: fields.outputFile,
+      error: fields.errorMessage,
+    };
+
+    if (fields.status === "failed") {
+      this.logger.error(
+        createLogMessage("Persisted analysis sub task status change", details),
+      );
+    } else {
+      this.logger.log(
+        createLogMessage("Persisted analysis sub task status change", details),
+      );
+    }
   }
 
   getAnalysisSubTasksByTaskId(taskId: number): AnalysisSubTaskRecord[] {

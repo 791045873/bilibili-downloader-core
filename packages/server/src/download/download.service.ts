@@ -22,6 +22,7 @@ import {
   type TaskRecord,
 } from "../database/database.service.js";
 import type { DownloadDto } from "./download.dto.js";
+import { createLogMessage } from "../logging/server-log.util.js";
 
 interface LowResDownloadResult {
   outputFile: string;
@@ -121,6 +122,44 @@ export class DownloadService implements OnModuleInit {
       fileStore: this.fileStore,
       subtitleProvider: new BilibiliSubtitleProvider(this.webClient),
     };
+
+    this.logger.log(
+      createLogMessage("Download service initialized", {
+        outputPath: this.outputDir,
+        fileExists: Boolean(cookieString),
+      }),
+    );
+  }
+
+  restoreTaskCacheFromDatabase(): void {
+    const tasks = this.db.getTasks();
+    this.taskCache.clear();
+
+    for (const task of tasks) {
+      if (task.id === undefined) {
+        continue;
+      }
+
+      this.taskCache.set(task.id, {
+        id: task.id,
+        status: task.status,
+        title: task.title,
+        outputFile: task.outputFile,
+        fileSize: task.fileSize,
+        error: task.errorMessage,
+        progress: task.progress,
+        speed: task.speed,
+        createdAt: task.createdAt,
+        completedAt: task.completedAt,
+        durationMs: task.durationMs,
+      });
+    }
+
+    this.logger.log(
+      createLogMessage("Restored download task cache from database", {
+        taskCount: this.taskCache.size,
+      }),
+    );
   }
 
   // ==================== 视频信息（使用 ResolutionService） ====================
@@ -206,6 +245,15 @@ export class DownloadService implements OnModuleInit {
       throw new Error(`无法为 ${bvid}/${cid} 选择视频流`);
     }
 
+    this.logger.log(
+      createLogMessage("Resolved best video stream", {
+        bvid,
+        cid,
+        quality: best.quality,
+        availableQualityCount: streams.videoStreams.length,
+      }),
+    );
+
     return { url: best.url, quality: best.quality };
   }
 
@@ -215,6 +263,14 @@ export class DownloadService implements OnModuleInit {
     cid: number,
     title: string,
   ): Promise<LowResDownloadResult> {
+    this.logger.log(
+      createLogMessage("Starting low resolution download", {
+        bvid,
+        cid,
+        title,
+      }),
+    );
+
     const parsed = await this.resourceParser.parse(bvid);
     const cookieString = this.cookieFile
       ? await this.loadCookieString(this.cookieFile)
@@ -254,6 +310,15 @@ export class DownloadService implements OnModuleInit {
       `${sanitizeFileName(title)}-${bvid}-${cid}-q${lowVideo.quality}.mp4`,
     );
 
+    this.logger.log(
+      createLogMessage("Prepared low resolution download output", {
+        bvid,
+        cid,
+        quality: lowVideo.quality,
+        outputFile,
+      }),
+    );
+
     const executionUseCase = new DownloadExecutionUseCase(this.executionDeps);
     const request: DownloadExecutionRequest = {
       bvid,
@@ -270,6 +335,16 @@ export class DownloadService implements OnModuleInit {
     if (result.status !== TaskStatus.Success || !result.outputFile) {
       throw new Error(result.errorMessage || "低清晰度下载执行失败");
     }
+
+    this.logger.log(
+      createLogMessage("Low resolution download execution finished", {
+        bvid,
+        cid,
+        quality: lowVideo.quality,
+        outputFile: result.outputFile,
+        durationMs: result.timing?.totalMs,
+      }),
+    );
 
     return {
       outputFile: result.outputFile,
@@ -302,6 +377,18 @@ export class DownloadService implements OnModuleInit {
       createdAt: now,
     });
 
+    this.logger.log(
+      createLogMessage("Created download task", {
+        taskId: id,
+        bvid: dto.bvid,
+        cid: dto.cid,
+        quality: dto.quality,
+        codec: dto.codec,
+        autoSummary: dto.autoSummary,
+        outputPath: dto.outputPath,
+      }),
+    );
+
     return { id, message: "任务已创建" };
   }
 
@@ -310,6 +397,16 @@ export class DownloadService implements OnModuleInit {
     const id = task.id!;
     const cached = this.taskCache.get(id);
     if (!cached) {
+      this.logger.error(
+        createLogMessage(
+          "Download task execution aborted because cache entry is missing",
+          {
+            taskId: id,
+            bvid: task.bvid,
+            cid: task.cid,
+          },
+        ),
+      );
       throw new Error(`任务 ${id} 不在缓存中`);
     }
 
@@ -318,8 +415,31 @@ export class DownloadService implements OnModuleInit {
       cached.status !== TaskStatus.Created &&
       cached.status !== TaskStatus.Stopped
     ) {
+      this.logger.warn(
+        createLogMessage(
+          "Download task execution rejected due to invalid cached status",
+          {
+            taskId: id,
+            bvid: task.bvid,
+            cid: task.cid,
+            status: cached.status,
+          },
+        ),
+      );
       throw new Error(`任务 ${id} 状态为 ${cached.status}，无法执行`);
     }
+
+    this.logger.log(
+      createLogMessage("Starting download task execution", {
+        taskId: id,
+        bvid: task.bvid,
+        cid: task.cid,
+        requestedQuality: task.quality,
+        requestedCodec: task.codec,
+        outputPath: task.outputPath,
+        autoSummary: task.autoSummary,
+      }),
+    );
 
     cached.status = TaskStatus.Downloading;
     cached.title = task.title ?? cached.title;
@@ -352,11 +472,32 @@ export class DownloadService implements OnModuleInit {
         throw new Error("无法选择合适的视频或音频流");
       }
 
+      this.logger.log(
+        createLogMessage("Resolved task streams", {
+          taskId: id,
+          bvid: task.bvid,
+          cid: task.cid,
+          quality: videoStream.quality,
+          codec: task.codec,
+          availableQualityCount: streams.videoStreams.length,
+        }),
+      );
+
       // 构建输出路径
       const fileName = `${sanitizeFileName(task.title!)}.mp4`;
       const outputFile = task.outputPath
         ? join(this.outputDir, sanitizeOutputPath(task.outputPath), fileName)
         : join(this.outputDir, fileName);
+
+      this.logger.log(
+        createLogMessage("Resolved task output file", {
+          taskId: id,
+          bvid: task.bvid,
+          cid: task.cid,
+          outputFile,
+          hasOutputPath: Boolean(task.outputPath),
+        }),
+      );
 
       // 确保子目录存在
       if (task.outputPath) {
@@ -405,6 +546,19 @@ export class DownloadService implements OnModuleInit {
         durationMs: result.timing?.totalMs,
         progress: 100,
       });
+
+      this.logger.log(
+        createLogMessage("Download task execution finished", {
+          taskId: id,
+          bvid: task.bvid,
+          cid: task.cid,
+          status: result.status,
+          outputFile: result.outputFile,
+          fileSize: result.fileSize,
+          durationMs: result.timing?.totalMs,
+          error: result.errorMessage,
+        }),
+      );
     } catch (err) {
       const msg = (err as Error).message;
       cached.status = TaskStatus.Failed;
@@ -414,6 +568,16 @@ export class DownloadService implements OnModuleInit {
         status: TaskStatus.Failed,
         errorMessage: msg,
       });
+
+      this.logger.error(
+        createLogMessage("Download task execution failed", {
+          taskId: id,
+          bvid: task.bvid,
+          cid: task.cid,
+          error: msg,
+        }),
+        err instanceof Error ? err.stack : undefined,
+      );
     } finally {
       this.abortControllers.delete(id);
       this.onTaskFinished?.(id);
@@ -429,6 +593,12 @@ export class DownloadService implements OnModuleInit {
     }
     cached.status = TaskStatus.Stopped;
     this.db.updateTaskStatus(id, { status: TaskStatus.Stopped });
+    this.logger.log(
+      createLogMessage("Stopped queued download task", {
+        taskId: id,
+        status: TaskStatus.Stopped,
+      }),
+    );
     return { message: "已停止" };
   }
 
@@ -441,11 +611,22 @@ export class DownloadService implements OnModuleInit {
     }
     cached.status = TaskStatus.Created;
     this.db.updateTaskStatus(id, { status: TaskStatus.Created });
+    this.logger.log(
+      createLogMessage("Resumed queued download task", {
+        taskId: id,
+        status: TaskStatus.Created,
+      }),
+    );
     return { message: "已恢复" };
   }
 
   /** 中止正在执行的下载 */
   abortTask(id: number): void {
+    this.logger.warn(
+      createLogMessage("Abort requested for running download task", {
+        taskId: id,
+      }),
+    );
     this.abortControllers.get(id)?.abort();
   }
 
@@ -467,13 +648,24 @@ export class DownloadService implements OnModuleInit {
   async deleteTask(id: number): Promise<{ message: string }> {
     this.taskCache.delete(id);
     this.db.deleteTask(id);
+    this.logger.log(
+      createLogMessage("Deleted download task", {
+        taskId: id,
+      }),
+    );
     return { message: "已删除" };
   }
 
   /** 清空所有任务 */
   async clearTasks(): Promise<{ message: string }> {
+    const taskCount = this.taskCache.size;
     this.taskCache.clear();
     this.db.clearTasks();
+    this.logger.log(
+      createLogMessage("Cleared all download tasks", {
+        taskCount,
+      }),
+    );
     return { message: "已清空" };
   }
 

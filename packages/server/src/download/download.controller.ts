@@ -6,14 +6,18 @@ import {
   Body,
   Param,
   BadRequestException,
+  Logger,
 } from "@nestjs/common";
 import { DownloadScheduler } from "./download-scheduler.js";
 import { DownloadService } from "./download.service.js";
 import { DownloadDto } from "./download.dto.js";
 import { DatabaseService } from "../database/database.service.js";
+import { createLogMessage } from "../logging/server-log.util.js";
 
 @Controller("api")
 export class DownloadController {
+  private readonly logger = new Logger(DownloadController.name);
+
   constructor(
     private readonly scheduler: DownloadScheduler,
     private readonly downloadService: DownloadService,
@@ -41,14 +45,28 @@ export class DownloadController {
   @Post("/tasks/:id/stop")
   stopTask(@Param("id") id: string) {
     const numId = Number.parseInt(id, 10);
-    if (Number.isNaN(numId)) return { error: "无效的任务 ID" };
+    if (Number.isNaN(numId)) {
+      this.logger.warn(
+        createLogMessage("Stop task rejected due to invalid task id", {
+          id,
+        }),
+      );
+      return { error: "无效的任务 ID" };
+    }
     return this.scheduler.stopTask(numId);
   }
 
   @Post("/tasks/:id/resume")
   resumeTask(@Param("id") id: string) {
     const numId = Number.parseInt(id, 10);
-    if (Number.isNaN(numId)) return { error: "无效的任务 ID" };
+    if (Number.isNaN(numId)) {
+      this.logger.warn(
+        createLogMessage("Resume task rejected due to invalid task id", {
+          id,
+        }),
+      );
+      return { error: "无效的任务 ID" };
+    }
     return this.scheduler.resumeTask(numId);
   }
 
@@ -56,14 +74,33 @@ export class DownloadController {
   setAutoSummary(@Param("id") id: string, @Body() body: { enabled?: boolean }) {
     const numId = Number.parseInt(id, 10);
     if (Number.isNaN(numId)) {
+      this.logger.warn(
+        createLogMessage("Set auto summary rejected due to invalid task id", {
+          id,
+        }),
+      );
       throw new BadRequestException("无效的任务 ID");
     }
     if (typeof body?.enabled !== "boolean") {
+      this.logger.warn(
+        createLogMessage(
+          "Set auto summary rejected due to invalid enabled flag",
+          { taskId: numId },
+        ),
+      );
       throw new BadRequestException("enabled 必须为布尔值");
     }
 
     const task = this.downloadService.getTaskById(numId);
     if (!task) {
+      this.logger.warn(
+        createLogMessage(
+          "Set auto summary rejected because task was not found",
+          {
+            taskId: numId,
+          },
+        ),
+      );
       throw new BadRequestException("任务不存在");
     }
 
@@ -77,7 +114,14 @@ export class DownloadController {
   @Delete("/tasks/:id")
   deleteTask(@Param("id") id: string) {
     const numId = Number.parseInt(id, 10);
-    if (Number.isNaN(numId)) return { error: "无效的任务 ID" };
+    if (Number.isNaN(numId)) {
+      this.logger.warn(
+        createLogMessage("Delete task rejected due to invalid task id", {
+          id,
+        }),
+      );
+      return { error: "无效的任务 ID" };
+    }
     return this.scheduler.deleteTask(numId);
   }
 
@@ -91,9 +135,23 @@ export class DownloadController {
   @Get("/tasks/:id")
   getTask(@Param("id") id: string) {
     const numId = Number.parseInt(id, 10);
-    if (Number.isNaN(numId)) return { error: "无效的任务 ID" };
+    if (Number.isNaN(numId)) {
+      this.logger.warn(
+        createLogMessage("Get task rejected due to invalid task id", {
+          id,
+        }),
+      );
+      return { error: "无效的任务 ID" };
+    }
     const task = this.downloadService.getTaskById(numId);
-    if (!task) return { error: "任务不存在" };
+    if (!task) {
+      this.logger.warn(
+        createLogMessage("Get task returned task-not-found", {
+          taskId: numId,
+        }),
+      );
+      return { error: "任务不存在" };
+    }
     return task;
   }
 
@@ -106,6 +164,14 @@ export class DownloadController {
 
   @Post("/tasks/check")
   checkTasks(@Body() body: { items: { bvid: string; cid: number }[] }) {
-    return this.databaseService.findTasksByBvidsAndCids(body.items ?? []);
+    const items = Array.isArray(body?.items) ? body.items : [];
+    if (items.length === 0) {
+      this.logger.warn(
+        createLogMessage("Bulk task check called with empty items", {
+          itemCount: 0,
+        }),
+      );
+    }
+    return this.databaseService.findTasksByBvidsAndCids(items);
   }
 }

@@ -5,7 +5,6 @@ import {
   ConflictException,
   Controller,
   Logger,
-  NotFoundException,
   Post,
 } from "@nestjs/common";
 import { isAbsolute, join } from "node:path";
@@ -17,6 +16,7 @@ import { DatabaseService } from "../database/database.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { DownloadService } from "../download/download.service.js";
+import { createLogMessage } from "../logging/server-log.util.js";
 
 interface AnalysisRequest {
   /** LLM 分析用视频文件绝对路径（低分辨率或唯一可用分辨率） */
@@ -59,6 +59,18 @@ export class AnalysisController {
       metadata: body.metadata,
       screenshotVideoPath: body.screenshotVideoPath,
     };
+    this.logger.log(
+      createLogMessage("Manual analysis request accepted", {
+        bvid: body.metadata.bvid,
+        cid: body.metadata.cid,
+        videoPath: body.videoPath,
+        subtitlePath: body.subtitlePath,
+        summaryDir: input.summaryDir,
+        hasSubtitle: Boolean(body.subtitlePath),
+        hasScreenshotVideoPath: Boolean(body.screenshotVideoPath),
+        sourceType: body.metadata.type,
+      }),
+    );
     const engine = new AnalysisEngine(
       this.getLlmConfig(),
       undefined,
@@ -73,11 +85,24 @@ export class AnalysisController {
       throw new BadRequestException("bvid/cid 必填");
     }
 
+    this.logger.log(
+      createLogMessage("AI summary trigger requested", {
+        bvid: body.bvid,
+        cid: body.cid,
+      }),
+    );
+
     const task = this.databaseService.findLatestTaskByBvidAndCid(
       body.bvid,
       body.cid,
     );
     if (!task) {
+      this.logger.log(
+        createLogMessage("No existing task found for AI summary trigger", {
+          bvid: body.bvid,
+          cid: body.cid,
+        }),
+      );
       const created = await this.createOneClickAiSummaryTask(
         body.bvid,
         body.cid,
@@ -87,6 +112,17 @@ export class AnalysisController {
       };
     }
     if (task.autoSummary) {
+      this.logger.warn(
+        createLogMessage(
+          "AI summary trigger rejected because task already has auto summary",
+          {
+            taskId: task.id,
+            bvid: body.bvid,
+            cid: body.cid,
+            status: task.status,
+          },
+        ),
+      );
       throw new ConflictException("该任务已开启 AI 总结");
     }
 
@@ -94,6 +130,15 @@ export class AnalysisController {
       status: task.status,
       autoSummary: 1,
     });
+
+    this.logger.log(
+      createLogMessage("Enabled auto summary for existing task", {
+        taskId: task.id,
+        bvid: body.bvid,
+        cid: body.cid,
+        status: task.status,
+      }),
+    );
 
     await this.analysisTriggerService.trigger(task.id!);
     return { message: "AI 总结触发中" };
@@ -111,6 +156,15 @@ export class AnalysisController {
       if (!highestQuality) {
         throw new Error("无法获取可用清晰度");
       }
+
+      this.logger.log(
+        createLogMessage("Preparing one-click AI summary download task", {
+          bvid,
+          cid,
+          quality: highestQuality.id,
+          availableQualityCount: parsed.videoQualityList.length,
+        }),
+      );
 
       const title = this.buildTaskTitle(
         resolvedVideo.videoInfo.title,
@@ -141,9 +195,26 @@ export class AnalysisController {
         });
       }
 
+      this.logger.log(
+        createLogMessage("Created one-click AI summary download task", {
+          taskId: created.id,
+          bvid,
+          cid,
+          quality: highestQuality.id,
+          autoSummary: true,
+        }),
+      );
+
       return created;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        createLogMessage("Failed to create one-click AI summary task", {
+          bvid,
+          cid,
+          error: msg,
+        }),
+      );
       throw new BadGatewayException(`创建 AI 总结下载任务失败: ${msg}`);
     }
   }
@@ -172,10 +243,28 @@ export class AnalysisController {
         cid: input.cid,
         title: input.title,
       });
+
+      this.logger.log(
+        createLogMessage("Scheduled initial low resolution analysis download", {
+          taskId: input.taskId,
+          analysisSubTaskId,
+          bvid: input.bvid,
+          cid: input.cid,
+          quality: input.quality,
+        }),
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
-        `预创建低清分析子任务失败: task=${input.taskId}, ${msg}`,
+        createLogMessage(
+          "Failed to pre-create low resolution analysis sub task",
+          {
+            taskId: input.taskId,
+            bvid: input.bvid,
+            cid: input.cid,
+            error: msg,
+          },
+        ),
       );
     }
   }
