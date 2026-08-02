@@ -4,6 +4,8 @@
  * 将标准 SRT 格式的字幕文件解析为结构化数据
  */
 
+import { logger } from "../logger.js";
+
 export interface SrtEntry {
   /** 字幕序号 */
   index: number;
@@ -24,16 +26,26 @@ export function parseSrtContent(content: string): SrtEntry[] {
   const entries: SrtEntry[] = [];
   // 按空行分割条目
   const blocks = content.trim().split(/\n\s*\n/);
+  let skippedBlocks = 0;
 
   for (const block of blocks) {
     try {
       const entry = parseSrtBlock(block.trim());
       if (entry) {
         entries.push(entry);
+      } else {
+        skippedBlocks += 1;
       }
     } catch {
       // 单条解析失败跳过
+      skippedBlocks += 1;
     }
+  }
+
+  if (skippedBlocks > 0) {
+    logger.warn(
+      `SRT 解析跳过异常片段: skipped=${skippedBlocks}, parsed=${entries.length}`,
+    );
   }
 
   return entries;
@@ -43,7 +55,10 @@ export function parseSrtContent(content: string): SrtEntry[] {
  * 解析单个 SRT 块
  */
 function parseSrtBlock(block: string): SrtEntry | null {
-  const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = block
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   if (lines.length < 3) return null;
 
   // 第 1 行: 序号
@@ -62,20 +77,32 @@ function parseSrtBlock(block: string): SrtEntry | null {
     if (!altMatch) return null;
 
     const startTime = toSeconds(
-      Number(altMatch[1]), Number(altMatch[2]), Number(altMatch[3]), Number(altMatch[4]),
+      Number(altMatch[1]),
+      Number(altMatch[2]),
+      Number(altMatch[3]),
+      Number(altMatch[4]),
     );
     const endTime = toSeconds(
-      Number(altMatch[5]), Number(altMatch[6]), Number(altMatch[7]), Number(altMatch[8]),
+      Number(altMatch[5]),
+      Number(altMatch[6]),
+      Number(altMatch[7]),
+      Number(altMatch[8]),
     );
     const text = lines.slice(2).join("\n");
     return { index, startTime, endTime, text };
   }
 
   const startTime = toSeconds(
-    Number(timeMatch[1]), Number(timeMatch[2]), Number(timeMatch[3]), Number(timeMatch[4]),
+    Number(timeMatch[1]),
+    Number(timeMatch[2]),
+    Number(timeMatch[3]),
+    Number(timeMatch[4]),
   );
   const endTime = toSeconds(
-    Number(timeMatch[5]), Number(timeMatch[6]), Number(timeMatch[7]), Number(timeMatch[8]),
+    Number(timeMatch[5]),
+    Number(timeMatch[6]),
+    Number(timeMatch[7]),
+    Number(timeMatch[8]),
   );
 
   // 剩余行: 字幕文本

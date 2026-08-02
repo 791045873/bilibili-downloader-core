@@ -74,3 +74,6 @@ packages/
 - CLI / Server / Docker 作为运行时入口，只做参数适配和编排，不包含下载细节
 - 下载链路：解析 → 获取元信息 → 流选择 → 下载 → 合并 → 产物输出
 - 所有 B站 API 调用集中在 adapters/src/bilibili/ 中
+- adapter 默认通过异常向上暴露失败，并在异常中保留安全摘要上下文；server 和其他上层入口负责高语义日志与对外错误语义
+- adapter 内部只在吞错、静默降级或 fallback 且上层无法感知失败时记录少量低频 `debug`/`warn` 诊断
+- adapter 级错误消息和诊断日志不得暴露 cookie、Authorization、完整 callback URL、完整 headers、完整字幕正文、完整上游响应体或其他非必要敏感内容

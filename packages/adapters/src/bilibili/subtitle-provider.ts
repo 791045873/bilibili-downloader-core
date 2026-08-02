@@ -12,6 +12,8 @@ import type {
 import type { BilibiliWebClient } from "../bilibili/web-client.js";
 import { wbiSign, type WbiKeys } from "../bilibili/wbi-sign.js";
 import { BILI_API_BASE, DEFAULT_HEADERS } from "../bilibili/constants.js";
+import { logger } from "../logger.js";
+import { summarizeText, summarizeUrl } from "../safe-error-context.js";
 
 /** PlayerV2 API 响应 */
 interface PlayerV2Response {
@@ -71,11 +73,21 @@ export class BilibiliSubtitleProvider implements SubtitleProviderPort {
         `${BILI_API_BASE}/x/player/wbi/v2?${query}`,
         cookieString,
       );
-    } catch {
+    } catch (err) {
+      logger.warn(
+        `字幕接口调用失败，返回空字幕: bvid=${bvid}, cid=${cid}, reason=${summarizeText((err as Error).message)}`,
+      );
       return [];
     }
 
-    if (playerData.code !== 0 || !playerData.data.subtitle?.subtitles?.length) {
+    if (playerData.code !== 0) {
+      logger.warn(
+        `字幕接口返回非成功状态，按空字幕处理: bvid=${bvid}, cid=${cid}, code=${playerData.code}`,
+      );
+      return [];
+    }
+
+    if (!playerData.data.subtitle?.subtitles?.length) {
       return [];
     }
 
@@ -83,19 +95,20 @@ export class BilibiliSubtitleProvider implements SubtitleProviderPort {
     const results: SubtitleInfo[] = [];
 
     for (const sub of playerData.data.subtitle.subtitles) {
-      try {
-        const url = sub.subtitle_url.startsWith("http")
-          ? sub.subtitle_url
-          : `https:${sub.subtitle_url}`;
+      const subtitleUrl = sub.subtitle_url.startsWith("http")
+        ? sub.subtitle_url
+        : `https:${sub.subtitle_url}`;
 
-        const response = await fetch(url, {
+      try {
+        const response = await fetch(subtitleUrl, {
           headers: {
             ...DEFAULT_HEADERS,
             ...(cookieString ? { Cookie: cookieString } : {}),
           },
         });
 
-        const subtitleJson: SubtitleJson = await response.json() as SubtitleJson;
+        const subtitleJson: SubtitleJson =
+          (await response.json()) as SubtitleJson;
         const srtContent = jsonToSrt(subtitleJson);
 
         results.push({
@@ -103,7 +116,10 @@ export class BilibiliSubtitleProvider implements SubtitleProviderPort {
           langName: sub.lan_doc,
           srtContent,
         });
-      } catch {
+      } catch (err) {
+        logger.warn(
+          `单个字幕下载失败，跳过该语言: bvid=${bvid}, cid=${cid}, lang=${sub.lan}, url=${summarizeUrl(subtitleUrl)}, reason=${summarizeText((err as Error).message)}`,
+        );
         // 单个字幕获取失败不阻塞其他字幕
       }
     }

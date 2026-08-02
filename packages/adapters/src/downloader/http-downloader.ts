@@ -14,12 +14,19 @@ import type {
 } from "@bilibili-downloader/core/ports";
 import { DownloadError } from "@bilibili-downloader/core/ports";
 import { DEFAULT_HEADERS } from "../bilibili/constants.js";
+import {
+  summarizePath,
+  summarizeText,
+  summarizeUrl,
+} from "../safe-error-context.js";
 
 export class HttpDownloader implements MediaDownloaderPort {
   private abortController: AbortController | null = null;
 
   async download(params: DownloadParams): Promise<string> {
     this.abortController = new AbortController();
+    const safeUrl = summarizeUrl(params.url);
+    const safeFilePath = summarizePath(params.filePath);
 
     const headers: Record<string, string> = { ...DEFAULT_HEADERS };
 
@@ -105,7 +112,11 @@ export class HttpDownloader implements MediaDownloaderPort {
         lastError = err as Error;
 
         if ((err as Error).name === "AbortError") {
-          throw new DownloadError("下载已取消", params.url, params.filePath);
+          throw new DownloadError(
+            `下载已取消 (${safeUrl} -> ${safeFilePath})`,
+            safeUrl,
+            safeFilePath,
+          );
         }
 
         if (attempt < maxRetries) {
@@ -116,9 +127,9 @@ export class HttpDownloader implements MediaDownloaderPort {
     }
 
     throw new DownloadError(
-      `下载失败 (已重试 ${maxRetries} 次): ${lastError?.message}`,
-      params.url,
-      params.filePath,
+      `下载失败 (${safeUrl} -> ${safeFilePath}, 已重试 ${maxRetries} 次): ${summarizeText(lastError?.message ?? "未知错误")}`,
+      safeUrl,
+      safeFilePath,
     );
   }
 

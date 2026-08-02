@@ -12,6 +12,12 @@ import type {
 } from "@bilibili-downloader/core/ports";
 import { DownloadError } from "@bilibili-downloader/core/ports";
 import { DEFAULT_HEADERS } from "../bilibili/constants.js";
+import { logger } from "../logger.js";
+import {
+  summarizePath,
+  summarizeText,
+  summarizeUrl,
+} from "../safe-error-context.js";
 
 export interface Aria2Options {
   rpcUrl?: string;
@@ -34,6 +40,9 @@ export class Aria2Downloader implements MediaDownloaderPort {
 
   async download(params: DownloadParams): Promise<string> {
     this.abortController = new AbortController();
+    const safeUrl = summarizeUrl(params.url);
+    const safeFilePath = summarizePath(params.filePath);
+    const safeRpcUrl = summarizeUrl(this.rpcUrl);
 
     const headerLines: string[] = [];
     if (params.referer) {
@@ -67,8 +76,20 @@ export class Aria2Downloader implements MediaDownloaderPort {
     return new Promise<string>((resolve, reject) => {
       const poll = async () => {
         if (this.abortController?.signal.aborted) {
-          try { await this.rpcCall("aria2.remove", [gid]); } catch { /* */ }
-          reject(new DownloadError("下载已取消", params.url, params.filePath));
+          try {
+            await this.rpcCall("aria2.remove", [gid]);
+          } catch (err) {
+            logger.warn(
+              `aria2 取消后清理任务失败，继续返回取消结果: gid=${gid}, rpc=${safeRpcUrl}, reason=${summarizeText((err as Error).message)}`,
+            );
+          }
+          reject(
+            new DownloadError(
+              `下载已取消 (${safeUrl} -> ${safeFilePath})`,
+              safeUrl,
+              safeFilePath,
+            ),
+          );
           return;
         }
 
@@ -89,9 +110,9 @@ export class Aria2Downloader implements MediaDownloaderPort {
           if (status.status === "error" || status.status === "removed") {
             reject(
               new DownloadError(
-                `aria2 下载失败: ${status.errorMessage ?? "未知错误"}`,
-                params.url,
-                params.filePath,
+                `aria2 下载失败 (${safeUrl} -> ${safeFilePath}): ${summarizeText(status.errorMessage ?? "未知错误")}`,
+                safeUrl,
+                safeFilePath,
               ),
             );
             return;
@@ -103,7 +124,8 @@ export class Aria2Downloader implements MediaDownloaderPort {
             const speed = Number.parseInt(status.downloadSpeed);
             params.onProgress({
               speedBytesPerSec: speed,
-              percentage: total > 0 ? Math.round((downloaded / total) * 100) : 0,
+              percentage:
+                total > 0 ? Math.round((downloaded / total) * 100) : 0,
             });
           }
 
@@ -111,9 +133,9 @@ export class Aria2Downloader implements MediaDownloaderPort {
         } catch (err) {
           reject(
             new DownloadError(
-              `aria2 状态查询失败: ${(err as Error).message}`,
-              params.url,
-              params.filePath,
+              `aria2 状态查询失败 (${safeUrl} -> ${safeFilePath}, rpc=${safeRpcUrl}): ${summarizeText((err as Error).message)}`,
+              safeUrl,
+              safeFilePath,
             ),
           );
         }
@@ -139,7 +161,14 @@ export class Aria2Downloader implements MediaDownloaderPort {
   private async getStatus(gid: string): Promise<Aria2Status> {
     return this.rpcCall<Aria2Status>("aria2.tellStatus", [
       gid,
-      ["gid", "status", "totalLength", "completedLength", "downloadSpeed", "errorMessage"],
+      [
+        "gid",
+        "status",
+        "totalLength",
+        "completedLength",
+        "downloadSpeed",
+        "errorMessage",
+      ],
     ]);
   }
 
@@ -148,9 +177,7 @@ export class Aria2Downloader implements MediaDownloaderPort {
       jsonrpc: "2.0",
       id: crypto.randomUUID(),
       method,
-      params: this.secret
-        ? [`token:${this.secret}`, ...params]
-        : params,
+      params: this.secret ? [`token:${this.secret}`, ...params] : params,
     };
 
     const response = await fetch(this.rpcUrl, {
@@ -161,13 +188,15 @@ export class Aria2Downloader implements MediaDownloaderPort {
     });
 
     if (!response.ok) {
-      throw new Error(`aria2 RPC 请求失败: HTTP ${response.status}`);
+      throw new Error(
+        `aria2 RPC 请求失败 (${summarizeUrl(this.rpcUrl)}): HTTP ${response.status}`,
+      );
     }
 
     const result = (await response.json()) as Aria2RpcResponse<T>;
     if (result.error) {
       throw new Error(
-        `aria2 RPC 错误: ${result.error.message} (code=${result.error.code})`,
+        `aria2 RPC 错误 (${summarizeUrl(this.rpcUrl)}): ${summarizeText(result.error.message)} (code=${result.error.code})`,
       );
     }
     return result.result;

@@ -5,6 +5,8 @@
  * 支持纯文本（强制 JSON 输出）和多模态（文本 + 图片/视频 URL/本地路径）调用
  */
 
+import { summarizeResponseBody, summarizeUrl } from "../safe-error-context.js";
+
 export interface LlmConfig {
   apiKey: string;
   baseUrl: string;
@@ -50,7 +52,9 @@ function assertNoBase64MediaUrls(params: MultimodalRequest): void {
       if (!url) continue;
 
       if (url.startsWith("data:") || url.includes(";base64,")) {
-        throw new Error("LLM 多模态媒体禁止使用 Base64，请传入可访问的媒体 URL 或本地文件路径");
+        throw new Error(
+          "LLM 多模态媒体禁止使用 Base64，请传入可访问的媒体 URL 或本地文件路径",
+        );
       }
     }
   }
@@ -81,6 +85,7 @@ export class QwenClient {
    */
   async chatCompletion(params: ChatCompletionRequest): Promise<object> {
     const url = `${this.config.baseUrl}/chat/completions`;
+    const safeEndpoint = summarizeUrl(url);
     const response = await this.httpClient(url, {
       method: "POST",
       headers: {
@@ -96,7 +101,9 @@ export class QwenClient {
 
     if (!response.ok) {
       const err = await response.text().catch(() => response.statusText);
-      throw new Error(`LLM API 调用失败 (${response.status}): ${err}`);
+      throw new Error(
+        `LLM API 调用失败 (status=${response.status}, endpoint=${safeEndpoint}): ${summarizeResponseBody(err || response.statusText)}`,
+      );
     }
 
     return parseOpenAiJsonResponse(await response.json(), "LLM 返回空响应");
@@ -110,10 +117,12 @@ export class QwenClient {
 
     const requestBody = {
       ...params,
-      model: params.model || this.config.visionModelName || this.config.modelName,
+      model:
+        params.model || this.config.visionModelName || this.config.modelName,
     };
 
     if (this.config.visionProxyUrl) {
+      const safeProxyEndpoint = summarizeUrl(this.config.visionProxyUrl);
       const response = await this.httpClient(this.config.visionProxyUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -122,13 +131,19 @@ export class QwenClient {
 
       if (!response.ok) {
         const err = await response.text().catch(() => response.statusText);
-        throw new Error(`LLM 多模态代理调用失败 (${response.status}): ${err}`);
+        throw new Error(
+          `LLM 多模态代理调用失败 (status=${response.status}, endpoint=${safeProxyEndpoint}): ${summarizeResponseBody(err || response.statusText)}`,
+        );
       }
 
-      return parseOpenAiJsonResponse(await response.json(), "LLM 多模态代理返回空响应");
+      return parseOpenAiJsonResponse(
+        await response.json(),
+        "LLM 多模态代理返回空响应",
+      );
     }
 
     const url = `${this.config.baseUrl}/chat/completions`;
+    const safeEndpoint = summarizeUrl(url);
     const response = await this.httpClient(url, {
       method: "POST",
       headers: {
@@ -140,17 +155,24 @@ export class QwenClient {
 
     if (!response.ok) {
       const err = await response.text().catch(() => response.statusText);
-      throw new Error(`LLM 多模态调用失败 (${response.status}): ${err}`);
+      throw new Error(
+        `LLM 多模态调用失败 (status=${response.status}, endpoint=${safeEndpoint}): ${summarizeResponseBody(err || response.statusText)}`,
+      );
     }
 
-    return parseOpenAiJsonResponse(await response.json(), "LLM 多模态返回空响应");
+    return parseOpenAiJsonResponse(
+      await response.json(),
+      "LLM 多模态返回空响应",
+    );
   }
 }
 
 function parseOpenAiJsonResponse(body: unknown, emptyMessage: string): object {
-  const content = (body as {
-    choices?: Array<{ message?: { content?: string } }>;
-  }).choices?.[0]?.message?.content;
+  const content = (
+    body as {
+      choices?: Array<{ message?: { content?: string } }>;
+    }
+  ).choices?.[0]?.message?.content;
 
   if (!content) {
     throw new Error(emptyMessage);

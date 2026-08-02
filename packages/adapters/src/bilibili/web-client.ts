@@ -6,6 +6,8 @@
  */
 
 import { DEFAULT_HEADERS, BILI_API_BASE } from "./constants.js";
+import { logger } from "../logger.js";
+import { summarizeText, summarizeUrl } from "../safe-error-context.js";
 
 export interface BilibiliWebClient {
   /** 发起 JSON API 请求 */
@@ -24,9 +26,10 @@ export interface BilibiliWebClient {
 /** buvid 指纹 SPI 端点 */
 const SPI_URL = `${BILI_API_BASE}/x/frontend/finger/spi`;
 
-export function createBilibiliWebClient(
-  options?: { cookieString?: string; maxRetries?: number },
-): BilibiliWebClient {
+export function createBilibiliWebClient(options?: {
+  cookieString?: string;
+  maxRetries?: number;
+}): BilibiliWebClient {
   let cookieString = options?.cookieString;
   const maxRetries = options?.maxRetries ?? 2;
 
@@ -48,14 +51,17 @@ export function createBilibiliWebClient(
         const response = await fetch(SPI_URL, {
           headers: DEFAULT_HEADERS,
         });
-        const data = await response.json() as {
+        const data = (await response.json()) as {
           code: number;
           data?: { b_3?: string; b_4?: string };
         };
         buvid3 = data.data?.b_3;
         buvid4 = data.data?.b_4;
-      } catch {
+      } catch (err) {
         // buvid 获取失败不阻塞主流程
+        logger.warn(
+          `buvid 初始化失败，继续使用无指纹请求: endpoint=${summarizeUrl(SPI_URL)}, reason=${summarizeText((err as Error).message)}`,
+        );
         buvid3 = "";
         buvid4 = "";
       }
@@ -109,7 +115,7 @@ export function createBilibiliWebClient(
         await sleep(1000 * (i + 1));
       }
     }
-    throw new Error(`请求失败: ${url}`);
+    throw new Error(`请求失败: ${summarizeUrl(url)}`);
   }
 
   return {
@@ -131,7 +137,10 @@ export function createBilibiliWebClient(
       return response.text();
     },
 
-    async downloadBuffer(url: string, extraCookie?: string): Promise<ArrayBuffer> {
+    async downloadBuffer(
+      url: string,
+      extraCookie?: string,
+    ): Promise<ArrayBuffer> {
       const response = await requestWithRetry(
         url,
         { headers: getHeaders(extraCookie) },

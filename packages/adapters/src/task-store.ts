@@ -9,6 +9,7 @@ import { dirname } from "node:path";
 import type { DownloadRequest } from "@bilibili-downloader/core/domain";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { logger } from "./logger.js";
+import { summarizePath, summarizeText } from "./safe-error-context.js";
 
 /** 持久化的任务记录 */
 export interface TaskRecord {
@@ -52,9 +53,15 @@ export class TaskStore {
       return data.tasks;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-        logger.error("加载任务记录失败:", (err as Error).message);
+        logger.warn(
+          `加载任务记录失败，按空任务列表继续: path=${summarizePath(this.filePath)}, reason=${summarizeText((err as Error).message)}`,
+        );
       }
-      this.cache = { version: 1, updatedAt: new Date().toISOString(), tasks: [] };
+      this.cache = {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        tasks: [],
+      };
       return [];
     }
   }
@@ -73,7 +80,11 @@ export class TaskStore {
     this.cache!.updatedAt = new Date().toISOString();
 
     await mkdir(dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(this.cache, null, 2), "utf-8");
+    await writeFile(
+      this.filePath,
+      JSON.stringify(this.cache, null, 2),
+      "utf-8",
+    );
     logger.debug("任务记录已保存:", record.id);
   }
 
@@ -90,7 +101,11 @@ export class TaskStore {
   async clear(): Promise<void> {
     this.cache = { version: 1, updatedAt: new Date().toISOString(), tasks: [] };
     await mkdir(dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(this.cache, null, 2), "utf-8");
+    await writeFile(
+      this.filePath,
+      JSON.stringify(this.cache, null, 2),
+      "utf-8",
+    );
   }
 
   async delete(id: string): Promise<void> {
@@ -98,6 +113,10 @@ export class TaskStore {
     this.cache!.tasks = this.cache!.tasks.filter((t) => t.id !== id);
     this.cache!.updatedAt = new Date().toISOString();
     await mkdir(dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(this.cache, null, 2), "utf-8");
+    await writeFile(
+      this.filePath,
+      JSON.stringify(this.cache, null, 2),
+      "utf-8",
+    );
   }
 }

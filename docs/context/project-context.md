@@ -16,7 +16,7 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `none`（2026-07-07 视频分析增强系列已全部完成并闭环）
+- Active requirement: `none`（2026-08-02 adapter 错误边界与诊断日志计划已闭环）
 - Active owner doc: `docs/design/app-overview.md`
 - Active plan: `none`
 - Active backlog item: `none`

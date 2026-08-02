@@ -7,6 +7,8 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import COS from "cos-nodejs-sdk-v5";
+import { logger } from "../logger.js";
+import { summarizeText } from "../safe-error-context.js";
 
 export interface TencentCosConfig {
   secretId: string;
@@ -47,11 +49,15 @@ export class TencentCosTempImageStore implements TempImageStore {
     });
     this.bucket = config.bucket;
     this.region = config.region;
-    this.tempPrefix = normalizePrefix(config.tempPrefix ?? "bilibili-downloader-temp/analysis");
+    this.tempPrefix = normalizePrefix(
+      config.tempPrefix ?? "bilibili-downloader-temp/analysis",
+    );
     this.signedUrlExpiresSeconds = config.signedUrlExpiresSeconds ?? 3600;
   }
 
-  async uploadImages(params: UploadTempImagesParams): Promise<UploadedTempImage[]> {
+  async uploadImages(
+    params: UploadTempImagesParams,
+  ): Promise<UploadedTempImage[]> {
     const uploaded: UploadedTempImage[] = [];
 
     try {
@@ -76,7 +82,13 @@ export class TencentCosTempImageStore implements TempImageStore {
 
       return uploaded;
     } catch (err) {
-      await this.deleteObjects(uploaded.map((item) => item.key)).catch(() => undefined);
+      await this.deleteObjects(uploaded.map((item) => item.key)).catch(
+        (cleanupErr) => {
+          logger.warn(
+            `COS 临时对象回滚失败，可能遗留远端临时文件: leaked=${uploaded.length}, reason=${summarizeText((cleanupErr as Error).message)}`,
+          );
+        },
+      );
       throw err;
     }
   }

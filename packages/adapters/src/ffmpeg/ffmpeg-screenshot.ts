@@ -6,6 +6,12 @@
 
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
+import { logger } from "../logger.js";
+import {
+  summarizePath,
+  summarizeText,
+  summarizeUrl,
+} from "../safe-error-context.js";
 
 export interface ScreenshotParams {
   /** 视频源，可以是本地文件路径或 HTTP URL */
@@ -49,7 +55,13 @@ export class FfmpegScreenshot {
    * 在指定时间点截取视频帧
    */
   async takeScreenshots(params: ScreenshotParams): Promise<ScreenshotResult> {
-    const { videoPath, timePoints, outputDir, filenamePrefix = "frame", headers } = params;
+    const {
+      videoPath,
+      timePoints,
+      outputDir,
+      filenamePrefix = "frame",
+      headers,
+    } = params;
 
     if (timePoints.length === 0) {
       return { outputFiles: [] };
@@ -60,7 +72,10 @@ export class FfmpegScreenshot {
     if (isRemote) {
       try {
         videoDuration = await this.getVideoDuration(videoPath, headers);
-      } catch {
+      } catch (err) {
+        logger.warn(
+          `远端视频时长探测失败，改用无限时长兜底: source=${summarizeUrl(videoPath)}, reason=${summarizeText((err as Error).message)}`,
+        );
         videoDuration = Infinity;
       }
     } else {
@@ -68,15 +83,36 @@ export class FfmpegScreenshot {
     }
 
     const outputFiles: string[] = [];
+    let failedCount = 0;
+    let lastFailureReason: string | undefined;
 
     for (let i = 0; i < timePoints.length; i++) {
       const time = timePoints[i];
       const outputPath = `${outputDir}/${filenamePrefix}-frame-${i}.jpg`;
-      const success = await this.screenshotFrame(videoPath, time, outputPath, videoDuration, isRemote, headers);
+      const result = await this.screenshotFrame(
+        videoPath,
+        time,
+        outputPath,
+        videoDuration,
+        isRemote,
+        headers,
+      );
 
-      if (success) {
+      if (result.success) {
         outputFiles.push(outputPath);
+      } else if (result.reason) {
+        failedCount += 1;
+        lastFailureReason = result.reason;
       }
+    }
+
+    if (failedCount > 0) {
+      const source = isRemote
+        ? summarizeUrl(videoPath)
+        : summarizePath(videoPath);
+      logger.warn(
+        `截图阶段存在失败帧，已继续处理其余时间点: source=${source}, failed=${failedCount}/${timePoints.length}, lastReason=${summarizeText(lastFailureReason ?? "unknown")}`,
+      );
     }
 
     return { outputFiles };
@@ -92,15 +128,16 @@ export class FfmpegScreenshot {
     videoDuration: number,
     isRemote: boolean,
     headers?: Record<string, string>,
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; reason?: string }> {
     if (time > videoDuration) {
-      return Promise.resolve(false);
+      return Promise.resolve({
+        success: false,
+        reason: `time ${time} exceeds duration ${videoDuration}`,
+      });
     }
 
     return new Promise((resolve) => {
-      const args: string[] = [
-        "-ss", String(time),
-      ];
+      const args: string[] = ["-ss", String(time)];
 
       const headersStr = isRemote ? this.buildHeadersArg(headers) : null;
       if (headersStr) {
@@ -108,9 +145,12 @@ export class FfmpegScreenshot {
       }
 
       args.push(
-        "-i", videoPath,
-        "-vframes", "1",
-        "-q:v", "3",
+        "-i",
+        videoPath,
+        "-vframes",
+        "1",
+        "-q:v",
+        "3",
         "-y",
         outputPath,
       );
@@ -121,25 +161,43 @@ export class FfmpegScreenshot {
 
       proc.on("close", async (code) => {
         if (code !== 0) {
-          resolve(false);
+          resolve({
+            success: false,
+            reason: `ffmpeg exited with code ${code}`,
+          });
           return;
         }
 
         try {
           const outputStat = await stat(outputPath);
-          resolve(outputStat.isFile() && outputStat.size > 0);
-        } catch {
-          resolve(false);
+          resolve({
+            success: outputStat.isFile() && outputStat.size > 0,
+            reason:
+              outputStat.isFile() && outputStat.size > 0
+                ? undefined
+                : `empty screenshot output ${summarizePath(outputPath)}`,
+          });
+        } catch (err) {
+          resolve({
+            success: false,
+            reason: `screenshot output unreadable ${summarizePath(outputPath)}: ${summarizeText((err as Error).message)}`,
+          });
         }
       });
 
-      proc.on("error", () => {
-        resolve(false);
+      proc.on("error", (err) => {
+        resolve({
+          success: false,
+          reason: `ffmpeg spawn failed: ${summarizeText(err.message)}`,
+        });
       });
     });
   }
 
-  private async getVideoDuration(videoPath: string, headers?: Record<string, string>): Promise<number> {
+  private async getVideoDuration(
+    videoPath: string,
+    headers?: Record<string, string>,
+  ): Promise<number> {
     const cached = this.durationCache.get(videoPath);
     if (cached !== undefined) return cached;
 
@@ -148,7 +206,10 @@ export class FfmpegScreenshot {
     return duration;
   }
 
-  private probeVideoDuration(videoPath: string, headers?: Record<string, string>): Promise<number> {
+  private probeVideoDuration(
+    videoPath: string,
+    headers?: Record<string, string>,
+  ): Promise<number> {
     return new Promise((resolve, reject) => {
       const args: string[] = [];
 
@@ -158,9 +219,12 @@ export class FfmpegScreenshot {
       }
 
       args.push(
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
         videoPath,
       );
 
@@ -187,7 +251,7 @@ export class FfmpegScreenshot {
 
         reject(
           new Error(
-            `ffprobe 获取视频时长失败 (exit ${code}): ${stderr.slice(-300)}`,
+            `ffprobe 获取视频时长失败 (source=${this.isRemoteUrl(videoPath) ? summarizeUrl(videoPath) : summarizePath(videoPath)}, exit ${code}): ${summarizeText(stderr.slice(-300))}`,
           ),
         );
       });
@@ -195,7 +259,7 @@ export class FfmpegScreenshot {
       proc.on("error", (err) => {
         reject(
           new Error(
-            `无法启动 ffprobe: ${err.message}。请确认 ffprobe 已安装并在 PATH 中`,
+            `无法启动 ffprobe: ${summarizeText(err.message)}。请确认 ffprobe 已安装并在 PATH 中`,
           ),
         );
       });

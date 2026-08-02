@@ -19,6 +19,8 @@ import type {
   BiliNavUserInfo,
 } from "../bilibili/types.js";
 import { CookieStore } from "./cookie-store.js";
+import { logger } from "../logger.js";
+import { summarizeText } from "../safe-error-context.js";
 
 /** Bilibili 二维码登录 API 端点 */
 const QR_GENERATE_URL =
@@ -36,7 +38,7 @@ export class BilibiliAuthProvider implements AuthProviderPort {
       headers: DEFAULT_HEADERS,
     });
 
-    const data = await response.json() as BiliQrCodeResponse;
+    const data = (await response.json()) as BiliQrCodeResponse;
 
     if (data.code !== 0) {
       throw new Error(`获取二维码失败: ${data.message}`);
@@ -54,7 +56,7 @@ export class BilibiliAuthProvider implements AuthProviderPort {
       headers: DEFAULT_HEADERS,
     });
 
-    const data = await response.json() as BiliQrStatusResponse;
+    const data = (await response.json()) as BiliQrStatusResponse;
 
     if (data.code !== 0) {
       // API 级错误
@@ -103,10 +105,7 @@ export class BilibiliAuthProvider implements AuthProviderPort {
     return cookies;
   }
 
-  async saveCookies(
-    cookies: LoginCookie[],
-    cookieFile: string,
-  ): Promise<void> {
+  async saveCookies(cookies: LoginCookie[], cookieFile: string): Promise<void> {
     await this.cookieStore.save(cookieFile, cookies);
   }
 
@@ -123,7 +122,7 @@ export class BilibiliAuthProvider implements AuthProviderPort {
       const response = await fetch(NAV_URL, {
         headers: { ...DEFAULT_HEADERS, Cookie: cookieString },
       });
-      const data = await response.json() as {
+      const data = (await response.json()) as {
         code: number;
         data: BiliNavUserInfo;
       };
@@ -138,7 +137,10 @@ export class BilibiliAuthProvider implements AuthProviderPort {
         face: data.data.face,
         isLogin: data.data.isLogin,
       };
-    } catch {
+    } catch (err) {
+      logger.warn(
+        `获取 Bilibili 登录态用户信息失败，按未登录处理: ${summarizeText((err as Error).message)}`,
+      );
       return null;
     }
   }

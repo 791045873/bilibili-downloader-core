@@ -27,6 +27,7 @@ import { matchCheese } from "./matcher/cheese-matcher.js";
 import { matchUgcSeason } from "./matcher/ugc-season-matcher.js";
 import { matchSpace } from "./matcher/space-matcher.js";
 import { isUrl, normalizeUrl } from "./matcher/url-normalizer.js";
+import { summarizeInput, summarizeUrl } from "../safe-error-context.js";
 
 /**
  * matcher 管道 - 按优先级排列，新增类型追加到末尾即可
@@ -52,9 +53,13 @@ export class BilibiliResourceParser implements ResourceParserPort {
       if (result) return result;
     }
 
+    const safeInput = isUrl(input)
+      ? summarizeUrl(input)
+      : summarizeInput(input);
+
     throw new ResourceParseError(
-      `无法识别的输入格式: "${input}"。请提供 BV 号或 B 站视频链接`,
-      input,
+      `无法识别的输入格式: "${safeInput}"。请提供 BV 号或 B 站视频链接`,
+      safeInput,
     );
   }
 }

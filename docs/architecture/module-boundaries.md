@@ -23,6 +23,9 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 - Allowed dependencies: `packages/core/`（仅使用其 Ports 接口和领域模型）
 - Forbidden dependencies: `packages/frontend/`, `packages/cli/`, `packages/server/`
 - Owner docs: `docs/architecture/system-baseline.md`
+- Error boundary: 默认向上抛出带安全上下文的错误，不承担最终请求级、任务级或编排级错误日志职责。
+- Diagnostic exception: 只有当 adapter 内部吞错、静默降级或 fallback 且上层无法感知该失败信号时，才允许在 adapter 内记录少量 `debug`/`warn` 诊断日志。
+- Logging constraint: adapters 不得依赖 Nest Logger 或 `packages/server/` 的日志实现。
 
 ### `packages/cli/`
 
@@ -37,6 +40,7 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 - Allowed dependencies: `packages/core/`, `packages/adapters/`
 - Forbidden dependencies: `packages/frontend/`, `packages/cli/`
 - Owner docs: `docs/design/app-overview.md`
+- Logging ownership: server 负责 adapter 失败的高语义日志表达，包括请求、任务状态、编排分支、降级决策和对外错误语义。
 
 ### `packages/frontend/`
 
@@ -78,3 +82,5 @@ docker ──(build)──→ server + frontend
 ## Rule
 
 If a recurring design argument depends on module ownership, write the answer here instead of re-litigating it in chat.
+
+For adapter failures specifically: prefer upward propagation with safe context; use adapter-local diagnostics only for hidden failures or hidden degradation that upper layers cannot otherwise observe.
