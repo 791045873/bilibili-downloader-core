@@ -153,6 +153,8 @@ export interface DownloadConfig {
 
 export interface TaskEntry {
   id: number;
+  bvid?: string;
+  cid?: number;
   status: string;
   title?: string;
   progress?: number;
@@ -163,8 +165,25 @@ export interface TaskEntry {
   errorMessage?: string;
   durationMs?: number;
   autoSummary?: number;
+  summaryStatus?: string;
+  summaryOutput?: string;
   createdAt?: string;
   completedAt?: string;
+}
+
+export interface AiSummaryTaskEntry {
+  id: number;
+  bvid: string;
+  cid: number;
+  title?: string;
+  sourceTaskId?: number;
+  status: string;
+  summaryOutput?: string | null;
+  errorMessage?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  lastTriggeredAt?: string;
+  lastCompletedAt?: string;
 }
 
 // ---- 设置 ----

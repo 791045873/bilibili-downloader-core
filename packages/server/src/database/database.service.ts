@@ -44,6 +44,21 @@ export interface AnalysisSubTaskRecord {
   completedAt?: string;
 }
 
+export interface AiSummaryTaskRecord {
+  id?: number;
+  bvid: string;
+  cid: number;
+  title?: string;
+  sourceTaskId?: number;
+  status: string;
+  summaryOutput?: string;
+  errorMessage?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastTriggeredAt?: string;
+  lastCompletedAt?: string;
+}
+
 @Injectable()
 export class DatabaseService {
   private readonly logger = new Logger(DatabaseService.name);
@@ -124,6 +139,28 @@ export class DatabaseService {
       ON analysis_sub_task(task_id);
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_summary_task (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        bvid TEXT NOT NULL,
+        cid INTEGER NOT NULL,
+        title TEXT,
+        source_task_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'pending',
+        summary_output TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_triggered_at TEXT,
+        last_completed_at TEXT,
+        UNIQUE (bvid, cid)
+      )
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_ai_summary_task_updated_at
+      ON ai_summary_task(updated_at DESC);
+    `);
+
     // 已有数据库升级: 补充 subtitle_lang 列
     try {
       this.db.exec(`ALTER TABLE task ADD COLUMN subtitle_lang TEXT`);
@@ -155,29 +192,48 @@ export class DatabaseService {
 
   private readonly taskSelectSql = `
     SELECT
+      t.id,
+      t.bvid,
+      t.cid,
+      t.title,
+      t.quality,
+      t.codec,
+      t.outputPath,
+      t.subtitle_lang AS subtitleLang,
+      t.auto_summary AS autoSummary,
+      COALESCE(ast.status, t.summary_status) AS summaryStatus,
+      COALESCE(ast.summary_output, t.summary_output) AS summaryOutput,
+      t.status,
+      t.progress,
+      t.speed,
+      t.outputFile,
+      t.fileSize,
+      t.errorCode,
+      t.errorMessage,
+      t.durationMs,
+      t.createdAt,
+      t.updatedAt,
+      t.completedAt
+    FROM task t
+    LEFT JOIN ai_summary_task ast
+      ON ast.bvid = t.bvid AND ast.cid = t.cid
+  `;
+
+  private readonly aiSummaryTaskSelectSql = `
+    SELECT
       id,
       bvid,
       cid,
       title,
-      quality,
-      codec,
-      outputPath,
-      subtitle_lang AS subtitleLang,
-      auto_summary AS autoSummary,
-      summary_status AS summaryStatus,
-      summary_output AS summaryOutput,
+      source_task_id AS sourceTaskId,
       status,
-      progress,
-      speed,
-      outputFile,
-      fileSize,
-      errorCode,
-      errorMessage,
-      durationMs,
-      createdAt,
-      updatedAt,
-      completedAt
-    FROM task
+      summary_output AS summaryOutput,
+      error_message AS errorMessage,
+      created_at AS createdAt,
+      updated_at AS updatedAt,
+      last_triggered_at AS lastTriggeredAt,
+      last_completed_at AS lastCompletedAt
+    FROM ai_summary_task
   `;
 
   /** 插入新任务，返回自增 id */
@@ -369,13 +425,13 @@ export class DatabaseService {
   /** 获取所有任务 */
   getTasks(): TaskRecord[] {
     return this.db
-      .prepare(`${this.taskSelectSql} ORDER BY createdAt DESC`)
+      .prepare(`${this.taskSelectSql} ORDER BY t.createdAt DESC`)
       .all() as TaskRecord[];
   }
 
   /** 获取单个任务 */
   getTaskById(id: number): TaskRecord | undefined {
-    return this.db.prepare(`${this.taskSelectSql} WHERE id = ?`).get(id) as
+    return this.db.prepare(`${this.taskSelectSql} WHERE t.id = ?`).get(id) as
       | TaskRecord
       | undefined;
   }
@@ -384,7 +440,7 @@ export class DatabaseService {
   findNextCreatedTask(): TaskRecord | undefined {
     return this.db
       .prepare(
-        `${this.taskSelectSql} WHERE status = 'created' ORDER BY createdAt ASC LIMIT 1`,
+        `${this.taskSelectSql} WHERE t.status = 'created' ORDER BY t.createdAt ASC LIMIT 1`,
       )
       .get() as TaskRecord | undefined;
   }
@@ -457,8 +513,8 @@ export class DatabaseService {
     return this.db
       .prepare(
         `${this.taskSelectSql}
-         WHERE bvid = ? AND cid = ?
-         ORDER BY createdAt DESC
+         WHERE t.bvid = ? AND t.cid = ?
+         ORDER BY t.createdAt DESC
          LIMIT 1`,
       )
       .get(bvid, cid) as TaskRecord | undefined;
@@ -472,8 +528,8 @@ export class DatabaseService {
     return this.db
       .prepare(
         `${this.taskSelectSql}
-         WHERE bvid = ? AND cid = ? AND status = 'success'
-         ORDER BY createdAt DESC
+         WHERE t.bvid = ? AND t.cid = ? AND t.status = 'success'
+         ORDER BY t.createdAt DESC
          LIMIT 1`,
       )
       .get(bvid, cid) as TaskRecord | undefined;
@@ -605,5 +661,100 @@ export class DatabaseService {
       `,
       )
       .all(taskId) as AnalysisSubTaskRecord[];
+  }
+
+  getAiSummaryTaskByResource(
+    bvid: string,
+    cid: number,
+  ): AiSummaryTaskRecord | undefined {
+    return this.db
+      .prepare(
+        `${this.aiSummaryTaskSelectSql}
+         WHERE bvid = ? AND cid = ?
+         LIMIT 1`,
+      )
+      .get(bvid, cid) as AiSummaryTaskRecord | undefined;
+  }
+
+  listAiSummaryTasks(): AiSummaryTaskRecord[] {
+    return this.db
+      .prepare(`${this.aiSummaryTaskSelectSql} ORDER BY updated_at DESC`)
+      .all() as AiSummaryTaskRecord[];
+  }
+
+  upsertAiSummaryTask(record: AiSummaryTaskRecord): AiSummaryTaskRecord {
+    const now = new Date().toISOString();
+    const existing = this.getAiSummaryTaskByResource(record.bvid, record.cid);
+    const createdAt = existing?.createdAt ?? record.createdAt ?? now;
+    this.db
+      .prepare(
+        `
+        INSERT INTO ai_summary_task (
+          bvid,
+          cid,
+          title,
+          source_task_id,
+          status,
+          summary_output,
+          error_message,
+          created_at,
+          updated_at,
+          last_triggered_at,
+          last_completed_at
+        )
+        VALUES (
+          @bvid,
+          @cid,
+          @title,
+          @sourceTaskId,
+          @status,
+          @summaryOutput,
+          @errorMessage,
+          @createdAt,
+          @updatedAt,
+          @lastTriggeredAt,
+          @lastCompletedAt
+        )
+        ON CONFLICT(bvid, cid) DO UPDATE SET
+          title = excluded.title,
+          source_task_id = excluded.source_task_id,
+          status = excluded.status,
+          summary_output = excluded.summary_output,
+          error_message = excluded.error_message,
+          updated_at = excluded.updated_at,
+          last_triggered_at = excluded.last_triggered_at,
+          last_completed_at = excluded.last_completed_at
+      `,
+      )
+      .run({
+        bvid: record.bvid,
+        cid: record.cid,
+        title: record.title ?? null,
+        sourceTaskId: record.sourceTaskId ?? null,
+        status: record.status,
+        summaryOutput: record.summaryOutput ?? null,
+        errorMessage: record.errorMessage ?? null,
+        createdAt,
+        updatedAt: record.updatedAt ?? now,
+        lastTriggeredAt: record.lastTriggeredAt ?? null,
+        lastCompletedAt: record.lastCompletedAt ?? null,
+      });
+
+    const persisted = this.getAiSummaryTaskByResource(record.bvid, record.cid);
+    if (!persisted) {
+      throw new Error("AI summary task upsert failed");
+    }
+
+    this.logger.log(
+      createLogMessage("Persisted AI summary task", {
+        bvid: persisted.bvid,
+        cid: persisted.cid,
+        taskId: persisted.sourceTaskId,
+        status: persisted.status,
+        summaryStatus: persisted.status,
+      }),
+    );
+
+    return persisted;
   }
 }

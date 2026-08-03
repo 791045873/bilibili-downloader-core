@@ -1,4 +1,5 @@
 export { AnalysisController } from "./analysis.controller.js";
+export { AnalysisTaskController } from "./analysis-task.controller.js";
 export { AnalysisModule } from "./analysis.module.js";
 export { AnalysisTriggerService } from "./analysis-trigger.service.js";
 export { AnalysisEngine } from "./analysis-engine.js";

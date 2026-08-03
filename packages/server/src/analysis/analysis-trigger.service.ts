@@ -7,6 +7,7 @@ import { type LlmConfig } from "@bilibili-downloader/adapters/llm";
 import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
 import {
   DatabaseService,
+  type AiSummaryTaskRecord,
   type TaskRecord,
 } from "../database/database.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
@@ -452,5 +453,36 @@ export class AnalysisTriggerService implements OnModuleInit {
       visionProxyUrl,
       visionModelName,
     };
+  }
+
+  getAiSummaryTasks(): AiSummaryTaskRecord[] {
+    return this.db.listAiSummaryTasks();
+  }
+
+  private upsertAiSummaryTask(
+    task: TaskRecord,
+    fields: {
+      status: string;
+      summaryOutput?: string;
+      errorMessage?: string;
+      lastTriggeredAt?: string;
+      lastCompletedAt?: string;
+    },
+  ): void {
+    if (!task.bvid || typeof task.cid !== "number") {
+      return;
+    }
+
+    this.db.upsertAiSummaryTask({
+      bvid: task.bvid,
+      cid: task.cid,
+      title: task.title,
+      sourceTaskId: task.id,
+      status: fields.status,
+      summaryOutput: fields.summaryOutput,
+      errorMessage: fields.errorMessage,
+      lastTriggeredAt: fields.lastTriggeredAt,
+      lastCompletedAt: fields.lastCompletedAt,
+    });
   }
 }

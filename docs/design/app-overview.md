@@ -6,11 +6,11 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 
 ## Main Surfaces
 
-| Surface      | Description                                                                 | Runtime                |
-| ------------ | --------------------------------------------------------------------------- | ---------------------- |
-| Web Frontend | 视频链接输入、Section 选择器、视频解析、下载列表查看、设置管理                  | Vue 3 SPA（浏览器）       |
-| CLI          | 命令行下载单个视频，参数包括输入、输出目录、清晰度偏好（当前不可用，待修复）       | Node.js 终端              |
-| Docker       | 容器化部署，Server + Frontend 打包为单镜像，通过挂载 volume 管理下载文件          | Docker 容器              |
+| Surface | Description | Runtime |
+| --- | --- | --- |
+| Web Frontend | 视频链接输入、Section 选择器、视频解析、下载列表查看、AI 总结任务列表、设置管理 | Vue 3 SPA（浏览器） |
+| CLI | 命令行下载单个视频，参数包括输入、输出目录、清晰度偏好（当前不可用，待修复） | Node.js 终端 |
+| Docker | 容器化部署，Server + Frontend 打包为单镜像，通过挂载 volume 管理下载文件 | Docker 容器 |
 
 ## Primary Navigation Model
 
@@ -30,7 +30,8 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 4. 选择视频清晰度和编码，勾选分P
 5. 点击"加入下载队列"，弹出下载子目录确认/修改弹框，确认后加入下载队列，停留在当前页面不跳转
 6. 下载任务在队列中依次执行：下载音频流 + 视频流 → FFmpeg 合并 → 输出到服务端下载根目录下的相对子目录
-7. 用户可在下载列表中查看进度、结果和完成任务的实际输出文件路径
+7. 用户可在下载列表中查看进度、结果和完成任务的实际输出文件路径，并可对已完成任务直接触发 AI 总结
+8. 用户可进入 AI 总结任务列表页，手动刷新查看各资源的 AI 总结状态
 
 ### 单视频下载（CLI）
 
@@ -47,14 +48,16 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 
 ## Integration Points
 
-| Integration | Purpose                               | Location                          |
-| ----------- | ------------------------------------- | --------------------------------- |
-| Bilibili API | 获取视频信息、播放流地址                | `packages/adapters/src/bilibili/` |
-| FFmpeg      | 音视频合并                             | 系统依赖（容器内置或宿主机安装）     |
-| SQLite      | 下载任务持久化                          | `packages/server/src/`           |
+| Integration | Purpose | Location |
+| --- | --- | --- |
+| Bilibili API | 获取视频信息、播放流地址 | `packages/adapters/src/bilibili/` |
+| FFmpeg | 音视频合并 | 系统依赖（容器内置或宿主机安装） |
+| SQLite | 下载任务持久化 | `packages/server/src/` |
 | POST /api/tasks/check | 按 bvid + cid 批量查询任务状态（入队去重） | `packages/server/src/download/download.controller.ts` |
 | POST /api/download | 创建下载任务，必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts` |
 | GET /api/download/config | 返回当前服务端下载根目录及来源（环境变量或默认目录） | `packages/server/src/download/download.controller.ts` |
+| POST /api/tasks/:id/summary | 对已完成下载任务直接触发 AI 总结；任务不存在返回 HTTP 404，非已完成任务返回 HTTP 409 | `packages/server/src/analysis/analysis-task.controller.ts` |
+| GET /api/summary-tasks | 返回资源级 AI 总结任务列表，供前端手动刷新查看状态 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | POST /api/analysis/run | 视频内容分析正式接口，接收 `AnalysisRequest`（videoPath、subtitlePath?、videoTitle、metadata、screenshotVideoPath?），按 metadata.type 校验，调用 AnalysisEngine 生成总结文档 | `packages/server/src/analysis/analysis.controller.ts` |
 
 ## Rule

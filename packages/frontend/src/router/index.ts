@@ -25,6 +25,11 @@ const router = createRouter({
       component: () => import("../views/Downloading.vue"),
     },
     {
+      path: "/summary-tasks",
+      name: "summary-tasks",
+      component: () => import("../views/AiSummaryTasks.vue"),
+    },
+    {
       path: "/settings",
       name: "settings",
       component: () => import("../views/Settings.vue"),

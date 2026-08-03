@@ -8,6 +8,7 @@ import * as api from "../api";
 
 const router = useRouter();
 const queueStore = useDownloadQueueStore();
+const actionError = ref("");
 
 /** 所有任务状态缓存（key = taskId） */
 const taskMap = ref<Map<number, TaskEntry>>(new Map());
@@ -83,6 +84,59 @@ async function fetchTask(id: number) {
   }
 }
 
+function summaryStatusLabel(summaryStatus?: string): string {
+  switch (summaryStatus) {
+    case "pending":
+      return "待总结";
+    case "analyzing":
+      return "总结中";
+    case "failed":
+      return "总结失败";
+    case "completed":
+      return "总结完成";
+    default:
+      return "未总结";
+  }
+}
+
+function isSummaryRunning(summaryStatus?: string): boolean {
+  return summaryStatus === "pending" || summaryStatus === "analyzing";
+}
+
+function canTriggerAiSummary(task: TaskEntry): boolean {
+  return task.status === "success" && !isSummaryRunning(task.summaryStatus);
+}
+
+function aiSummaryButtonLabel(task: TaskEntry): string {
+  if (isSummaryRunning(task.summaryStatus)) {
+    return "AI 总结中";
+  }
+  if (task.summaryStatus && task.summaryStatus !== "none") {
+    return "重新 AI 总结";
+  }
+  return "立刻 AI 总结";
+}
+
+async function handleTriggerAiSummary(id: number) {
+  actionError.value = "";
+  const existing = taskMap.value.get(id);
+  if (!existing || !canTriggerAiSummary(existing)) {
+    return;
+  }
+
+  try {
+    await api.triggerTaskAiSummary(id);
+    taskMap.value.set(id, {
+      ...existing,
+      summaryStatus: "pending",
+    });
+    taskMap.value = new Map(taskMap.value);
+    await fetchTask(id);
+  } catch (e: unknown) {
+    actionError.value = e instanceof Error ? e.message : "触发 AI 总结失败";
+  }
+}
+
 // ==================== 操作 ====================
 
 async function handleDelete(id: number) {
@@ -155,6 +209,10 @@ function formatBytes(bytes: number): string {
 
 <template>
   <div class="space-y-6">
+    <div v-if="actionError" class="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+      {{ actionError }}
+    </div>
+
     <!-- 统计 -->
     <div class="grid grid-cols-3 gap-4">
       <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-center">
@@ -214,6 +272,10 @@ function formatBytes(bytes: number): string {
               <span class="text-zinc-600">输出文件：</span>
               <code class="break-all text-zinc-400">{{ task.outputFile }}</code>
             </div>
+            <div v-if="task.status === 'success'" class="mt-2 text-xs text-zinc-500">
+              <span class="text-zinc-600">AI 总结：</span>
+              <span class="text-zinc-300">{{ summaryStatusLabel(task.summaryStatus) }}</span>
+            </div>
             <div v-if="task.status === 'downloading'" class="mt-2">
               <ProgressBar :value="task.progress ?? 0" />
             </div>
@@ -247,6 +309,17 @@ function formatBytes(bytes: number): string {
             @click="handleDelete(id)"
           >
             取消
+          </button>
+          <button
+            v-if="task.status === 'success'"
+            class="shrink-0 rounded-md border border-zinc-700 px-3 py-1.5 text-xs transition-colors"
+            :class="canTriggerAiSummary(task)
+              ? 'text-rose-300 hover:text-rose-200 hover:border-rose-700'
+              : 'cursor-not-allowed text-zinc-500'"
+            :disabled="!canTriggerAiSummary(task)"
+            @click="handleTriggerAiSummary(id)"
+          >
+            {{ aiSummaryButtonLabel(task) }}
           </button>
         </div>
       </div>

@@ -16,11 +16,11 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `none`（2026-08-02 adapter 错误边界与诊断日志计划已闭环）
+- Active requirement: `docs/requirements/2026-08-03-download-task-list-ai-summary.md`
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `none`
-- Active backlog item: `none`
-- AI autonomy: `implement`（用户显式授权依次实现 backlog 待实现项；所有项 plan audit 已于 2026-07-12 通过）
+- Active plan: `docs/plans/2026-08-03-download-task-list-ai-summary-plan.md`
+- Active backlog item: `下载任务列表 AI 总结入口与任务列表`
+- AI autonomy: `implement`（plan audit 已通过，当前切片进入实施中）
 - Current blocker: `none`
 
 Rule:

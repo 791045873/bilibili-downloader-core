@@ -1,4 +1,5 @@
 import type {
+  AiSummaryTaskEntry,
   DownloadConfig,
   ParseLinkResult,
   PaginatedVideos,
@@ -171,6 +172,18 @@ export async function setAutoSummary(
     method: "POST",
     body: JSON.stringify({ enabled }),
   });
+}
+
+export async function triggerTaskAiSummary(
+  taskId: number,
+): Promise<{ message: string }> {
+  return request(`/tasks/${taskId}/summary`, {
+    method: "POST",
+  });
+}
+
+export async function getAiSummaryTasks(): Promise<AiSummaryTaskEntry[]> {
+  return request("/summary-tasks");
 }
 
 // ==================== 认证 ====================

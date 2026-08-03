@@ -36,6 +36,12 @@ onMounted(() => {
             下载队列
           </router-link>
           <router-link
+            to="/summary-tasks"
+            class="px-3 py-1.5 rounded-md text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+          >
+            AI 总结任务
+          </router-link>
+          <router-link
             to="/settings"
             class="px-3 py-1.5 rounded-md text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
           >
