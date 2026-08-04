@@ -11,14 +11,35 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, unquote
 
-import dashscope
-from dashscope import MultiModalConversation
-from dotenv import load_dotenv
+def missing_dependency_exit(missing_dependency: str, missing_module: str) -> NoReturn:
+    requirements_path = Path(__file__).with_name("requirements.txt")
+    sys.stderr.write(
+        "Qwen vision proxy is missing Python dependency "
+        f"'{missing_dependency}' (module: {missing_module}).\n"
+        "Install the proxy requirements with:\n"
+        f"  python -m pip install -r \"{requirements_path}\"\n"
+        "Or run from packages/server:\n"
+        "  pnpm setup:vision-proxy\n"
+    )
+    raise SystemExit(1)
+
+
+try:
+    import dashscope
+    from dashscope import MultiModalConversation
+except ModuleNotFoundError as err:
+    missing_dependency_exit("dashscope", err.name or "dashscope")
+
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError as err:
+    missing_dependency_exit("python-dotenv", err.name or "dotenv")
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(SERVER_DIR / ".env")

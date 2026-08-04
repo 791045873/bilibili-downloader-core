@@ -8,9 +8,10 @@
     "pnpm": ">=10.34.3"
   },
   "scripts": {
-    "postinstall": "node scripts/check-ffmpeg.mjs",
+    "postinstall": "node scripts/check-ffmpeg.mjs && node scripts/setup-vision-proxy.mjs --postinstall",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
+    "setup:vision-proxy": "node scripts/setup-vision-proxy.mjs",
     "download": "pnpm --filter @bilibili-downloader/cli start:download",
     "login-bili": "pnpm --filter @bilibili-downloader/cli start:login",
     "history": "pnpm --filter @bilibili-downloader/cli start:history",
