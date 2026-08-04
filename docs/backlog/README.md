@@ -11,14 +11,14 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 ### 当前活跃项
 
 - Priority: `P0`
-- Item: `下载任务列表 AI 总结入口与任务列表`
+- Item: `下载任务列表分页、过滤与 AI 总结入口`
 - Requirement: `docs/requirements/2026-08-03-download-task-list-ai-summary.md`
 - Owner Doc: `docs/design/app-overview.md`
 - Plan: `docs/plans/2026-08-03-download-task-list-ai-summary-plan.md`
 - Status: `in-progress`
-- AI Autonomy: `implement`
-- Blocker: `none`
-- Last Checked: `2026-08-03`
+- AI Autonomy: `plan-first`
+- Blocker: `updated plan requires independent re-audit before implementation; see docs/audits/2026-08-04-plan-reaudit-download-task-list-scheme-b.md`
+- Last Checked: `2026-08-04`
 
 ### 已完成与历史项
 

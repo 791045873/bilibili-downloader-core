@@ -5,6 +5,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   BadRequestException,
   Logger,
 } from "@nestjs/common";
@@ -12,6 +13,7 @@ import { DownloadScheduler } from "./download-scheduler.js";
 import { DownloadService } from "./download.service.js";
 import { DownloadDto } from "./download.dto.js";
 import { DatabaseService } from "../database/database.service.js";
+import type { TaskStatusGroup } from "../database/database.service.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 
 @Controller("api")
@@ -128,8 +130,15 @@ export class DownloadController {
   // ==================== 查询 ====================
 
   @Get("/tasks")
-  getTasks() {
-    return this.downloadService.getTasks();
+  getTasks(
+    @Query("page") page = "1",
+    @Query("pageSize") pageSize = "20",
+    @Query("statusGroup") statusGroup = "all",
+  ) {
+    return this.downloadService.getTasksPaginated({
+      ...parsePagination(page, pageSize),
+      statusGroup: parseTaskStatusGroup(statusGroup),
+    });
   }
 
   @Get("/tasks/:id")
@@ -174,4 +183,39 @@ export class DownloadController {
     }
     return this.databaseService.findTasksByBvidsAndCids(items);
   }
+}
+
+function toPositiveInt(value: string, name: string): number {
+  const n = Number.parseInt(value, 10);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new BadRequestException(`${name} 必须为正整数`);
+  }
+  return n;
+}
+
+function parsePagination(
+  pageRaw: string,
+  pageSizeRaw: string,
+): { page: number; pageSize: number } {
+  const page = toPositiveInt(pageRaw, "page");
+  const pageSize = toPositiveInt(pageSizeRaw, "pageSize");
+  return { page, pageSize };
+}
+
+function parseTaskStatusGroup(value: string): TaskStatusGroup {
+  const allowed: TaskStatusGroup[] = [
+    "all",
+    "active",
+    "created",
+    "downloading",
+    "success",
+    "failed",
+    "stopped",
+  ];
+  if (allowed.includes(value as TaskStatusGroup)) {
+    return value as TaskStatusGroup;
+  }
+  throw new BadRequestException(
+    `statusGroup 必须为 ${allowed.join(" / ")}`,
+  );
 }

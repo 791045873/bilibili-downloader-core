@@ -72,6 +72,12 @@ export class AnalysisTriggerService implements OnModuleInit {
           this.db.updateTaskStatus(taskId, {
             status: task.status,
             summaryStatus: "pending",
+            summaryOutput: "",
+          });
+          this.upsertAiSummaryTask(task, {
+            status: "pending",
+            summaryOutput: "",
+            errorMessage: "",
           });
         }
         this.trigger(taskId).catch((err: unknown) => {
@@ -107,6 +113,12 @@ export class AnalysisTriggerService implements OnModuleInit {
             status: task.status,
             summaryStatus: "failed",
             summaryOutput: result.error,
+          });
+          this.upsertAiSummaryTask(task, {
+            status: "failed",
+            summaryOutput: "",
+            errorMessage: result.error,
+            lastCompletedAt: new Date().toISOString(),
           });
         }
       }
@@ -161,9 +173,19 @@ export class AnalysisTriggerService implements OnModuleInit {
       return;
     }
 
+    const now = new Date().toISOString();
+
     this.db.updateTaskStatus(taskId, {
       status: task.status,
       summaryStatus: "pending",
+      summaryOutput: "",
+    });
+    this.upsertAiSummaryTask(task, {
+      status: "pending",
+      summaryOutput: "",
+      errorMessage: "",
+      lastTriggeredAt: now,
+      lastCompletedAt: "",
     });
 
     const lowResSubTask = this.db
@@ -288,6 +310,17 @@ export class AnalysisTriggerService implements OnModuleInit {
     };
 
     const engine = new AnalysisEngine(this.getLlmConfig());
+    this.db.updateTaskStatus(taskId, {
+      status: task.status,
+      summaryStatus: "analyzing",
+      summaryOutput: "",
+    });
+    this.upsertAiSummaryTask(task, {
+      status: "analyzing",
+      summaryOutput: "",
+      errorMessage: "",
+      lastTriggeredAt: now,
+    });
 
     try {
       const result = await engine.analyze(input);
@@ -305,6 +338,13 @@ export class AnalysisTriggerService implements OnModuleInit {
         status: task.status,
         summaryStatus: "completed",
         summaryOutput: result.summaryPath,
+      });
+      this.upsertAiSummaryTask(task, {
+        status: "completed",
+        summaryOutput: result.summaryPath,
+        errorMessage: "",
+        lastTriggeredAt: now,
+        lastCompletedAt: new Date().toISOString(),
       });
       await this.notificationService.sendSummaryNotification({
         title: input.videoTitle,
@@ -327,6 +367,13 @@ export class AnalysisTriggerService implements OnModuleInit {
         status: task.status,
         summaryStatus: "failed",
         summaryOutput: msg,
+      });
+      this.upsertAiSummaryTask(task, {
+        status: "failed",
+        summaryOutput: "",
+        errorMessage: msg,
+        lastTriggeredAt: now,
+        lastCompletedAt: new Date().toISOString(),
       });
       await this.notificationService.sendSummaryNotification({
         title: task.title || `${taskBvid}-${taskCid}`,

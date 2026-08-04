@@ -36,6 +36,20 @@ export class AnalysisTaskController {
     if (task.status !== "success") {
       throw new ConflictException("仅已完成下载任务可触发 AI 总结");
     }
+    if (!task.bvid || typeof task.cid !== "number") {
+      throw new ConflictException("任务缺少 AI 总结所需的视频资源标识");
+    }
+
+    const summaryTask = this.databaseService.getAiSummaryTaskByResource(
+      task.bvid,
+      task.cid,
+    );
+    if (
+      summaryTask &&
+      (summaryTask.status === "pending" || summaryTask.status === "analyzing")
+    ) {
+      throw new ConflictException("当前资源的 AI 总结正在进行中，请勿重复触发");
+    }
 
     this.databaseService.updateTaskStatus(taskId, {
       status: task.status,

@@ -19,7 +19,9 @@ import type { ResolvedVideo } from "@bilibili-downloader/core/domain";
 import { join, resolve } from "node:path";
 import {
   DatabaseService,
+  type PaginatedTaskResult,
   type TaskRecord,
+  type TaskStatusGroup,
 } from "../database/database.service.js";
 import type { DownloadDto } from "./download.dto.js";
 import { createLogMessage } from "../logging/server-log.util.js";
@@ -637,6 +639,14 @@ export class DownloadService implements OnModuleInit {
         new Date(b.createdAt ?? "").getTime() -
         new Date(a.createdAt ?? "").getTime(),
     );
+  }
+
+  getTasksPaginated(params: {
+    page: number;
+    pageSize: number;
+    statusGroup: TaskStatusGroup;
+  }): PaginatedTaskResult {
+    return this.db.listTasksPaginated(params);
   }
 
   /** 获取单个任务详情（从SQLite） */

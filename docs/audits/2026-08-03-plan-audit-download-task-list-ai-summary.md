@@ -1,5 +1,11 @@
 # 2026-08-03 Plan Audit - 下载任务列表 AI 总结入口与任务列表
 
+## Superseded Status
+
+- Status: `superseded by 2026-08-04 scheme-B re-audit`
+- Reason: 本文件针对旧方案完成审计，旧方案仍将下载任务列表定义为本地下载队列视图。2026-08-04 用户已明确切换到方案 B，要求下载任务页改为服务端分页任务列表、过滤替代“清空已完成”、轮询仅覆盖当前页非终态任务。
+- Current Use: 仅保留为历史审计记录，不再作为当前 active plan 的实施门禁结论。
+
 - Plan: `docs/plans/2026-08-03-download-task-list-ai-summary-plan.md`
 - Requirement: `docs/requirements/2026-08-03-download-task-list-ai-summary.md`
 - Testing: `docs/testing/2026/08-03-download-task-list-ai-summary-testing.md`
@@ -30,23 +36,9 @@
   - 进行中重复触发与资源唯一性 negative path
   - 页面刷新恢复边界
 
-## Status
+## Historical Outcome
 
-- Current Status: `passed after round 2 re-audit`
-
-## Round 2 Result
-
-- Verdict: `PASS`
-
-### Evidence Summary
-
-- 第二轮复审确认首轮 1 个 blocker 与 3 个 major 已全部修复。
-- 计划已移除 cold-replay 兜底误判，改为要求后续 closure 仍需独立 reviewer / subagent。
-- 下载任务列表与 AI 总结任务列表的数据真相边界已明确：前者是本地下载队列视图，后者是服务端全量 AI 总结任务视图。
-- `ai_summary_task` 与 `task.summary_*` 镜像的主从规则、读取优先级、同步时机与 proof 已进入执行项与 exit criteria。
-- testing 文档已补齐无效 taskId、未完成任务、进行中重复触发、资源唯一性与页面刷新恢复边界的 anti-state 覆盖。
-
-## Next Step
-
-- 计划已可进入 implementation-ready 状态；后续实现前无需再补 plan audit，但 closure 仍需独立 reviewer / subagent 证据。
+- 本文件记录的 Round 2 `PASS` 与“implementation-ready”结论仅适用于旧方案。
+- 由于 2026-08-04 已切换到方案 B，上述结论不再构成当前 active plan 的实施门禁证据。
+- 当前实施门禁以后续独立的方案 B re-audit 记录为准。
 

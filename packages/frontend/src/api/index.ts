@@ -2,7 +2,9 @@ import type {
   AiSummaryTaskEntry,
   DownloadConfig,
   ParseLinkResult,
+  PaginatedTasks,
   PaginatedVideos,
+  TaskStatusGroup,
   VideoInfo,
   ParseResultItem,
   TaskEntry,
@@ -118,8 +120,17 @@ export async function resumeTask(id: number): Promise<{ message: string }> {
   return request(`/tasks/${id}/resume`, { method: "POST" });
 }
 
-export async function getTasks(): Promise<TaskEntry[]> {
-  return request("/tasks");
+export async function getTasks(params?: {
+  page?: number;
+  pageSize?: number;
+  statusGroup?: TaskStatusGroup;
+}): Promise<PaginatedTasks> {
+  const page = params?.page ?? 1;
+  const pageSize = params?.pageSize ?? 20;
+  const statusGroup = params?.statusGroup ?? "all";
+  return request(
+    `/tasks?page=${page}&pageSize=${pageSize}&statusGroup=${statusGroup}`,
+  );
 }
 
 export async function getTaskById(id: number): Promise<TaskEntry> {

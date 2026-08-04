@@ -171,6 +171,23 @@ export interface TaskEntry {
   completedAt?: string;
 }
 
+export type TaskStatusGroup =
+  | "all"
+  | "active"
+  | "created"
+  | "downloading"
+  | "success"
+  | "failed"
+  | "stopped";
+
+export interface PaginatedTasks {
+  items: TaskEntry[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
 export interface AiSummaryTaskEntry {
   id: number;
   bvid: string;

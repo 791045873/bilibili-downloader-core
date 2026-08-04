@@ -59,6 +59,23 @@ export interface AiSummaryTaskRecord {
   lastCompletedAt?: string;
 }
 
+export type TaskStatusGroup =
+  | "all"
+  | "active"
+  | "created"
+  | "downloading"
+  | "success"
+  | "failed"
+  | "stopped";
+
+export interface PaginatedTaskResult {
+  items: TaskRecord[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
 @Injectable()
 export class DatabaseService {
   private readonly logger = new Logger(DatabaseService.name);
@@ -429,6 +446,37 @@ export class DatabaseService {
       .all() as TaskRecord[];
   }
 
+  listTasksPaginated(params: {
+    page: number;
+    pageSize: number;
+    statusGroup: TaskStatusGroup;
+  }): PaginatedTaskResult {
+    const { page, pageSize, statusGroup } = params;
+    const offset = (page - 1) * pageSize;
+    const { whereClause, queryParams } = this.buildTaskStatusFilter(statusGroup);
+    const totalRow = this.db
+      .prepare(
+        `SELECT COUNT(*) AS total FROM task t ${whereClause}`,
+      )
+      .get(...queryParams) as { total: number };
+    const items = this.db
+      .prepare(
+        `${this.taskSelectSql}
+         ${whereClause}
+         ORDER BY t.createdAt DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(...queryParams, pageSize, offset) as TaskRecord[];
+
+    return {
+      items,
+      page,
+      pageSize,
+      total: totalRow.total,
+      hasMore: offset + items.length < totalRow.total,
+    };
+  }
+
   /** 获取单个任务 */
   getTaskById(id: number): TaskRecord | undefined {
     return this.db.prepare(`${this.taskSelectSql} WHERE t.id = ?`).get(id) as
@@ -680,6 +728,34 @@ export class DatabaseService {
     return this.db
       .prepare(`${this.aiSummaryTaskSelectSql} ORDER BY updated_at DESC`)
       .all() as AiSummaryTaskRecord[];
+  }
+
+  private buildTaskStatusFilter(statusGroup: TaskStatusGroup): {
+    whereClause: string;
+    queryParams: Array<string>;
+  } {
+    switch (statusGroup) {
+      case "active":
+        return {
+          whereClause: "WHERE t.status IN (?, ?)",
+          queryParams: ["created", "downloading"],
+        };
+      case "created":
+      case "downloading":
+      case "success":
+      case "failed":
+      case "stopped":
+        return {
+          whereClause: "WHERE t.status = ?",
+          queryParams: [statusGroup],
+        };
+      case "all":
+      default:
+        return {
+          whereClause: "",
+          queryParams: [],
+        };
+    }
   }
 
   upsertAiSummaryTask(record: AiSummaryTaskRecord): AiSummaryTaskRecord {
