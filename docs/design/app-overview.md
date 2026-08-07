@@ -9,7 +9,6 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | Surface | Description | Runtime |
 | --- | --- | --- |
 | Web Frontend | 视频链接输入、Section 选择器、视频解析、下载列表查看、AI 总结任务列表、设置管理 | Vue 3 SPA（浏览器） |
-| CLI | 命令行下载单个视频，参数包括输入、输出目录、清晰度偏好（当前不可用，待修复） | Node.js 终端 |
 | Docker | 容器化部署，Server + Frontend 打包为单镜像，通过挂载 volume 管理下载文件 | Docker 容器 |
 
 ## Primary Navigation Model
@@ -38,11 +37,6 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 - 当前“下载列表”页面已切换为服务端分页任务列表，不再以浏览器本地已保存任务 ID 作为页面主数据源。
 - 页面支持按下载状态过滤现有任务，并移除了“清空已完成”这种本地隐藏语义。
 - 页面轮询仅覆盖当前页中的非终态任务；翻页、切换过滤和切换每页条数时会释放旧轮询集合。
-
-### 单视频下载（CLI）
-
-1. 命令行传入 BV/AV/URL 和参数
-2. 解析 → 下载 → 合并 → 输出结果到终端
 
 ## Key Domain Objects
 

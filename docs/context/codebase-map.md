@@ -12,7 +12,6 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | ------------ | ----------------------------- | ---------------------------------------------- | ------------- | ---------- |
 | Core         | `packages/core/src/`          | 下载领域模型、用例编排、ports 接口                | 2026-06-02    | high       |
 | Adapters     | `packages/adapters/src/`      | B站 API、HTTP 下载器、FFmpeg、文件系统适配       | 2026-06-02    | high       |
-| CLI          | `packages/cli/src/`           | 命令行入口，参数到 DownloadRequest 的转换        | 2026-06-02    | high       |
 | Server       | `packages/server/src/`        | NestJS 后端 API，下载任务管理、视频分析编排、全局请求日志 | 2026-08-02    | high       |
 | Server Logging | `packages/server/src/logging/` | RequestLoggingInterceptor、safe log allowlist、请求体安全裁剪 | 2026-08-02 | high |
 | Vision Proxy | `packages/server/python/`     | 可选 Python 薄代理，仅负责 DashScope 本地视觉文件调用 | 2026-07-07    | medium     |
@@ -33,7 +32,6 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | 修改下载器行为        | `packages/adapters/src/`      | `packages/core/src/` (ports)              | `pnpm typecheck`                | 2026-06-02    | high       |
 | 修改 B站 API 适配     | `packages/adapters/src/bilibili/` | `packages/core/src/` (domain models)  | `pnpm typecheck`                | 2026-06-02    | high       |
 | 修改部署配置          | `packages/docker/`            | `package.json` (scripts)                  | `pnpm docker:build`             | 2026-06-02    | high       |
-| 修改 CLI 参数         | `packages/cli/src/`           | `packages/core/src/` (DownloadRequest)    | `pnpm typecheck`                | 2026-06-02    | high       |
 
 ## Large Or Fragile Files
 

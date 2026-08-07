@@ -1,5 +1,5 @@
 /**
- * 下载请求 - 来自 CLI/Skill/Docker 等运行时的统一输入
+ * 下载请求 - 来自 Server/Docker 等运行时的统一输入
  */
 export interface DownloadRequest {
   /** 输入资源标识: BV/AV/URL */

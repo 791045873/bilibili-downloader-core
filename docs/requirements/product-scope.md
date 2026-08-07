@@ -7,7 +7,6 @@ Bilibili Downloader Core 是一个易扩展、支持多种运行形态的 Bilibi
 ## Users
 
 - NAS 用户（Docker 部署，远程管理下载）
-- 命令行用户（终端直接下载）
 - 普通 Web 用户（浏览器操作）
 
 ## MVP Scope
@@ -28,7 +27,7 @@ Bilibili Downloader Core 是一个易扩展、支持多种运行形态的 Bilibi
 
 ## Success Metrics
 
-- 用户可通过 CLI / Web / Docker 任一方式稳定下载 B站视频
+- 用户可通过 Web / Docker 任一方式稳定下载 B站视频
 - 引擎 Core 可独立复用于不同运行形态
 - Docker 镜像可在 NAS 上正常运行
 

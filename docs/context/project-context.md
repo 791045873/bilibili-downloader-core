@@ -9,8 +9,8 @@ Update it in place. Do not create dated copies.
 ## Project Identity
 
 - Project name: `bilibili-downloader-core`
-- Product type: Bilibili 视频下载工具（Web 应用 + CLI + Docker）
-- Primary users: NAS 用户、命令行用户、普通 Web 用户
+- Product type: Bilibili 视频下载工具（Web 应用 + Docker）
+- Primary users: NAS 用户、普通 Web 用户
 - Current milestone: MVP 已完成，进入功能扩展阶段
 - Documentation freshness: `fresh`
 

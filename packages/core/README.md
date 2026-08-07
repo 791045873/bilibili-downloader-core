@@ -28,7 +28,7 @@ Bilibili 下载引擎核心域层。定义领域模型、端口接口、用例�
 
 ## 设计原则
 
-- 引擎核心独立于运行形态 (CLI / Skill / Docker)
+- 引擎核心独立于运行形态 (Server / Docker 等)
 - 下载链路可替换、可测试、可观测
 - 通过 `EventEmitter` 对外广播进度事件
 
@@ -116,7 +116,7 @@ await useCase.execute({
   page: 3,              // 下载第 3P
 });
 
-// 批量下载所有分 P (CLI 通过 --all-pages 实现，内部分次调用单 P UseCase)
+// 批量下载所有分 P (内部分次调用单 P UseCase)
 ```
 
 ### 字幕下载

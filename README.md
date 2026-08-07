@@ -26,8 +26,6 @@ server 是下载器的后端代码，front 部分是下载器的前端代码。
 
 Docker 是将下载器的前后端代码一起打包为镜像文件的 Dockerfile 和相关命令。
 
-CLI 是将该功能暴露在命令行中的一个包，但是当前处于不可用的状态。
-
 如果想要通过源码进行本地调试，先执行 `pnpm install`，再运行 `pnpm dev:server`。该命令会先安装所有 Node 工作区依赖，并在检测到本机 Python 可用时自动安装 `packages/server/python/requirements.txt` 中的视觉代理依赖；随后同时启动后端开发服务（3000）和前端开发服务（5173）。启动后直接访问 `http://localhost:5173` 即可。
 
 如果你只想单独补齐视觉代理依赖，或者 `pnpm install` 时因为本机没有 Python 而跳过了这一步，可以在仓库根目录执行 `pnpm setup:vision-proxy`。该命令会自动寻找可用的 Python 解释器，并安装 `dashscope`、`python-dotenv` 等依赖。

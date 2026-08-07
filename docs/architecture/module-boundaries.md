@@ -21,24 +21,17 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
   - `ffmpeg/` — 音视频合并
   - `fs/` — 文件系统操作、输出目录管理
 - Allowed dependencies: `packages/core/`（仅使用其 Ports 接口和领域模型）
-- Forbidden dependencies: `packages/frontend/`, `packages/cli/`, `packages/server/`
+- Forbidden dependencies: `packages/frontend/`, `packages/server/`
 - Owner docs: `docs/architecture/system-baseline.md`
 - Error boundary: 默认向上抛出带安全上下文的错误，不承担最终请求级、任务级或编排级错误日志职责。
 - Diagnostic exception: 只有当 adapter 内部吞错、静默降级或 fallback 且上层无法感知该失败信号时，才允许在 adapter 内记录少量 `debug`/`warn` 诊断日志。
 - Logging constraint: adapters 不得依赖 Nest Logger 或 `packages/server/` 的日志实现。
 
-### `packages/cli/`
-
-- Responsibility: 命令行参数解析，将 CLI 参数转换为 `DownloadRequest`，调用 Core UseCase，输出结果到终端
-- Allowed dependencies: `packages/core/`, `packages/adapters/`
-- Forbidden dependencies: `packages/frontend/`, `packages/server/`
-- Owner docs: `docs/design/app-overview.md`
-
 ### `packages/server/`
 
 - Responsibility: NestJS 后端 API，下载任务管理 REST 接口，数据库持久化
 - Allowed dependencies: `packages/core/`, `packages/adapters/`
-- Forbidden dependencies: `packages/frontend/`, `packages/cli/`
+- Forbidden dependencies: `packages/frontend/`
 - Owner docs: `docs/design/app-overview.md`
 - Logging ownership: server 负责 adapter 失败的高语义日志表达，包括请求、任务状态、编排分支、降级决策和对外错误语义。
 
@@ -46,7 +39,7 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 
 - Responsibility: Vue 3 Web 前端，视频输入界面、下载列表、设置页
 - Allowed dependencies: `packages/server/`（仅通过 HTTP API 通信，不直接导入）
-- Forbidden dependencies: `packages/core/`（Core 模型不应直接暴露给前端）, `packages/adapters/`, `packages/cli/`
+- Forbidden dependencies: `packages/core/`（Core 模型不应直接暴露给前端）, `packages/adapters/`
 - Owner docs: `docs/design/app-overview.md`
 
 ### `packages/docker/`
@@ -60,13 +53,12 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 
 ```
 frontend ──(HTTP)──→ server ──→ adapters ──→ core
-cli ──────────────→ adapters ──→ core
 docker ──(build)──→ server + frontend
 ```
 
 - Core 是最内层，不依赖任何其他包
 - Adapters 依赖 Core（实现其 Ports）
-- Server/CLI 依赖 Core + Adapters（编排用例）
+- Server 依赖 Core + Adapters（编排用例）
 - Frontend 通过 HTTP 与 Server 通信，不直接导入任何内部包
 - Docker 仅作为构建打包层
 
