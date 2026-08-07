@@ -15,8 +15,8 @@ const qrcode = useQRCode(qrcodeUrl)
 
 <template>
   <div class="max-w-md mx-auto">
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center">
-      <h2 class="text-lg font-semibold text-rose-400 mb-2">Bilibili 扫码登录</h2>
+    <div class="rounded-lg border border-zinc-200 bg-white p-8 text-center">
+      <h2 class="text-lg font-semibold text-rose-600 mb-2">Bilibili 扫码登录</h2>
       <p class="text-sm text-zinc-500 mb-6">登录后可下载大会员专属高画质视频</p>
 
       <div>
@@ -28,21 +28,21 @@ const qrcode = useQRCode(qrcodeUrl)
         </button>
       </div>
       <div class="space-y-4">
-        <div class="w-48 h-48 mx-auto bg-zinc-800 rounded-lg flex items-center justify-center">
+        <div class="w-48 h-48 mx-auto bg-zinc-100 rounded-lg flex items-center justify-center">
           <span v-if="!qrcodeUrl" class="text-zinc-500 text-sm">加载中...</span>
           <img v-else :src="qrcode" alt="登录二维码" class="w-full h-full object-contain rounded-lg" />
         </div>
         <p class="text-sm font-medium" :class="{
-          'text-zinc-400': loginStatus === 'pending',
-          'text-amber-400': loginStatus === 'scanned',
-          'text-emerald-400': loginStatus === 'confirmed',
-          'text-red-400': loginStatus === 'expired',
+          'text-zinc-500': loginStatus === 'pending',
+          'text-amber-600': loginStatus === 'scanned',
+          'text-emerald-600': loginStatus === 'confirmed',
+          'text-red-600': loginStatus === 'expired',
         }">
           {{ statusText[loginStatus] }}
         </p>
         <button
           v-if="loginStatus === 'expired'"
-          class="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
+          class="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100 transition-colors"
           @click="store.startLogin"
         >
           重新获取
@@ -50,7 +50,7 @@ const qrcode = useQRCode(qrcodeUrl)
       </div>
 
       <button
-        class="mt-6 rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100 hover:border-zinc-600 transition-colors"
+        class="mt-6 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-600 hover:text-zinc-900 hover:border-zinc-400 transition-colors"
         @click="router.push('/')"
       >
         返回首页

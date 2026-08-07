@@ -388,35 +388,35 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-5">
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 flex items-center justify-between gap-4">
+    <div class="rounded-lg border border-zinc-200 bg-white p-4 flex items-center justify-between gap-4">
       <div>
         <p class="text-xs text-zinc-500">列表类型</p>
-        <p class="text-sm font-semibold text-zinc-100">{{ title }}</p>
+        <p class="text-sm font-semibold text-zinc-900">{{ title }}</p>
       </div>
       <div class="flex items-center gap-2">
         <button
-          class="rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+          class="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100"
           @click="router.push('/')"
         >
           返回首页
         </button>
-        <span class="rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300">AI 总结</span>
+        <span class="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700">AI 总结</span>
       </div>
     </div>
 
-    <div v-if="loading" class="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">
+    <div v-if="loading" class="rounded-lg border border-zinc-200 bg-white p-8 text-center text-zinc-500">
       正在加载列表...
     </div>
 
-    <div v-else-if="error" class="rounded-lg border border-red-900 bg-red-950/50 p-6 text-sm text-red-400">
+    <div v-else-if="error" class="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-600">
       {{ error }}
     </div>
 
     <template v-else>
-      <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 flex items-center justify-between">
-        <span class="text-sm text-zinc-400">已选择 {{ selectedCount }} 项</span>
+      <div class="rounded-lg border border-zinc-200 bg-white p-4 flex items-center justify-between">
+        <span class="text-sm text-zinc-600">已选择 {{ selectedCount }} 项</span>
         <button
-          class="rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-500"
+          class="rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-500 disabled:bg-zinc-200 disabled:text-zinc-600"
           :disabled="selectedCount === 0"
           @click="openDirDialog"
         >
@@ -429,7 +429,7 @@ onMounted(async () => {
           v-for="(item, idx) in items"
           :key="item.key"
           :class="groupClass(idx)"
-          class="rounded-r-lg border border-zinc-800 bg-zinc-900 p-3"
+          class="rounded-r-lg border border-zinc-200 bg-white p-3"
         >
           <div class="flex gap-3">
             <input
@@ -439,18 +439,18 @@ onMounted(async () => {
               :disabled="item.enqueued"
               @change="toggleSelect(item, ($event.target as HTMLInputElement).checked)"
             />
-            <div v-if="item.cover" class="h-16 w-28 shrink-0 overflow-hidden rounded bg-zinc-800">
+            <div v-if="item.cover" class="h-16 w-28 shrink-0 overflow-hidden rounded bg-zinc-100">
               <img :src="imageSrc(item.cover)" :alt="item.title" class="h-full w-full object-cover" />
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
-                <p class="truncate text-sm font-medium text-zinc-100">{{ item.displayTitle }}</p>
-                <span v-if="item.enqueued" class="text-xs text-green-500">已入队</span>
-                <span v-if="item.highlighted" class="text-xs text-rose-400">当前视频</span>
+                <p class="truncate text-sm font-medium text-zinc-900">{{ item.displayTitle }}</p>
+                <span v-if="item.enqueued" class="text-xs text-emerald-600">已入队</span>
+                <span v-if="item.highlighted" class="text-xs text-rose-600">当前视频</span>
               </div>
               <p class="mt-1 text-xs text-zinc-500">时长：{{ formatDuration(item.duration) }}</p>
               <div class="mt-2 flex flex-wrap items-center gap-3">
-                <label class="flex items-center gap-1 text-xs text-zinc-300">
+                <label class="flex items-center gap-1 text-xs text-zinc-700">
                   <input
                     type="checkbox"
                     :checked="item.autoSummaryEnabled"
@@ -460,7 +460,7 @@ onMounted(async () => {
                 </label>
                 <button
                   class="rounded-md px-2 py-1 text-xs"
-                  :class="item.autoSummaryEnabled && item.enqueued ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed' : 'bg-rose-600 text-white hover:bg-rose-500'"
+                  :class="item.autoSummaryEnabled && item.enqueued ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed' : 'bg-rose-600 text-white hover:bg-rose-500'"
                   :disabled="item.autoSummaryEnabled && item.enqueued"
                   @click="handleOneClickAiSummary(item)"
                 >
@@ -475,7 +475,7 @@ onMounted(async () => {
       <div class="flex justify-center">
         <button
           v-if="canLoadMore"
-          class="rounded-md border border-zinc-700 px-4 py-2 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+          class="rounded-md border border-zinc-300 px-4 py-2 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
           :disabled="loadingMore"
           @click="loadMore"
         >
@@ -492,9 +492,9 @@ onMounted(async () => {
       :style="{ width: '450px' }"
     >
       <div class="flex flex-col gap-3">
-        <label class="text-sm text-zinc-400">请确认下载根目录下的相对子目录：</label>
+        <label class="text-sm text-zinc-600">请确认下载根目录下的相对子目录：</label>
         <InputText v-model="dirDialogValue" class="w-full" placeholder="例如：批量解析/收藏夹" />
-        <p v-if="!dirDialogValue.trim()" class="text-xs text-red-400">目录不能为空</p>
+        <p v-if="!dirDialogValue.trim()" class="text-xs text-red-600">目录不能为空</p>
       </div>
       <template #footer>
         <Button label="取消" severity="secondary" size="small" @click="showDirDialog = false" />

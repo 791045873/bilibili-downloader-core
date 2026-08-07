@@ -21,29 +21,29 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-zinc-950 text-zinc-100">
+  <div class="min-h-screen bg-zinc-50 text-zinc-900">
     <!-- Header -->
-    <header class="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
+    <header class="border-b border-zinc-200 bg-white/80 backdrop-blur">
       <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-        <router-link to="/" class="text-lg font-bold text-rose-500 hover:text-rose-400 transition-colors">
+        <router-link to="/" class="text-lg font-bold text-rose-600 hover:text-rose-500 transition-colors">
           Bilibili 下载器
         </router-link>
         <nav class="flex items-center gap-3">
           <router-link
             to="/downloading"
-            class="px-3 py-1.5 rounded-md text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            class="px-3 py-1.5 rounded-md text-sm text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 transition-colors"
           >
             下载队列
           </router-link>
           <router-link
             to="/summary-tasks"
-            class="px-3 py-1.5 rounded-md text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            class="px-3 py-1.5 rounded-md text-sm text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 transition-colors"
           >
             AI 总结任务
           </router-link>
           <router-link
             to="/settings"
-            class="px-3 py-1.5 rounded-md text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            class="px-3 py-1.5 rounded-md text-sm text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 transition-colors"
           >
             设置
           </router-link>
@@ -52,7 +52,7 @@ onMounted(() => {
           <router-link
             v-if="!user"
             to="/login"
-            class="px-3 py-1.5 rounded-md text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            class="px-3 py-1.5 rounded-md text-sm text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 transition-colors"
           >
             登录
           </router-link>
@@ -60,9 +60,9 @@ onMounted(() => {
             <img
               :src="imageSrc(user.face)"
               :alt="user.name"
-              class="w-7 h-7 rounded-full object-cover border border-zinc-700"
+              class="w-7 h-7 rounded-full object-cover border border-zinc-200"
             />
-            <span class="text-sm text-zinc-300">{{ user.name }}</span>
+            <span class="text-sm text-zinc-600">{{ user.name }}</span>
           </div>
         </nav>
       </div>

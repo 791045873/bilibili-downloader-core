@@ -251,8 +251,8 @@ function statusClass(status: string): string {
     case "success": return "bg-emerald-600";
     case "failed": return "bg-red-600";
     case "created": return "bg-amber-600";
-    case "stopped": return "bg-zinc-600";
-    default: return "bg-zinc-700";
+    case "stopped": return "bg-zinc-500";
+    default: return "bg-zinc-500";
   }
 }
 
@@ -266,22 +266,22 @@ function formatBytes(bytes: number): string {
 
 <template>
   <div class="space-y-6">
-    <div v-if="actionError" class="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+    <div v-if="actionError" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
       {{ actionError }}
     </div>
 
     <!-- 统计 -->
     <div class="grid grid-cols-3 gap-4">
-      <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-center">
-        <div class="text-2xl font-bold text-blue-400">{{ activeTasks.length }}</div>
+      <div class="rounded-lg border border-zinc-200 bg-white p-4 text-center">
+        <div class="text-2xl font-bold text-blue-600">{{ activeTasks.length }}</div>
         <div class="text-sm text-zinc-500 mt-1">进行中</div>
       </div>
-      <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-center">
-        <div class="text-2xl font-bold text-emerald-400">{{ successCount }}</div>
+      <div class="rounded-lg border border-zinc-200 bg-white p-4 text-center">
+        <div class="text-2xl font-bold text-emerald-600">{{ successCount }}</div>
         <div class="text-sm text-zinc-500 mt-1">已完成</div>
       </div>
-      <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-center">
-        <div class="text-2xl font-bold text-red-400">{{ failedCount }}</div>
+      <div class="rounded-lg border border-zinc-200 bg-white p-4 text-center">
+        <div class="text-2xl font-bold text-red-600">{{ failedCount }}</div>
         <div class="text-sm text-zinc-500 mt-1">失败</div>
       </div>
     </div>
@@ -289,7 +289,7 @@ function formatBytes(bytes: number): string {
     <!-- 工具栏 -->
     <div class="flex flex-wrap items-center gap-2">
       <select
-        class="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
+        class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800"
         :value="statusGroup"
         @change="handleStatusGroupChange(($event.target as HTMLSelectElement).value as TaskStatusGroup)"
       >
@@ -302,7 +302,7 @@ function formatBytes(bytes: number): string {
         <option value="stopped">已停止</option>
       </select>
       <button
-        class="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800 transition-colors disabled:cursor-not-allowed disabled:text-zinc-500"
+        class="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-800 hover:bg-zinc-100 transition-colors disabled:cursor-not-allowed disabled:text-zinc-500"
         :disabled="refreshing"
         @click="handleRefresh"
       >
@@ -311,7 +311,7 @@ function formatBytes(bytes: number): string {
       <div class="ml-auto flex items-center gap-2 text-sm text-zinc-500">
         <span>每页</span>
         <select
-          class="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-200"
+          class="rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800"
           :value="pageSize"
           @change="handlePageSizeChange(Number(($event.target as HTMLSelectElement).value))"
         >
@@ -324,7 +324,7 @@ function formatBytes(bytes: number): string {
     </div>
 
     <!-- 空状态 -->
-    <div v-if="!loading && tasks.length === 0" class="rounded-lg border border-zinc-800 bg-zinc-900 p-12 text-center">
+    <div v-if="!loading && tasks.length === 0" class="rounded-lg border border-zinc-200 bg-white p-12 text-center">
       <p class="text-zinc-500 mb-4">暂无下载任务</p>
       <button
         class="rounded-md bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-500 transition-colors"
@@ -339,7 +339,7 @@ function formatBytes(bytes: number): string {
       <div
         v-for="task in tasks"
         :key="task.id"
-        class="rounded-lg border border-zinc-800 bg-zinc-900 p-4"
+        class="rounded-lg border border-zinc-200 bg-white p-4"
       >
         <div class="flex items-center justify-between gap-4">
           <div class="min-w-0 flex-1">
@@ -350,15 +350,15 @@ function formatBytes(bytes: number): string {
               >
                 {{ statusLabel(task.status) }}
               </span>
-              <span class="text-sm text-zinc-200 truncate">{{ task.title || "(无标题)" }}</span>
+              <span class="text-sm text-zinc-800 truncate">{{ task.title || "(无标题)" }}</span>
             </div>
             <div v-if="task.outputFile" class="mt-2 text-xs text-zinc-500">
-              <span class="text-zinc-600">输出文件：</span>
-              <code class="break-all text-zinc-400">{{ task.outputFile }}</code>
+              <span class="text-zinc-400">输出文件：</span>
+              <code class="break-all text-zinc-600">{{ task.outputFile }}</code>
             </div>
             <div v-if="task.status === 'success'" class="mt-2 text-xs text-zinc-500">
-              <span class="text-zinc-600">AI 总结：</span>
-              <span class="text-zinc-300">{{ summaryStatusLabel(task.summaryStatus) }}</span>
+              <span class="text-zinc-400">AI 总结：</span>
+              <span class="text-zinc-700">{{ summaryStatusLabel(task.summaryStatus) }}</span>
             </div>
             <div v-if="task.status === 'downloading'" class="mt-2">
               <ProgressBar :value="task.progress ?? 0" />
@@ -366,14 +366,14 @@ function formatBytes(bytes: number): string {
             <div v-if="task.status === 'success' && task.fileSize" class="text-xs text-zinc-500 mt-1">
               {{ formatBytes(task.fileSize) }}
             </div>
-            <div v-if="task.status === 'failed' && task.errorMessage" class="text-xs text-red-400 mt-1">
+            <div v-if="task.status === 'failed' && task.errorMessage" class="text-xs text-red-600 mt-1">
               {{ task.errorMessage }}
             </div>
           </div>
           <!-- Created → 暂停 -->
           <button
             v-if="task.status === 'created'"
-            class="shrink-0 rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-amber-400 hover:text-amber-300 hover:border-amber-800 transition-colors"
+            class="shrink-0 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-amber-600 hover:text-amber-500 hover:border-amber-500 transition-colors"
             @click="handleStop(task.id)"
           >
             暂停
@@ -381,7 +381,7 @@ function formatBytes(bytes: number): string {
           <!-- Stopped → 恢复 -->
           <button
             v-if="task.status === 'stopped'"
-            class="shrink-0 rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-emerald-400 hover:text-emerald-300 hover:border-emerald-800 transition-colors"
+            class="shrink-0 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-emerald-600 hover:text-emerald-500 hover:border-emerald-500 transition-colors"
             @click="handleResume(task.id)"
           >
             恢复
@@ -389,16 +389,16 @@ function formatBytes(bytes: number): string {
           <!-- Downloading → 取消 -->
           <button
             v-if="task.status === 'downloading'"
-            class="shrink-0 rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:text-red-400 hover:border-red-800 transition-colors"
+            class="shrink-0 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:text-red-600 hover:border-red-400 transition-colors"
             @click="handleDelete(task.id)"
           >
             取消
           </button>
           <button
             v-if="task.status === 'success'"
-            class="shrink-0 rounded-md border border-zinc-700 px-3 py-1.5 text-xs transition-colors"
+            class="shrink-0 rounded-md border border-zinc-300 px-3 py-1.5 text-xs transition-colors"
             :class="canTriggerAiSummary(task)
-              ? 'text-rose-300 hover:text-rose-200 hover:border-rose-700'
+              ? 'text-rose-600 hover:text-rose-500 hover:border-rose-400'
               : 'cursor-not-allowed text-zinc-500'"
             :disabled="!canTriggerAiSummary(task)"
             @click="handleTriggerAiSummary(task.id)"
@@ -408,18 +408,18 @@ function formatBytes(bytes: number): string {
         </div>
       </div>
 
-      <div class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-400">
+      <div class="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">
         <span>第 {{ page }} / {{ totalPages }} 页</span>
         <div class="flex gap-2">
           <button
-            class="rounded-md border border-zinc-700 px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:text-zinc-600"
+            class="rounded-md border border-zinc-300 px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:text-zinc-300"
             :disabled="page <= 1"
             @click="handlePageChange(page - 1)"
           >
             上一页
           </button>
           <button
-            class="rounded-md border border-zinc-700 px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:text-zinc-600"
+            class="rounded-md border border-zinc-300 px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:text-zinc-300"
             :disabled="!hasMore"
             @click="handlePageChange(page + 1)"
           >

@@ -330,22 +330,22 @@ const subtitleOptions = [
   <div class="space-y-6">
     <div v-if="loading" class="flex items-center justify-center py-20 text-zinc-500">正在加载...</div>
 
-    <div v-else-if="error" class="rounded-lg border border-red-800 bg-red-950/50 p-6">
-      <p class="text-red-400">{{ error }}</p>
-      <button class="mt-3 text-sm text-zinc-400 hover:text-zinc-100" @click="router.push('/')">返回首页</button>
+    <div v-else-if="error" class="rounded-lg border border-red-200 bg-red-50 p-6">
+      <p class="text-red-600">{{ error }}</p>
+      <button class="mt-3 text-sm text-zinc-600 hover:text-zinc-900" @click="router.push('/')">返回首页</button>
     </div>
 
     <template v-else-if="videoInfo">
-      <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-5 flex gap-5">
-        <div v-if="videoInfo.videoInfo.coverUrl" class="w-48 h-28 bg-zinc-800 rounded overflow-hidden shrink-0">
+      <div class="rounded-lg border border-zinc-200 bg-white p-5 flex gap-5">
+        <div v-if="videoInfo.videoInfo.coverUrl" class="w-48 h-28 bg-zinc-100 rounded overflow-hidden shrink-0">
           <img :src="'/api/video/cover?url=' + encodeURIComponent(videoInfo.videoInfo.coverUrl)" :alt="videoInfo.title" class="w-full h-full object-cover" />
         </div>
         <div class="min-w-0 flex-1">
-          <h2 class="text-lg font-semibold text-zinc-100">{{ videoInfo.title }}</h2>
-          <div class="flex flex-wrap gap-3 mt-2 text-sm text-zinc-400">
+          <h2 class="text-lg font-semibold text-zinc-900">{{ videoInfo.title }}</h2>
+          <div class="flex flex-wrap gap-3 mt-2 text-sm text-zinc-600">
             <span>UP：{{ videoInfo.videoInfo.upperName }}</span>
             <span>播放：{{ videoInfo.videoInfo.playCount }}</span>
-            <span v-if="videoInfo.ugcSeason" class="text-rose-400">合集：{{ videoInfo.ugcSeason.title }}</span>
+            <span v-if="videoInfo.ugcSeason" class="text-rose-600">合集：{{ videoInfo.ugcSeason.title }}</span>
           </div>
         </div>
       </div>
@@ -355,14 +355,14 @@ const subtitleOptions = [
           v-for="sec in videoInfo.ugcSeason.sections"
           :key="sec.id"
           class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
-          :class="selectedSectionId === sec.id ? 'bg-rose-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+          :class="selectedSectionId === sec.id ? 'bg-rose-600 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'"
           @click="selectedSectionId = sec.id"
         >
           {{ sec.title }}
         </button>
       </div>
 
-      <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 flex items-center justify-between gap-4 flex-wrap">
+      <div class="rounded-lg border border-zinc-200 bg-white p-4 flex items-center justify-between gap-4 flex-wrap">
         <div class="flex gap-2">
           <Button label="解析当前页所有视频" severity="danger" size="small" :disabled="parsing" :loading="parsing" @click="parseAllInSection" />
           <Button label="加入下载队列" severity="success" size="small" :disabled="allSelectedCount === 0" @click="addToQueue" />
@@ -370,10 +370,10 @@ const subtitleOptions = [
         <span class="text-sm text-zinc-500">已选中 {{ allSelectedCount }} 个分P</span>
       </div>
 
-      <div class="rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden">
-        <div class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
+      <div class="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+        <div class="flex items-center gap-3 px-4 py-3 border-b border-zinc-200">
           <Checkbox :modelValue="sectionSelectState()" :binary="true" @update:modelValue="toggleSection()" />
-          <span class="text-sm font-medium text-zinc-200">{{ currentSectionTitle || '视频分P' }}</span>
+          <span class="text-sm font-medium text-zinc-800">{{ currentSectionTitle || '视频分P' }}</span>
           <span class="text-xs text-zinc-500 ml-auto">{{ currentTree.length }} 个视频</span>
         </div>
 
@@ -386,10 +386,10 @@ const subtitleOptions = [
           </Column>
           <Column header="名称" :expander="true">
             <template #body="{ node }">
-              <span v-if="node.data.type === 'episode'" class="text-zinc-200 font-medium">{{ node.data.episode?.title }}</span>
-              <span v-else class="text-zinc-400 pl-4 text-xs">
+              <span v-if="node.data.type === 'episode'" class="text-zinc-800 font-medium">{{ node.data.episode?.title }}</span>
+              <span v-else class="text-zinc-600 pl-4 text-xs">
                 P{{ node.data.page?.page }} {{ node.data.page?.title }}
-                <span v-if="node.data.enqueued" class="ml-2 text-green-500">已入队</span>
+                <span v-if="node.data.enqueued" class="ml-2 text-emerald-600">已入队</span>
               </span>
             </template>
           </Column>
@@ -403,7 +403,7 @@ const subtitleOptions = [
               <template v-if="node.data.type === 'page'">
                 <Select v-if="node.data.qualityList?.length" v-model="node.data.selectedQuality" :options="node.data.qualityList" optionLabel="name" optionValue="id" size="small" class="w-full" />
                 <span v-else-if="!node.data.resolved" class="text-xs text-amber-500">待解析</span>
-                <span v-else class="text-xs text-zinc-600">-</span>
+                <span v-else class="text-xs text-zinc-400">-</span>
               </template>
             </template>
           </Column>
@@ -411,7 +411,7 @@ const subtitleOptions = [
             <template #body="{ node }">
               <template v-if="node.data.type === 'page'">
                 <Select v-if="node.data.qualityList?.length" v-model="node.data.selectedCodec" :options="node.data.qualityList?.find((q: any) => q.id === node.data.selectedQuality)?.codecList ?? []" size="small" class="w-full" />
-                <span v-else class="text-xs text-zinc-600">-</span>
+                <span v-else class="text-xs text-zinc-400">-</span>
               </template>
             </template>
           </Column>
@@ -429,10 +429,10 @@ const subtitleOptions = [
 
     <Dialog v-model:visible="showDirDialog" header="确认下载子目录" :modal="true" :closable="true" :style="{ width: '450px' }">
       <div class="flex flex-col gap-3">
-        <label class="text-sm text-zinc-400">请确认或修改下载根目录下的相对子目录：</label>
+        <label class="text-sm text-zinc-600">请确认或修改下载根目录下的相对子目录：</label>
         <InputText v-model="dirDialogValue" class="w-full" placeholder="例如：合集标题/分区标题" />
         <p class="text-xs text-zinc-500">最终文件会保存到服务端下载根目录下的该子目录中。</p>
-        <p v-if="!dirDialogValue.trim()" class="text-xs text-red-400">目录不能为空</p>
+        <p v-if="!dirDialogValue.trim()" class="text-xs text-red-600">目录不能为空</p>
       </div>
       <template #footer>
         <Button label="取消" severity="secondary" size="small" @click="showDirDialog = false" />

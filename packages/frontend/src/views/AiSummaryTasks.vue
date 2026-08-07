@@ -34,7 +34,7 @@ function statusClass(status: string): string {
     case "completed":
       return "bg-emerald-600";
     default:
-      return "bg-zinc-700";
+      return "bg-zinc-500";
   }
 }
 
@@ -64,11 +64,11 @@ onMounted(async () => {
   <div class="space-y-6">
     <div class="flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-xl font-semibold text-zinc-100">AI 总结任务</h1>
-        <p class="mt-1 text-sm text-zinc-400">仅在点击按钮时刷新当前任务状态，不做自动刷新。</p>
+        <h1 class="text-xl font-semibold text-zinc-900">AI 总结任务</h1>
+        <p class="mt-1 text-sm text-zinc-600">仅在点击按钮时刷新当前任务状态，不做自动刷新。</p>
       </div>
       <button
-        class="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:text-zinc-500"
+        class="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-500"
         :disabled="refreshing"
         @click="refreshTasks"
       >
@@ -76,11 +76,11 @@ onMounted(async () => {
       </button>
     </div>
 
-    <div v-if="error" class="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+    <div v-if="error" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
       {{ error }}
     </div>
 
-    <div v-if="!loading && tasks.length === 0" class="rounded-lg border border-zinc-800 bg-zinc-900 p-12 text-center text-zinc-500">
+    <div v-if="!loading && tasks.length === 0" class="rounded-lg border border-zinc-200 bg-white p-12 text-center text-zinc-500">
       暂无 AI 总结任务
     </div>
 
@@ -88,7 +88,7 @@ onMounted(async () => {
       <div
         v-for="task in tasks"
         :key="task.id"
-        class="rounded-lg border border-zinc-800 bg-zinc-900 p-4"
+        class="rounded-lg border border-zinc-200 bg-white p-4"
       >
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0 flex-1">
@@ -99,18 +99,18 @@ onMounted(async () => {
               >
                 {{ statusLabel(task.status) }}
               </span>
-              <span class="truncate text-sm text-zinc-200">{{ task.title || `${task.bvid}-${task.cid}` }}</span>
+              <span class="truncate text-sm text-zinc-800">{{ task.title || `${task.bvid}-${task.cid}` }}</span>
             </div>
             <div class="mt-2 text-xs text-zinc-500">
               资源：{{ task.bvid }} / {{ task.cid }}
             </div>
             <div v-if="task.summaryOutput" class="mt-2 text-xs text-zinc-500 break-all">
-              总结输出：<span class="text-zinc-300">{{ task.summaryOutput }}</span>
+              总结输出：<span class="text-zinc-700">{{ task.summaryOutput }}</span>
             </div>
-            <div v-if="task.status === 'failed' && task.errorMessage" class="mt-2 text-xs text-red-300 break-all">
+            <div v-if="task.status === 'failed' && task.errorMessage" class="mt-2 text-xs text-red-600 break-all">
               错误：{{ task.errorMessage }}
             </div>
-            <div v-if="task.updatedAt" class="mt-2 text-xs text-zinc-600">
+            <div v-if="task.updatedAt" class="mt-2 text-xs text-zinc-400">
               更新时间：{{ task.updatedAt }}
             </div>
           </div>

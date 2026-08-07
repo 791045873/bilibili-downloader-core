@@ -178,33 +178,33 @@ onMounted(load);
 
 <template>
   <div class="space-y-6">
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+    <div class="rounded-lg border border-zinc-200 bg-white p-4">
       <p class="text-xs text-zinc-500">当前输入</p>
-      <p class="text-sm text-zinc-200 break-all">{{ input }}</p>
+      <p class="text-sm text-zinc-800 break-all">{{ input }}</p>
     </div>
 
-    <div v-if="loading" class="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">
+    <div v-if="loading" class="rounded-lg border border-zinc-200 bg-white p-8 text-center text-zinc-500">
       正在解析链接...
     </div>
 
-    <div v-else-if="error" class="rounded-lg border border-red-900 bg-red-950/50 p-6">
-      <p class="text-red-400 text-sm">{{ error }}</p>
-      <button class="mt-4 rounded-md border border-zinc-700 px-4 py-2 text-xs text-zinc-300 hover:bg-zinc-800" @click="router.push('/')">
+    <div v-else-if="error" class="rounded-lg border border-red-200 bg-red-50 p-6">
+      <p class="text-red-600 text-sm">{{ error }}</p>
+      <button class="mt-4 rounded-md border border-zinc-300 px-4 py-2 text-xs text-zinc-700 hover:bg-zinc-100" @click="router.push('/')">
         返回首页
       </button>
     </div>
 
     <template v-else-if="userSpace">
-      <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-5 flex items-center gap-4">
+      <div class="rounded-lg border border-zinc-200 bg-white p-5 flex items-center gap-4">
         <img
           v-if="userSpace.face"
           :src="imageSrc(userSpace.face)"
           :alt="userSpace.name"
-          class="h-14 w-14 rounded-full border border-zinc-700 object-cover"
+          class="h-14 w-14 rounded-full border border-zinc-300 object-cover"
         />
         <div>
           <p class="text-xs text-zinc-500">用户空间</p>
-          <p class="text-lg font-semibold text-zinc-100">{{ userSpace.name }}</p>
+          <p class="text-lg font-semibold text-zinc-900">{{ userSpace.name }}</p>
         </div>
       </div>
 
@@ -212,10 +212,10 @@ onMounted(load);
         <div
           v-for="group in groups"
           :key="group.key"
-          class="rounded-lg border border-zinc-800 bg-zinc-900 p-4"
+          class="rounded-lg border border-zinc-200 bg-white p-4"
         >
           <div class="flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-zinc-100">{{ group.title }}</h3>
+            <h3 class="text-sm font-semibold text-zinc-900">{{ group.title }}</h3>
             <button
               class="rounded-md bg-rose-600 px-3 py-1.5 text-xs text-white hover:bg-rose-500"
               @click="enterGroup(group)"
@@ -227,14 +227,14 @@ onMounted(load);
             <div
               v-for="(thumb, idx) in group.thumbnails"
               :key="`${group.key}-${idx}`"
-              class="h-14 overflow-hidden rounded bg-zinc-800"
+              class="h-14 overflow-hidden rounded bg-zinc-100"
             >
               <img :src="imageSrc(thumb)" alt="thumb" class="h-full w-full object-cover" />
             </div>
             <div
               v-for="idx in Math.max(0, 4 - group.thumbnails.length)"
               :key="`${group.key}-placeholder-${idx}`"
-              class="h-14 rounded bg-zinc-800/60"
+              class="h-14 rounded bg-zinc-100/60"
             />
           </div>
         </div>
