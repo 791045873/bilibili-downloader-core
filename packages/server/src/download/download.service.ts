@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from "@nestjs/common";
-import { createBilibiliWebClient } from "@bilibili-downloader/adapters/bilibili";
+import { createBilibiliSdkClient } from "@bilibili-downloader/adapters/bilibili";
+import type { BilibiliSdkClient } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliResourceParser } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliStreamProvider } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliAuthProvider } from "@bilibili-downloader/adapters/bilibili-auth";
@@ -61,7 +62,7 @@ export class DownloadService implements OnModuleInit {
   private readonly outputDir: string;
   private readonly cookieFile: string;
 
-  private webClient: any;
+  private biliClient!: BilibiliSdkClient;
   private authProvider!: BilibiliAuthProvider;
   private resourceParser!: BilibiliResourceParser;
   private streamProvider!: BilibiliStreamProvider;
@@ -98,7 +99,7 @@ export class DownloadService implements OnModuleInit {
     const cookieString = this.cookieFile
       ? await this.loadCookieString(this.cookieFile)
       : undefined;
-    this.webClient = createBilibiliWebClient({ cookieString });
+    this.biliClient = createBilibiliSdkClient(cookieString);
     this.fileStore = new NodeFileStore();
     this.merger = new FfmpegMerger();
 
@@ -109,8 +110,8 @@ export class DownloadService implements OnModuleInit {
     }
 
     this.authProvider = new BilibiliAuthProvider();
-    this.resourceParser = new BilibiliResourceParser(this.webClient);
-    this.streamProvider = new BilibiliStreamProvider(this.webClient);
+    this.resourceParser = new BilibiliResourceParser();
+    this.streamProvider = new BilibiliStreamProvider(this.biliClient);
 
     this.resolutionService = new ResolutionService(
       this.resourceParser,
@@ -122,7 +123,7 @@ export class DownloadService implements OnModuleInit {
       mediaDownloader: new HttpDownloader(),
       mediaMerger: this.merger,
       fileStore: this.fileStore,
-      subtitleProvider: new BilibiliSubtitleProvider(this.webClient),
+      subtitleProvider: new BilibiliSubtitleProvider(this.biliClient),
     };
 
     this.logger.log(
@@ -694,7 +695,7 @@ export class DownloadService implements OnModuleInit {
     const cookieFile = join(this.outputDir, ".cookies.json");
     await this.authProvider.saveCookies(cookies, cookieFile);
     const cookieString = this.authProvider.toCookieString(cookies);
-    this.webClient.setCookieString(cookieString);
+    this.biliClient.setCookieString(cookieString);
     return { message: "登录成功" };
   }
 

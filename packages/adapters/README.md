@@ -16,14 +16,14 @@
 ## 关键导出
 
 ```ts
-// B站 API
+// B站 API (底层接口调用统一由 bilibili-api-sdk 提供)
 import {
   createBilibiliApiAdapter,
   BilibiliStreamProvider,
   BilibiliResourceParser,
   BilibiliFavoritesProvider,
   BilibiliSubtitleProvider,
-  createBilibiliWebClient,
+  createBilibiliSdkClient,
 } from "@bilibili-downloader/adapters/bilibili";
 
 // 登录
@@ -69,9 +69,12 @@ const downloader = new Aria2Downloader({
 ### 字幕提供器
 
 ```ts
-import { BilibiliSubtitleProvider } from "@bilibili-downloader/adapters/bilibili";
+import {
+  BilibiliSubtitleProvider,
+  createBilibiliSdkClient,
+} from "@bilibili-downloader/adapters/bilibili";
 
-const subtitleProvider = new BilibiliSubtitleProvider(webClient);
+const subtitleProvider = new BilibiliSubtitleProvider(createBilibiliSdkClient());
 const subtitles = await subtitleProvider.fetchSubtitles("BVxxxxx", cid);
 subtitles.forEach(sub => {
   writeFileSync(`${sub.langKey}.srt`, sub.srtContent);

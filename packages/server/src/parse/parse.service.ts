@@ -10,7 +10,7 @@ import {
   BilibiliResourceParser,
   BilibiliSpaceProvider,
   BilibiliStreamProvider,
-  createBilibiliWebClient,
+  createBilibiliSdkClient,
 } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliAuthProvider } from "@bilibili-downloader/adapters/bilibili-auth";
 import { ResolutionService } from "@bilibili-downloader/core/usecases";
@@ -51,13 +51,11 @@ export class ParseService implements OnModuleInit {
     this.authProvider = new BilibiliAuthProvider();
     this.cookieString = await this.loadCookieString(this.cookieFile);
 
-    const webClient = createBilibiliWebClient({
-      cookieString: this.cookieString,
-    });
-    this.resourceParser = new BilibiliResourceParser(webClient);
-    this.streamProvider = new BilibiliStreamProvider(webClient);
-    this.favoritesProvider = new BilibiliFavoritesProvider(webClient);
-    this.spaceProvider = new BilibiliSpaceProvider(webClient);
+    const biliClient = createBilibiliSdkClient(this.cookieString);
+    this.resourceParser = new BilibiliResourceParser();
+    this.streamProvider = new BilibiliStreamProvider(biliClient);
+    this.favoritesProvider = new BilibiliFavoritesProvider(biliClient);
+    this.spaceProvider = new BilibiliSpaceProvider(biliClient);
     this.resolutionService = new ResolutionService(
       this.resourceParser,
       this.streamProvider,

@@ -19,7 +19,6 @@ import {
   type ParseResult,
   type ResourceParserPort,
 } from "@bilibili-downloader/core/ports";
-import type { BilibiliWebClient } from "./web-client.js";
 import { matchBv } from "./matcher/bv-matcher.js";
 import { matchBangumi } from "./matcher/bangumi-matcher.js";
 import { matchFavorites } from "./matcher/favorites-matcher.js";
@@ -42,8 +41,6 @@ const MATCHERS = [
 ] as const;
 
 export class BilibiliResourceParser implements ResourceParserPort {
-  constructor(private readonly webClient: BilibiliWebClient) {}
-
   async parse(input: string): Promise<ParseResult> {
     // URL 先标准化 (协议升级、去除参数、b23.tv 转换)
     const normalized = isUrl(input) ? normalizeUrl(input) : input.trim();

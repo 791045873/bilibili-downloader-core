@@ -25,9 +25,6 @@ export const CODEC_MAP: Record<number, string> = {
   13: "AV1",
 };
 
-/** Bilibili API 基础 URL */
-export const BILI_API_BASE = "https://api.bilibili.com";
-
 /** Bilibili 主站 URL */
 export const BILI_WWW_BASE = "https://www.bilibili.com";
 

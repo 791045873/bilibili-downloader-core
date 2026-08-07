@@ -1,4 +1,5 @@
 // Bilibili API 适配器 - 视频信息、播放流、输入解析
+// 底层 API 调用统一由 bilibili-api-sdk 提供
 
 export {
   createBilibiliApiAdapter,
@@ -10,9 +11,8 @@ export { BilibiliFavoritesProvider } from "./favorites-provider.js";
 export { BilibiliSpaceProvider } from "./space-provider.js";
 export { BilibiliSubtitleProvider } from "./subtitle-provider.js";
 export {
-  createBilibiliWebClient,
-  type BilibiliWebClient,
-} from "./web-client.js";
-export { wbiSign, getWbiKeys, type WbiKeys } from "./wbi-sign.js";
+  createBilibiliSdkClient,
+  BilibiliSdkClient,
+  type BilibiliClient,
+} from "./sdk-client.js";
 export { QUALITY_MAP, CODEC_MAP } from "./constants.js";
-export type * from "./types.js";

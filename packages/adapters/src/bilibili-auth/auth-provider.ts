@@ -1,8 +1,7 @@
 /**
  * Bilibili 二维码登录提供器
  *
- * 参考: downkyicore/DownKyi.Core/BiliApi/Login/LoginQR.cs
- *      downkyicore/DownKyi.Core/BiliApi/Login/LoginHelper.cs
+ * 基于 bilibili-api-sdk 的 LoginApi 实现。
  */
 
 import type {
@@ -12,58 +11,46 @@ import type {
   LoginCookie,
   UserInfo,
 } from "@bilibili-downloader/core/ports";
-import { DEFAULT_HEADERS } from "../bilibili/constants.js";
-import type {
-  BiliQrCodeResponse,
-  BiliQrStatusResponse,
-  BiliNavUserInfo,
-} from "../bilibili/types.js";
+import { BilibiliClient, BiliError } from "bilibili-api-sdk";
 import { CookieStore } from "./cookie-store.js";
 import { logger } from "../logger.js";
 import { summarizeText } from "../safe-error-context.js";
 
-/** Bilibili 二维码登录 API 端点 */
-const QR_GENERATE_URL =
-  "https://passport.bilibili.com/x/passport-login/web/qrcode/generate";
-const QR_POLL_URL =
-  "https://passport.bilibili.com/x/passport-login/web/qrcode/poll";
-/** 导航接口 (获取用户信息) */
-const NAV_URL = "https://api.bilibili.com/x/web-interface/nav";
-
 export class BilibiliAuthProvider implements AuthProviderPort {
   private readonly cookieStore = new CookieStore();
+  /** 扫码流程专用客户端 (吸收 poll 响应的 Set-Cookie) */
+  private loginClient: BilibiliClient | null = null;
 
   async generateQrCode(): Promise<QrCodeResult> {
-    const response = await fetch(QR_GENERATE_URL, {
-      headers: DEFAULT_HEADERS,
-    });
+    this.loginClient = new BilibiliClient({ autoInit: false });
 
-    const data = (await response.json()) as BiliQrCodeResponse;
-
-    if (data.code !== 0) {
-      throw new Error(`获取二维码失败: ${data.message}`);
+    try {
+      const data = await this.loginClient.login.qrGenerate();
+      return {
+        qrcodeKey: data.qrcode_key,
+        url: data.url,
+      };
+    } catch (err) {
+      throw new Error(`获取二维码失败: ${(err as Error).message}`);
     }
-
-    return {
-      qrcodeKey: data.data.qrcode_key,
-      url: data.data.url,
-    };
   }
 
   async pollQrStatus(qrcodeKey: string): Promise<QrStatusResult> {
-    const url = `${QR_POLL_URL}?qrcode_key=${encodeURIComponent(qrcodeKey)}`;
-    const response = await fetch(url, {
-      headers: DEFAULT_HEADERS,
-    });
+    const client = this.loginClient ?? new BilibiliClient({ autoInit: false });
 
-    const data = (await response.json()) as BiliQrStatusResponse;
-
-    if (data.code !== 0) {
+    let data: { code: number; message: string; url: string };
+    try {
+      data = await client.login.qrPoll(qrcodeKey);
+    } catch (err) {
       // API 级错误
-      return { status: "expired", message: data.message || "未知错误" };
+      const message =
+        err instanceof BiliError && err.message
+          ? err.message
+          : (err as Error).message || "未知错误";
+      return { status: "expired", message };
     }
 
-    switch (data.data.code) {
+    switch (data.code) {
       case 86101:
         return { status: "pending" };
       case 86090:
@@ -71,17 +58,17 @@ export class BilibiliAuthProvider implements AuthProviderPort {
       case 86038:
         return {
           status: "expired",
-          message: data.data.message || "二维码已过期",
+          message: data.message || "二维码已过期",
         };
       case 0:
         return {
           status: "confirmed",
-          callbackUrl: data.data.url,
+          callbackUrl: data.url,
         };
       default:
         return {
           status: "expired",
-          message: `未知状态码: ${data.data.code}`,
+          message: `未知状态码: ${data.code}`,
         };
     }
   }
@@ -119,23 +106,21 @@ export class BilibiliAuthProvider implements AuthProviderPort {
 
   async getUserInfo(cookieString: string): Promise<UserInfo | null> {
     try {
-      const response = await fetch(NAV_URL, {
-        headers: { ...DEFAULT_HEADERS, Cookie: cookieString },
+      const client = new BilibiliClient({
+        cookies: cookieString,
+        autoInit: false,
       });
-      const data = (await response.json()) as {
-        code: number;
-        data: BiliNavUserInfo;
-      };
+      const data = await client.login.nav();
 
-      if (data.code !== 0 || !data.data.isLogin) {
+      if (!data.isLogin) {
         return null;
       }
 
       return {
-        mid: data.data.mid,
-        name: data.data.uname,
-        face: data.data.face,
-        isLogin: data.data.isLogin,
+        mid: data.mid,
+        name: data.uname,
+        face: data.face,
+        isLogin: data.isLogin,
       };
     } catch (err) {
       logger.warn(

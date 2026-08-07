@@ -17,7 +17,7 @@
     "docker:run": "pnpm --filter @bilibili-downloader/docker docker:run",
     "frontend:dev": "pnpm --filter @bilibili-downloader/frontend dev",
     "frontend:build": "pnpm --filter @bilibili-downloader/frontend build",
-    "build:deps": "pnpm --filter @bilibili-downloader/core --filter @bilibili-downloader/adapters build",
+    "build:deps": "pnpm --filter bilibili-api-sdk --filter @bilibili-downloader/core --filter @bilibili-downloader/adapters build",
     "dev:server": "pnpm build:deps && concurrently --kill-others -n server,frontend -c blue,green \"pnpm --filter @bilibili-downloader/server start:dev\" \"pnpm --filter @bilibili-downloader/frontend dev\""
   },
   "devDependencies": {

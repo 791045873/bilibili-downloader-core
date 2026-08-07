@@ -3,82 +3,7 @@ import type {
   UgcSeasonSummary,
   VideoSummary,
 } from "@bilibili-downloader/core/ports";
-import type { BilibiliWebClient } from "./web-client.js";
-import { BILI_API_BASE } from "./constants.js";
-import { wbiSign, type WbiKeys } from "./wbi-sign.js";
-
-interface UserInfoResponse {
-  code: number;
-  message: string;
-  data: {
-    mid: number;
-    name: string;
-    face?: string;
-  };
-}
-
-interface UserVideosResponse {
-  code: number;
-  message: string;
-  data?: {
-    list?: {
-      vlist?: Array<Record<string, unknown>>;
-    };
-    page?: {
-      pn?: number;
-      ps?: number;
-      count?: number;
-    };
-  };
-}
-
-interface SeasonsListResponse {
-  code: number;
-  message: string;
-  data?: {
-    items_lists?: {
-      seasons_list?: Array<Record<string, unknown>>;
-    };
-  };
-}
-
-interface SeasonVideosResponse {
-  code: number;
-  message: string;
-  data?: {
-    archives?: Array<Record<string, unknown>>;
-    page?: {
-      page_num?: number;
-      page_size?: number;
-      total?: number;
-    };
-    meta?: {
-      name?: string;
-      cover?: string;
-      mid?: number;
-      upper?: string;
-      upper_name?: string;
-    };
-  };
-}
-
-interface NavResponse {
-  code: number;
-  data: {
-    wbi_img: {
-      img_url: string;
-      sub_url: string;
-    };
-  };
-}
-
-const API = {
-  NAV: `${BILI_API_BASE}/x/web-interface/nav`,
-  USER_INFO: `${BILI_API_BASE}/x/space/wbi/acc/info`,
-  USER_VIDEOS: `${BILI_API_BASE}/x/space/wbi/arc/search`,
-  USER_SEASONS: `${BILI_API_BASE}/x/polymer/web-space/seasons_series_list`,
-  SEASON_VIDEOS: `${BILI_API_BASE}/x/polymer/web-space/seasons_archives_list`,
-} as const;
+import type { BilibiliSdkClient } from "./sdk-client.js";
 
 export interface SpaceUserInfo {
   mid: number;
@@ -93,30 +18,20 @@ export interface UgcSeasonVideosPage extends PaginatedVideos {
 }
 
 export class BilibiliSpaceProvider {
-  private wbiKeys: WbiKeys | null = null;
-
-  constructor(private readonly webClient: BilibiliWebClient) {}
+  constructor(private readonly sdk: BilibiliSdkClient) {}
 
   async getUserInfo(
     mid: number,
     cookieString?: string,
   ): Promise<SpaceUserInfo> {
-    const params = await this.signWbi({ mid }, cookieString);
-    const response = await this.webClient.requestJson<UserInfoResponse>(
-      `${API.USER_INFO}?${toQueryString(params)}`,
-      cookieString,
-    );
+    this.sdk.useCookie(cookieString);
 
-    if (response.code !== 0) {
-      throw new Error(
-        `获取用户信息失败: code=${response.code}, ${response.message}`,
-      );
-    }
+    const data = await this.sdk.client.user.accInfo(mid);
 
     return {
-      mid: response.data.mid,
-      name: response.data.name,
-      face: response.data.face,
+      mid: data.mid,
+      name: data.name,
+      face: data.face,
     };
   }
 
@@ -126,32 +41,20 @@ export class BilibiliSpaceProvider {
     pageSize: number,
     cookieString?: string,
   ): Promise<PaginatedVideos> {
-    const params = await this.signWbi({
+    this.sdk.useCookie(cookieString);
+
+    const data = await this.sdk.client.user.spaceArcSearch({
       mid,
       pn: page,
       ps: pageSize,
-      tid: 0,
-      keyword: "",
-      order: "pubdate",
-      platform: "web",
-      web_location: 1550101,
     });
 
-    const response = await this.webClient.requestJson<UserVideosResponse>(
-      `${API.USER_VIDEOS}?${toQueryString(params)}`,
-      cookieString,
+    const items = (data.list?.vlist ?? []).map((item) =>
+      mapVideoSummary(item as Record<string, unknown>),
     );
-
-    if (response.code !== 0) {
-      throw new Error(
-        `获取用户投稿失败: code=${response.code}, ${response.message}`,
-      );
-    }
-
-    const items = (response.data?.list?.vlist ?? []).map(mapVideoSummary);
-    const total = response.data?.page?.count ?? 0;
-    const pn = response.data?.page?.pn ?? page;
-    const ps = response.data?.page?.ps ?? pageSize;
+    const total = data.page?.count ?? 0;
+    const pn = data.page?.pn ?? page;
+    const ps = data.page?.ps ?? pageSize;
 
     return {
       items,
@@ -168,27 +71,15 @@ export class BilibiliSpaceProvider {
     pageSize = 20,
     cookieString?: string,
   ): Promise<UgcSeasonSummary[]> {
-    const params = await this.signWbi(
-      {
-        mid,
-        page_num: page,
-        page_size: pageSize,
-      },
-      cookieString,
+    this.sdk.useCookie(cookieString);
+
+    const data = await this.sdk.client.user.seasonsSeriesList(
+      mid,
+      page,
+      pageSize,
     );
 
-    const response = await this.webClient.requestJson<SeasonsListResponse>(
-      `${API.USER_SEASONS}?${toQueryString(params)}`,
-      cookieString,
-    );
-
-    if (response.code !== 0) {
-      throw new Error(
-        `获取用户合集失败: code=${response.code}, ${response.message}`,
-      );
-    }
-
-    const seasons = response.data?.items_lists?.seasons_list ?? [];
+    const seasons = data.items_lists?.seasons_list ?? [];
     return seasons.map((item) => ({
       seasonId: toNumber(item.season_id ?? item.id),
       title: toString(item.name ?? item.title),
@@ -203,21 +94,18 @@ export class BilibiliSpaceProvider {
     pageSize: number,
     cookieString?: string,
   ): Promise<UgcSeasonVideosPage> {
-    const response = await this.webClient.requestJson<SeasonVideosResponse>(
-      `${API.SEASON_VIDEOS}?season_id=${seasonId}&page_num=${page}&page_size=${pageSize}`,
-      cookieString,
+    this.sdk.useCookie(cookieString);
+
+    const data = await this.sdk.client.user.seasonsArchivesList(
+      seasonId,
+      page,
+      pageSize,
     );
 
-    if (response.code !== 0) {
-      throw new Error(
-        `获取合集视频失败: code=${response.code}, ${response.message}`,
-      );
-    }
-
-    const items = (response.data?.archives ?? []).map(mapVideoSummary);
-    const currentPage = response.data?.page?.page_num ?? page;
-    const currentSize = response.data?.page?.page_size ?? pageSize;
-    const total = response.data?.page?.total ?? 0;
+    const items = (data.archives ?? []).map(mapVideoSummary);
+    const currentPage = data.page?.page_num ?? page;
+    const currentSize = data.page?.page_size ?? pageSize;
+    const total = data.page?.total ?? 0;
 
     return {
       items,
@@ -225,37 +113,10 @@ export class BilibiliSpaceProvider {
       pageSize: currentSize,
       total,
       hasMore: currentPage * currentSize < total,
-      title: response.data?.meta?.name,
-      cover: response.data?.meta?.cover,
-      upperName: response.data?.meta?.upper_name ?? response.data?.meta?.upper,
+      title: data.meta?.name,
+      cover: data.meta?.cover,
+      upperName: data.meta?.upper_name ?? data.meta?.upper,
     };
-  }
-
-  private async initWbiKeys(cookieString?: string): Promise<void> {
-    const navData = await this.webClient.requestJson<NavResponse>(
-      API.NAV,
-      cookieString,
-    );
-    const imgUrl = navData.data.wbi_img.img_url;
-    const subUrl = navData.data.wbi_img.sub_url;
-
-    this.wbiKeys = {
-      imgKey: imgUrl.split("/").pop()?.split(".")[0] ?? "",
-      subKey: subUrl.split("/").pop()?.split(".")[0] ?? "",
-    };
-  }
-
-  private async signWbi(
-    params: Record<string, string | number | undefined>,
-    cookieString?: string,
-  ): Promise<Record<string, string>> {
-    if (!this.wbiKeys) {
-      await this.initWbiKeys(cookieString);
-    }
-    if (!this.wbiKeys) {
-      throw new Error("无法获取 WBI Keys");
-    }
-    return wbiSign(params, this.wbiKeys.imgKey, this.wbiKeys.subKey);
   }
 }
 
@@ -267,12 +128,6 @@ function mapVideoSummary(item: Record<string, unknown>): VideoSummary {
     cover: toOptionalString(item.pic ?? item.cover),
     duration: toNumber(item.length ?? item.duration),
   };
-}
-
-function toQueryString(params: Record<string, string>): string {
-  return Object.entries(params)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join("&");
 }
 
 function toNumber(value: unknown): number {
