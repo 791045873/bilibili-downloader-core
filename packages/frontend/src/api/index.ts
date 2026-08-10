@@ -103,6 +103,7 @@ export async function createDownload(req: {
   quality?: number;
   codec?: string;
   outputPath?: string;
+  fileNameTemplate?: string;
   subtitleLang?: string;
   autoSummary?: boolean;
 }): Promise<{ id: number; message: string }> {

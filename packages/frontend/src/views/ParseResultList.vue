@@ -28,7 +28,7 @@ interface ListItem {
   groupKey: string;
   groupColorClass: string;
   selected: boolean;
-  enqueued: boolean;
+  downloaded: boolean;
   queuedTaskId?: number;
   autoSummaryEnabled: boolean;
   highlighted: boolean;
@@ -59,7 +59,7 @@ const currentType = computed<ListType | null>(() => {
   return null;
 });
 
-const selectedCount = computed(() => items.value.filter((i) => i.selected && !i.enqueued).length);
+const selectedCount = computed(() => items.value.filter((i) => i.selected).length);
 const canLoadMore = computed(() => hasMore.value && currentType.value !== "video");
 
 const colorPalette = [
@@ -96,7 +96,7 @@ function normalizeSinglePage(
       groupKey,
       groupColorClass: groupColorClass(groupKey),
       selected: false,
-      enqueued: false,
+      downloaded: false,
       autoSummaryEnabled: false,
       highlighted: Boolean(currentBvid && currentBvid === video.bvid),
     };
@@ -124,7 +124,7 @@ function normalizeVideoPages(
         groupKey: bvid,
         groupColorClass: groupColorClass(bvid),
         selected: false,
-        enqueued: false,
+        downloaded: false,
         autoSummaryEnabled: false,
         highlighted,
       },
@@ -142,7 +142,7 @@ function normalizeVideoPages(
     groupKey: bvid,
     groupColorClass: groupColorClass(bvid),
     selected: false,
-    enqueued: false,
+    downloaded: false,
     autoSummaryEnabled: false,
     highlighted,
   }));
@@ -236,7 +236,7 @@ async function fetchList(targetPage: number, append: boolean) {
       items.value = normalized;
     }
 
-    await markEnqueued();
+    await markDownloaded();
     page.value = targetPage;
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : "加载失败";
@@ -246,7 +246,7 @@ async function fetchList(targetPage: number, append: boolean) {
   }
 }
 
-async function markEnqueued() {
+async function markDownloaded() {
   if (items.value.length === 0) return;
   const response = await checkTasks(
     items.value.map((item) => ({ bvid: item.bvid, cid: item.cid })),
@@ -257,13 +257,11 @@ async function markEnqueued() {
   items.value = items.value.map((item) => {
     const key = `${item.bvid}-${item.cid}`;
     const task = itemMap.get(key);
-    const enqueued = Boolean(task);
     return {
       ...item,
-      enqueued,
+      downloaded: Boolean(task),
       queuedTaskId: task?.id,
       autoSummaryEnabled: (task?.autoSummary ?? 0) === 1,
-      selected: enqueued ? false : item.selected,
     };
   });
 }
@@ -273,7 +271,6 @@ function toggleAutoSummary(item: ListItem, checked: boolean) {
 }
 
 function toggleSelect(item: ListItem, checked: boolean) {
-  if (item.enqueued) return;
   item.selected = checked;
 }
 
@@ -283,7 +280,7 @@ function openDirDialog() {
 }
 
 async function doAddToQueue(outputPath: string) {
-  const selected = items.value.filter((i) => i.selected && !i.enqueued);
+  const selected = items.value.filter((i) => i.selected);
   if (selected.length === 0) return;
 
   try {
@@ -295,6 +292,7 @@ async function doAddToQueue(outputPath: string) {
         quality: settingsStore.settings.defaultQuality,
         codec: settingsStore.settings.defaultCodec,
         subtitleLang: settingsStore.settings.downloadSubtitle ? "zh" : "none",
+        fileNameTemplate: settingsStore.settings.defaultFileNameTemplate,
         outputPath,
         autoSummary: item.autoSummaryEnabled,
       }).catch(() => ({ id: -1, message: "" })),
@@ -308,7 +306,7 @@ async function doAddToQueue(outputPath: string) {
       if (!selectedKeys.has(item.key)) return item;
       return {
         ...item,
-        enqueued: true,
+        downloaded: true,
         selected: false,
       };
     });
@@ -318,19 +316,19 @@ async function doAddToQueue(outputPath: string) {
 }
 
 async function handleOneClickAiSummary(item: ListItem) {
-  if (item.autoSummaryEnabled && item.enqueued) return;
+  if (item.autoSummaryEnabled && item.downloaded) return;
 
   try {
-    if (!item.enqueued) {
+    if (!item.downloaded) {
       await triggerAiSummary({ bvid: item.bvid, cid: item.cid });
-      item.enqueued = true;
+      item.downloaded = true;
       item.autoSummaryEnabled = true;
-      await markEnqueued();
+      await markDownloaded();
       return;
     }
 
     if (!item.queuedTaskId) {
-      await markEnqueued();
+      await markDownloaded();
     }
 
     const queuedTaskId = item.queuedTaskId;
@@ -436,7 +434,6 @@ onMounted(async () => {
               type="checkbox"
               class="mt-1"
               :checked="item.selected"
-              :disabled="item.enqueued"
               @change="toggleSelect(item, ($event.target as HTMLInputElement).checked)"
             />
             <div v-if="item.cover" class="h-16 w-28 shrink-0 overflow-hidden rounded bg-zinc-100">
@@ -445,7 +442,7 @@ onMounted(async () => {
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <p class="truncate text-sm font-medium text-zinc-900">{{ item.displayTitle }}</p>
-                <span v-if="item.enqueued" class="text-xs text-emerald-600">已入队</span>
+                <span v-if="item.downloaded" class="text-xs text-emerald-600">已下载</span>
                 <span v-if="item.highlighted" class="text-xs text-rose-600">当前视频</span>
               </div>
               <p class="mt-1 text-xs text-zinc-500">时长：{{ formatDuration(item.duration) }}</p>
@@ -460,8 +457,8 @@ onMounted(async () => {
                 </label>
                 <button
                   class="rounded-md px-2 py-1 text-xs"
-                  :class="item.autoSummaryEnabled && item.enqueued ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed' : 'bg-rose-600 text-white hover:bg-rose-500'"
-                  :disabled="item.autoSummaryEnabled && item.enqueued"
+                  :class="item.autoSummaryEnabled && item.downloaded ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed' : 'bg-rose-600 text-white hover:bg-rose-500'"
+                  :disabled="item.autoSummaryEnabled && item.downloaded"
                   @click="handleOneClickAiSummary(item)"
                 >
                   一键 AI 总结

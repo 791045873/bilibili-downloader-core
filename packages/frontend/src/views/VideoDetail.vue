@@ -32,7 +32,7 @@ interface TreeNode {
     episode?: UgcEpisode;
     page?: VideoPage;
     resolved: boolean;
-    enqueued: boolean;
+    downloaded: boolean;
     qualityList?: { id: number; name: string; codecList: string[] }[];
     audioQualityList?: string[];
     selectedQuality?: number;
@@ -78,7 +78,7 @@ onMounted(async () => {
     const allBvidCids = collectBvidCids();
     if (allBvidCids.length > 0) {
       const existing = await api.checkTasks(allBvidCids);
-      markEnqueued(existing);
+      markDownloaded(existing);
     }
   } catch (e: any) {
     error.value = e.message || "获取视频信息失败";
@@ -101,17 +101,16 @@ function collectBvidCids(): { bvid: string; cid: number }[] {
   return pairs;
 }
 
-function markEnqueued(records: { bvid: string; cid: number; status: string; createdAt: string }[]) {
+function markDownloaded(records: { bvid: string; cid: number }[]) {
   sectionTrees.value.forEach((tree) => {
     tree.forEach((node) => {
       (node.children ?? []).forEach((p) => {
         if (p.data.type !== "page" || !p.data.page) return;
-        const rec = records.find((r) => r.bvid === videoInfo.value!.bvid && r.cid === p.data.page!.cid);
+        const rec = records.find(
+          (r) => r.bvid === videoInfo.value!.bvid && r.cid === p.data.page!.cid,
+        );
         if (!rec) return;
-        const isOldSuccess =
-          rec.status === "success" &&
-          Date.now() - new Date(rec.createdAt).getTime() > 24 * 60 * 60 * 1000;
-        if (!isOldSuccess) p.data.enqueued = true;
+        p.data.downloaded = true;
       });
     });
   });
@@ -120,10 +119,10 @@ function markEnqueued(records: { bvid: string; cid: number; status: string; crea
 function buildEpisodeTree(section: UgcSection): TreeNode[] {
   return section.episodes.map((ep) => ({
     key: `${section.id}-${ep.cid}`,
-    data: { type: "episode" as const, episode: ep, resolved: false, enqueued: false, selectedSubtitleLang: "none" as const },
+    data: { type: "episode" as const, episode: ep, resolved: false, downloaded: false, selectedSubtitleLang: "none" as const },
     children: ep.pages.map((p) => ({
       key: `${section.id}-${ep.cid}-${p.cid}`,
-      data: { type: "page" as const, page: p, resolved: false, enqueued: false, selectedSubtitleLang: "none" as const },
+      data: { type: "page" as const, page: p, resolved: false, downloaded: false, selectedSubtitleLang: "none" as const },
     })),
   }));
 }
@@ -135,12 +134,12 @@ function buildMockVideoNode(info: VideoInfo): TreeNode {
       type: "episode" as const,
       episode: { aid: info.videoInfo.avid, bvid: info.bvid, cid: info.pages[0]?.cid ?? 0, title: info.title, pages: info.pages },
       resolved: false,
-      enqueued: false,
+      downloaded: false,
       selectedSubtitleLang: "none",
     },
     children: info.pages.map((p) => ({
       key: `video-${info.bvid}-${p.cid}`,
-      data: { type: "page" as const, page: p, resolved: false, enqueued: false, selectedSubtitleLang: "none" as const },
+      data: { type: "page" as const, page: p, resolved: false, downloaded: false, selectedSubtitleLang: "none" as const },
     })),
   };
 }
@@ -167,7 +166,7 @@ function toggleSection() {
   const allSel = tree.every((ep) => (ep.children ?? []).every((p) => isPageSelected(p.key)));
   tree.forEach((ep) => {
     (ep.children ?? []).forEach((p) => {
-      if (!p.data.enqueued) setPageSelected(p.key, !allSel);
+      setPageSelected(p.key, !allSel);
     });
   });
 }
@@ -193,7 +192,7 @@ function toggleEpisode(node: TreeNode) {
   if (pages.length === 0) return;
   const allSel = pages.every((p) => isPageSelected(p.key));
   pages.forEach((p) => {
-    if (!p.data.enqueued) setPageSelected(p.key, !allSel);
+    setPageSelected(p.key, !allSel);
   });
 }
 
@@ -272,7 +271,7 @@ async function doAddToQueue(outputPath: string) {
   tree.forEach((node) => {
     const episodeTitle = node.data.episode?.title ?? "";
     (node.children ?? []).forEach((p) => {
-      if (p.data.type === "page" && isPageSelected(p.key) && p.data.page && !p.data.enqueued) {
+      if (p.data.type === "page" && isPageSelected(p.key) && p.data.page) {
         const pg = p.data.page;
         const vq = p.data.selectedQuality ?? settingsStore.settings.defaultQuality;
         const codec = p.data.selectedCodec || settingsStore.settings.defaultCodec || undefined;
@@ -284,6 +283,7 @@ async function doAddToQueue(outputPath: string) {
           quality: vq,
           codec,
           outputPath,
+          fileNameTemplate: settingsStore.settings.defaultFileNameTemplate,
           subtitleLang,
         });
         downloadTasks.push(task);
@@ -301,7 +301,7 @@ async function doAddToQueue(outputPath: string) {
     tree.forEach((node) => {
       (node.children ?? []).forEach((p) => {
         if (p.data.type === "page" && isPageSelected(p.key) && p.data.page) {
-          p.data.enqueued = true;
+          p.data.downloaded = true;
           setPageSelected(p.key, false);
         }
       });
@@ -381,7 +381,7 @@ const subtitleOptions = [
           <Column header="选择" class="w-14">
             <template #body="{ node }">
               <Checkbox v-if="node.data.type === 'episode'" :modelValue="episodeSelectState(node)" :binary="true" @update:modelValue="toggleEpisode(node)" />
-              <Checkbox v-else-if="node.data.type === 'page'" :modelValue="isPageSelected(node.key)" :disabled="node.data.enqueued" :binary="true" @update:modelValue="(val: boolean) => setPageSelected(node.key, val)" />
+              <Checkbox v-else-if="node.data.type === 'page'" :modelValue="isPageSelected(node.key)" :binary="true" @update:modelValue="(val: boolean) => setPageSelected(node.key, val)" />
             </template>
           </Column>
           <Column header="名称" :expander="true">
@@ -389,7 +389,7 @@ const subtitleOptions = [
               <span v-if="node.data.type === 'episode'" class="text-zinc-800 font-medium">{{ node.data.episode?.title }}</span>
               <span v-else class="text-zinc-600 pl-4 text-xs">
                 P{{ node.data.page?.page }} {{ node.data.page?.title }}
-                <span v-if="node.data.enqueued" class="ml-2 text-emerald-600">已入队</span>
+                <span v-if="node.data.downloaded" class="ml-2 text-emerald-600">已下载</span>
               </span>
             </template>
           </Column>

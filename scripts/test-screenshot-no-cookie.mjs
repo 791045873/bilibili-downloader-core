@@ -3,7 +3,7 @@ import { join } from "node:path";
 import process from "node:process";
 
 import {
-  createBilibiliWebClient,
+  createBilibiliSdkClient,
   BilibiliStreamProvider,
 } from "../packages/adapters/dist/bilibili/index.js";
 import { FfmpegScreenshot } from "../packages/adapters/dist/ffmpeg/index.js";
@@ -22,8 +22,8 @@ function parseBvids(argv) {
 }
 
 async function runOneBvid(bvid) {
-  const webClient = createBilibiliWebClient();
-  const streamProvider = new BilibiliStreamProvider(webClient);
+  const sdkClient = createBilibiliSdkClient();
+  const streamProvider = new BilibiliStreamProvider(sdkClient);
   const screenshotter = new FfmpegScreenshot();
 
   const info = await streamProvider.getVideoInfo(bvid);

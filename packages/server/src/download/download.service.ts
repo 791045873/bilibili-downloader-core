@@ -25,6 +25,7 @@ import {
   type TaskStatusGroup,
 } from "../database/database.service.js";
 import type { DownloadDto } from "./download.dto.js";
+import { buildOutputFileName } from "./file-naming.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 
 interface LowResDownloadResult {
@@ -308,10 +309,13 @@ export class DownloadService implements OnModuleInit {
       : join(this.outputDir, ".analysis-llm");
     await this.fileStore.ensureOutputDir(llmDir);
 
-    const outputFile = join(
-      llmDir,
-      `${sanitizeFileName(title)}-${bvid}-${cid}-q${lowVideo.quality}.mp4`,
-    );
+    const fileName = buildOutputFileName({
+      title,
+      bvid,
+      cid,
+      quality: lowVideo.quality,
+    });
+    const outputFile = join(llmDir, fileName);
 
     this.logger.log(
       createLogMessage("Prepared low resolution download output", {
@@ -366,6 +370,7 @@ export class DownloadService implements OnModuleInit {
       title: dto.title,
       quality: dto.quality,
       codec: dto.codec,
+      fileNameTemplate: dto.fileNameTemplate,
       outputPath: dto.outputPath,
       subtitleLang: dto.subtitleLang,
       autoSummary: dto.autoSummary ? 1 : 0,
@@ -487,7 +492,14 @@ export class DownloadService implements OnModuleInit {
       );
 
       // 构建输出路径
-      const fileName = `${sanitizeFileName(task.title!)}.mp4`;
+      const fileName = buildOutputFileName({
+        title: task.title!,
+        bvid: task.bvid!,
+        cid: task.cid!,
+        quality: videoStream.quality,
+        codec: task.codec,
+        template: task.fileNameTemplate,
+      });
       const outputFile = task.outputPath
         ? join(this.outputDir, sanitizeOutputPath(task.outputPath), fileName)
         : join(this.outputDir, fileName);
@@ -497,6 +509,7 @@ export class DownloadService implements OnModuleInit {
           taskId: id,
           bvid: task.bvid,
           cid: task.cid,
+          quality: videoStream.quality,
           outputFile,
           hasOutputPath: Boolean(task.outputPath),
         }),
@@ -803,10 +816,6 @@ function formatBytes(bytes: number): string {
   const units = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / 1024 ** i).toFixed(1)} ${units[i]}`;
-}
-
-function sanitizeFileName(name: string): string {
-  return name.replace(/[<>:"/\\|?*]/g, "_");
 }
 
 /**

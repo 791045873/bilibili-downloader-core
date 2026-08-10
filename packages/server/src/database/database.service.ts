@@ -13,6 +13,7 @@ export interface TaskRecord {
   title?: string;
   quality?: number;
   codec?: string;
+  fileNameTemplate?: string;
   outputPath?: string;
   subtitleLang?: string;
   autoSummary?: number;
@@ -203,6 +204,11 @@ export class DatabaseService {
     } catch {
       // 列已存在的忽略
     }
+    try {
+      this.db.exec(`ALTER TABLE task ADD COLUMN fileNameTemplate TEXT`);
+    } catch {
+      // 列已存在的忽略
+    }
   }
 
   // ==================== CRUD ====================
@@ -215,6 +221,7 @@ export class DatabaseService {
       t.title,
       t.quality,
       t.codec,
+      t.fileNameTemplate,
       t.outputPath,
       t.subtitle_lang AS subtitleLang,
       t.auto_summary AS autoSummary,
@@ -257,11 +264,11 @@ export class DatabaseService {
   insertTask(record: TaskRecord): number {
     const now = new Date().toISOString();
     const stmt = this.db.prepare(`
-      INSERT INTO task (bvid, cid, title, quality, codec, outputPath, subtitle_lang, status, progress, speed,
+      INSERT INTO task (bvid, cid, title, quality, codec, fileNameTemplate, outputPath, subtitle_lang, status, progress, speed,
             auto_summary, summary_status, summary_output,
                         outputFile, fileSize, errorCode, errorMessage, durationMs,
                         createdAt, updatedAt, completedAt)
-      VALUES (@bvid, @cid, @title, @quality, @codec, @outputPath, @subtitleLang, @status, @progress, @speed,
+      VALUES (@bvid, @cid, @title, @quality, @codec, @fileNameTemplate, @outputPath, @subtitleLang, @status, @progress, @speed,
               @autoSummary, @summaryStatus, @summaryOutput,
               @outputFile, @fileSize, @errorCode, @errorMessage, @durationMs,
               @createdAt, @updatedAt, @completedAt)
@@ -272,6 +279,7 @@ export class DatabaseService {
       title: record.title ?? null,
       quality: record.quality ?? null,
       codec: record.codec ?? null,
+      fileNameTemplate: record.fileNameTemplate ?? null,
       outputPath: record.outputPath ?? null,
       subtitleLang: record.subtitleLang ?? null,
       status: record.status ?? "created",

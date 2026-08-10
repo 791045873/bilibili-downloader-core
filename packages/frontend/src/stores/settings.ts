@@ -13,6 +13,7 @@ export const useSettingsStore = defineStore("settings", () => {
     defaultAudioQuality: "192K",
     downloadDanmaku: false,
     downloadSubtitle: false,
+    defaultFileNameTemplate: "",
   });
   const loaded = ref(false);
 

@@ -132,6 +132,22 @@ async function copyOutputDir() {
         </div>
       </div>
 
+      <!-- 文件名模板 -->
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">文件名模板</h3>
+        <div class="space-y-2">
+          <input
+            type="text"
+            v-model="settingsStore.settings.defaultFileNameTemplate"
+            placeholder="{title}-{bvid}-{cid}-q{quality}"
+            class="w-full rounded border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 focus:border-rose-500 focus:outline-none"
+          />
+          <p class="text-xs text-zinc-500">
+            占位符：{title} {bvid} {cid} {quality} {codec}。留空使用默认模板，包含 bvid/cid/quality 以保证同名视频不冲突。
+          </p>
+        </div>
+      </div>
+
       <!-- 附加内容 -->
       <div class="mb-6">
         <h3 class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">附加内容</h3>

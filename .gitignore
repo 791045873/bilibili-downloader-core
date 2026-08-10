@@ -6,3 +6,5 @@ dist/
 downloads
 __pycache__/
 .venv/
+
+summaryDir/

@@ -213,6 +213,8 @@ export interface AppSettings {
   defaultAudioQuality: string;
   downloadDanmaku: boolean;
   downloadSubtitle: boolean;
+  /** 默认输出文件名模板（占位符 {title}/{bvid}/{cid}/{quality}/{codec}，空则用服务端默认） */
+  defaultFileNameTemplate: string;
 }
 
 // ---- 认证 ----

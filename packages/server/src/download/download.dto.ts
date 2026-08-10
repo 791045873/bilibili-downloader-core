@@ -9,6 +9,8 @@ export class DownloadDto {
   codec?: string;
   /** 下载文件存放的子路径，用于构建下载路径 */
   outputPath?: string;
+  /** 输出文件名模板（占位符 {title}/{bvid}/{cid}/{quality}/{codec}，空则用默认模板） */
+  fileNameTemplate?: string;
   /** 字幕语言选择: "none"|"zh"|"en"|"all" */
   subtitleLang?: string;
   /** 下载完成后自动触发 AI 总结 */
