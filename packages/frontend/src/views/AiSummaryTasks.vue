@@ -38,6 +38,57 @@ function statusClass(status: string): string {
   }
 }
 
+function formatTime(value?: string): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function summaryTime(task: AiSummaryTaskEntry): string {
+  if (task.status === "completed" || task.status === "failed") {
+    return formatTime(task.lastCompletedAt);
+  }
+  return "—";
+}
+
+function formatMs(ms?: number): string {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds}秒`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}分${seconds}秒`;
+}
+
+function derivedTotalMs(task: AiSummaryTaskEntry): number | undefined {
+  if (!task.lastCompletedAt || !task.lastTriggeredAt) return undefined;
+  const end = new Date(task.lastCompletedAt).getTime();
+  const start = new Date(task.lastTriggeredAt).getTime();
+  if (Number.isNaN(end) || Number.isNaN(start) || end <= 0 || start <= 0) {
+    return undefined;
+  }
+  if (end < start) return undefined;
+  return end - start;
+}
+
+function timingLine(task: AiSummaryTaskEntry): string {
+  const t = task.executionTiming;
+  const parts: string[] = [];
+  if (t) {
+    if (t.llmMs > 0) parts.push(`LLM ${formatMs(t.llmMs)}`);
+    if (t.screenshotMs > 0) parts.push(`截图 ${formatMs(t.screenshotMs)}`);
+    if (t.totalMs > 0) parts.push(`总计 ${formatMs(t.totalMs)}`);
+  }
+  if (parts.length === 0) {
+    // 回退：无耗时明细（历史任务/空内容总结）时，用 lastCompletedAt - lastTriggeredAt 推导总计
+    const derived = derivedTotalMs(task);
+    return derived !== undefined ? `总计 ${formatMs(derived)}` : "";
+  }
+  return parts.join(" · ");
+}
+
 async function loadTasks() {
   error.value = "";
   try {
@@ -84,38 +135,62 @@ onMounted(async () => {
       暂无 AI 总结任务
     </div>
 
-    <div v-if="tasks.length > 0" class="space-y-3">
-      <div
-        v-for="task in tasks"
-        :key="task.id"
-        class="rounded-lg border border-zinc-200 bg-white p-4"
-      >
-        <div class="flex items-start justify-between gap-4">
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
+    <div v-if="tasks.length > 0" class="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+      <table class="w-full min-w-[900px] text-sm">
+        <thead>
+          <tr class="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+            <th class="px-4 py-3 font-medium">视频标题</th>
+            <th class="px-4 py-3 font-medium">状态</th>
+            <th class="px-4 py-3 font-medium">总结时间</th>
+            <th class="px-4 py-3 font-medium">执行耗时</th>
+            <th class="px-4 py-3 font-medium">总结输出</th>
+            <th class="px-4 py-3 font-medium">更新时间</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="task in tasks"
+            :key="task.id"
+            class="border-b border-zinc-100 align-top last:border-b-0 hover:bg-zinc-50"
+          >
+            <td class="px-4 py-3">
+              <div class="max-w-[260px] truncate font-medium text-zinc-900" :title="task.title || ''">
+                {{ task.title || `${task.bvid}-${task.cid}` }}
+              </div>
+              <div class="mt-0.5 text-xs text-zinc-500">
+                {{ task.bvid }} / {{ task.cid }}
+              </div>
+            </td>
+            <td class="px-4 py-3">
               <span
                 class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium text-white"
                 :class="statusClass(task.status)"
               >
                 {{ statusLabel(task.status) }}
               </span>
-              <span class="truncate text-sm text-zinc-800">{{ task.title || `${task.bvid}-${task.cid}` }}</span>
-            </div>
-            <div class="mt-2 text-xs text-zinc-500">
-              资源：{{ task.bvid }} / {{ task.cid }}
-            </div>
-            <div v-if="task.summaryOutput" class="mt-2 text-xs text-zinc-500 break-all">
-              总结输出：<span class="text-zinc-700">{{ task.summaryOutput }}</span>
-            </div>
-            <div v-if="task.status === 'failed' && task.errorMessage" class="mt-2 text-xs text-red-600 break-all">
-              错误：{{ task.errorMessage }}
-            </div>
-            <div v-if="task.updatedAt" class="mt-2 text-xs text-zinc-400">
-              更新时间：{{ task.updatedAt }}
-            </div>
-          </div>
-        </div>
-      </div>
+              <div v-if="task.status === 'failed' && task.errorMessage" class="mt-1 max-w-[240px] break-all text-xs text-red-600">
+                {{ task.errorMessage }}
+              </div>
+            </td>
+            <td class="whitespace-nowrap px-4 py-3 text-zinc-700">
+              {{ summaryTime(task) }}
+            </td>
+            <td class="px-4 py-3">
+              <span v-if="timingLine(task)" class="text-xs text-zinc-700">{{ timingLine(task) }}</span>
+              <span v-else class="text-zinc-400">—</span>
+            </td>
+            <td class="px-4 py-3">
+              <span v-if="task.summaryOutput" class="max-w-[260px] break-all text-xs text-zinc-500" :title="task.summaryOutput">
+                {{ task.summaryOutput }}
+              </span>
+              <span v-else class="text-zinc-400">—</span>
+            </td>
+            <td class="whitespace-nowrap px-4 py-3 text-zinc-400">
+              {{ formatTime(task.updatedAt) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </template>

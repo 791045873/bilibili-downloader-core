@@ -1,19 +1,36 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import isNil from "lodash/isNil.js";
-import { mkdir, rm } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { readdirSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { type LlmConfig } from "@bilibili-downloader/adapters/llm";
 import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
+import { AnalysisVideoResolver } from "./analysis-video-resolver.js";
 import {
   DatabaseService,
   type AiSummaryTaskRecord,
+  type AnalysisSubTaskRecord,
   type TaskRecord,
 } from "../database/database.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { DownloadService } from "../download/download.service.js";
 import { NotificationService } from "../notification/notification.service.js";
+import { sanitizeFileName } from "../download/file-naming.js";
 import { createLogMessage } from "../logging/server-log.util.js";
+
+/** AI 总结任务执行耗时明细 */
+export interface AiSummaryExecutionTiming {
+  llmMs: number;
+  screenshotMs: number;
+  totalMs: number;
+}
+
+/** AI 总结任务对外视图：executionTiming 解析为对象 */
+export interface AiSummaryTaskView
+  extends Omit<AiSummaryTaskRecord, "executionTiming"> {
+  executionTiming?: AiSummaryExecutionTiming;
+}
 
 @Injectable()
 export class AnalysisTriggerService implements OnModuleInit {
@@ -25,6 +42,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     private readonly downloadScheduler: DownloadScheduler,
     private readonly downloadService: DownloadService,
     private readonly notificationService: NotificationService,
+    private readonly analysisVideoResolver: AnalysisVideoResolver,
   ) {
     this.llmVideoDir = process.env.ANALYSIS_LLM_VIDEO_DIR
       ? resolve(process.env.ANALYSIS_LLM_VIDEO_DIR)
@@ -35,6 +53,17 @@ export class AnalysisTriggerService implements OnModuleInit {
   }
 
   onModuleInit(): void {
+    // 启动对账：低清队列为内存态，重启后遗留子任务/卡死总结标 failed，避免永久等待
+    const reconciled = this.db.reconcileStaleAnalysisState();
+    if (reconciled.failedSubTasks > 0 || reconciled.failedSummaryTasks > 0) {
+      this.logger.log(
+        createLogMessage("Reconciled stale analysis state after restart", {
+          failedSubTasks: reconciled.failedSubTasks,
+          failedSummaryTasks: reconciled.failedSummaryTasks,
+        }),
+      );
+    }
+
     this.downloadScheduler.onAnalysisTrigger = (taskId: number) => {
       this.trigger(taskId).catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
@@ -67,33 +96,23 @@ export class AnalysisTriggerService implements OnModuleInit {
           outputFile: result.outputFile,
           completedAt: new Date().toISOString(),
         });
-        const task = this.db.getTaskById(taskId);
-        if (task) {
-          this.db.updateTaskStatus(taskId, {
-            status: task.status,
-            summaryStatus: "pending",
-            summaryOutput: "",
-          });
-          this.upsertAiSummaryTask(task, {
-            status: "pending",
-            summaryOutput: "",
-            errorMessage: "",
-          });
-        }
-        this.trigger(taskId).catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : String(err);
-          this.logger.error(
-            createLogMessage(
-              "Analysis retrigger after low resolution download failed",
-              {
-                taskId,
-                analysisSubTaskId,
-                error: message,
-              },
-            ),
-            err instanceof Error ? err.stack : undefined,
-          );
-        });
+        // 低清已就绪，直接续跑分析（认领保持进行中，避免重走认领被拒）
+        this.runAnalysis(taskId, new Date().toISOString()).catch(
+          (err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            this.logger.error(
+              createLogMessage(
+                "Analysis continuation after low resolution download failed",
+                {
+                  taskId,
+                  analysisSubTaskId,
+                  error: message,
+                },
+              ),
+              err instanceof Error ? err.stack : undefined,
+            );
+          },
+        );
       } else {
         this.logger.error(
           createLogMessage("Low resolution analysis download failed", {
@@ -109,16 +128,23 @@ export class AnalysisTriggerService implements OnModuleInit {
         });
         const task = this.db.getTaskById(taskId);
         if (task) {
-          this.db.updateTaskStatus(taskId, {
-            status: task.status,
-            summaryStatus: "failed",
-            summaryOutput: result.error,
-          });
           this.upsertAiSummaryTask(task, {
             status: "failed",
             summaryOutput: "",
             errorMessage: result.error,
             lastCompletedAt: new Date().toISOString(),
+          });
+          void this.notificationService.sendSummaryNotification({
+            title:
+              task.title ||
+              (task.bvid && typeof task.cid === "number"
+                ? `${task.bvid}-${task.cid}`
+                : `任务 ${taskId}`),
+            success: false,
+            videoUrl: task.bvid
+              ? `https://www.bilibili.com/video/${task.bvid}`
+              : undefined,
+            errorMessage: result.error,
           });
         }
       }
@@ -172,26 +198,48 @@ export class AnalysisTriggerService implements OnModuleInit {
       );
       return;
     }
+    if (!task.bvid || typeof task.cid !== "number") {
+      this.logger.warn(
+        createLogMessage(
+          "Analysis trigger skipped because task lacks video resource identity",
+          {
+            taskId,
+            bvid: task.bvid,
+            cid: task.cid,
+          },
+        ),
+      );
+      return;
+    }
 
-    const now = new Date().toISOString();
-
-    this.db.updateTaskStatus(taskId, {
-      status: task.status,
-      summaryStatus: "pending",
-      summaryOutput: "",
+    // 原子认领：pending/analyzing 进行中直接拒绝，防并发双跑
+    const claim = this.db.claimAiSummaryTask({
+      bvid: task.bvid,
+      cid: task.cid,
+      title: task.title,
+      sourceTaskId: task.id,
     });
-    this.upsertAiSummaryTask(task, {
-      status: "pending",
-      summaryOutput: "",
-      errorMessage: "",
-      lastTriggeredAt: now,
-      lastCompletedAt: "",
-    });
+    if (!claim.claimed) {
+      this.logger.log(
+        createLogMessage(
+          "Analysis trigger skipped because summary already in progress",
+          {
+            taskId,
+            bvid: task.bvid,
+            cid: task.cid,
+            summaryStatus: claim.record?.status,
+          },
+        ),
+      );
+      return;
+    }
 
+    // 认领已完成，ai_summary_task 已置 pending（唯一权威），无需再写 task 镜像
+
+    // 低清未就绪则等待（认领保持进行中，续跑由 onLowResFinished 驱动 runAnalysis）
     const lowResSubTask = this.db
-      .getAnalysisSubTasksByTaskId(taskId)
+      .getAnalysisSubTasks(task.bvid, task.cid)
       .find((s) => s.status !== "failed");
-
     if (lowResSubTask && lowResSubTask.status !== "completed") {
       this.logger.log(
         createLogMessage(
@@ -206,143 +254,117 @@ export class AnalysisTriggerService implements OnModuleInit {
       return;
     }
 
-    const effectiveTask = this.resolveTaskForAnalysis(taskId, task);
+    await this.runAnalysis(taskId, new Date().toISOString());
+  }
 
-    const a = isNil(effectiveTask.outputFile);
-    const b = isNil(effectiveTask.bvid);
-    if (a || b) {
-      this.logger.error(
-        createLogMessage(
-          "Analysis trigger failed because required task fields are missing",
-          {
-            taskId,
-            bvid: effectiveTask.bvid,
-            cid: effectiveTask.cid,
-            reason: "missing-analysis-fields",
-          },
-        ),
-      );
-      this.db.updateTaskStatus(taskId, {
-        status: task.status,
-        summaryStatus: "failed",
-        summaryOutput: "任务缺少分析所需字段",
-      });
+  private async runAnalysis(taskId: number, now: string): Promise<void> {
+    const task = this.db.getTaskById(taskId);
+    if (!task) {
       return;
     }
 
-    const highResPath = effectiveTask.outputFile;
-    const taskBvid = effectiveTask.bvid;
-    const taskCid = effectiveTask.cid;
-    let llmVideoPath = highResPath;
-    const screenshotVideoPath = highResPath;
-
-    const reuseDecision = await this.shouldReuseDownloadedVideo(effectiveTask);
-    const reuseHighRes = reuseDecision.reuseHighRes;
-
-    this.logger.log(
-      createLogMessage("Analysis video source decision made", {
-        taskId,
-        bvid: taskBvid,
-        cid: taskCid,
-        reuseHighRes,
-        downloadedQuality: reuseDecision.downloadedQuality,
-        availableQualityCount: reuseDecision.availableQualityCount,
-      }),
-    );
-
-    if (!reuseHighRes) {
-      if (lowResSubTask?.status === "completed" && lowResSubTask.outputFile) {
-        llmVideoPath = lowResSubTask.outputFile;
-        this.logger.log(
-          createLogMessage("Analysis reusing completed low resolution video", {
-            taskId,
-            analysisSubTaskId: lowResSubTask.id,
-            bvid: taskBvid,
-            cid: taskCid,
-            outputFile: lowResSubTask.outputFile,
-          }),
-        );
-      } else {
-        await mkdir(this.llmVideoDir, { recursive: true });
-        const subTaskId = this.db.insertAnalysisSubTask({
-          taskId,
-          bvid: taskBvid,
-          cid: taskCid,
-          quality: 0,
-          status: "created",
-          createdAt: new Date().toISOString(),
-        });
-        this.downloadScheduler.scheduleLowResDownload({
-          taskId,
-          analysisSubTaskId: subTaskId,
-          bvid: taskBvid!,
-          cid: taskCid!,
-          title: task.title ?? `${taskBvid}-${taskCid}`,
-        });
-        this.logger.log(
-          createLogMessage("Analysis scheduled low resolution video download", {
-            taskId,
-            analysisSubTaskId: subTaskId,
-            bvid: taskBvid,
-            cid: taskCid,
-            outputPath: this.llmVideoDir,
-          }),
-        );
-        return;
-      }
-    }
-
-    const summaryDir = this.resolveSummaryDir(task);
-    const metadataVideoUrl = `https://www.bilibili.com/video/${taskBvid}`;
-
-    const input: AnalysisInput = {
-      videoPath: llmVideoPath!,
-      screenshotVideoPath,
-      subtitlePath: undefined,
-      summaryDir,
-      videoTitle: task.title || `${taskBvid}-${taskCid}`,
-      metadata: {
-        type: "bilibili",
-        videoUrl: metadataVideoUrl,
-        bvid: taskBvid,
-        cid: taskCid,
-      },
-    };
-
-    const engine = new AnalysisEngine(this.getLlmConfig());
-    this.db.updateTaskStatus(taskId, {
-      status: task.status,
-      summaryStatus: "analyzing",
-      summaryOutput: "",
-    });
-    this.upsertAiSummaryTask(task, {
-      status: "analyzing",
-      summaryOutput: "",
-      errorMessage: "",
-      lastTriggeredAt: now,
-    });
+    const taskBvid = task.bvid ?? "";
+    const taskCid = task.cid;
+    const lowResSubTask =
+      task.bvid && typeof task.cid === "number"
+        ? (this.db
+            .getAnalysisSubTasks(task.bvid, task.cid)
+            .find((s) => s.status !== "failed") as
+            | AnalysisSubTaskRecord
+            | undefined)
+        : undefined;
+    let llmVideoPath: string | undefined;
+    let isTempVideo = false;
 
     try {
+      this.upsertAiSummaryTask(task, {
+        status: "analyzing",
+        summaryOutput: "",
+        errorMessage: "",
+        lastTriggeredAt: now,
+      });
+
+      const effectiveTask = await this.resolveTaskForAnalysis(taskId, task);
+      if (isNil(effectiveTask.bvid) || isNil(effectiveTask.cid)) {
+        throw new Error("任务缺少分析所需字段");
+      }
+      const effectiveBvid = effectiveTask.bvid;
+      const effectiveCid = effectiveTask.cid;
+      const highResPath = effectiveTask.outputFile;
+
+      // LLM 分析视频决策统一走资产层：低清子任务文件 → 高清任务文件，缺失时调度重下
+      const video = await this.analysisVideoResolver.resolveAnalysisVideo({
+        taskId,
+        bvid: effectiveBvid,
+        cid: effectiveCid,
+        title: task.title,
+        preferredLowResPath:
+          lowResSubTask?.status === "completed"
+            ? lowResSubTask.outputFile
+            : undefined,
+        highResPath,
+        llmVideoDir: this.llmVideoDir,
+      });
+
+      if (video.status === "downloading") {
+        return;
+      }
+      llmVideoPath = video.path;
+      isTempVideo = video.isTemp;
+      this.logger.log(
+        createLogMessage("Analysis video source resolved", {
+          taskId,
+          bvid: effectiveBvid,
+          cid: effectiveCid,
+          videoPath: llmVideoPath,
+          sourceIsTemp: isTempVideo,
+        }),
+      );
+
+      const screenshotVideoPath =
+        highResPath && (await this.downloadService.fileExists(highResPath))
+          ? highResPath
+          : undefined;
+
+      const summaryDir = this.resolveSummaryDir(task);
+      const metadataVideoUrl = `https://www.bilibili.com/video/${effectiveBvid}`;
+
+      const input: AnalysisInput = {
+        videoPath: llmVideoPath,
+        screenshotVideoPath,
+        subtitlePath: undefined,
+        summaryDir,
+        videoTitle: task.title || `${effectiveBvid}-${effectiveCid}`,
+        metadata: {
+          type: "bilibili",
+          videoUrl: metadataVideoUrl,
+          bvid: effectiveBvid,
+          cid: effectiveCid,
+        },
+      };
+
+      const engine = new AnalysisEngine(
+        this.getLlmConfig(),
+        undefined,
+        this.analysisVideoResolver,
+      );
       const result = await engine.analyze(input);
+
       this.logger.log(
         createLogMessage("Analysis completed successfully", {
           taskId,
-          bvid: taskBvid,
-          cid: taskCid,
+          bvid: effectiveBvid,
+          cid: effectiveCid,
           summaryPath: result.summaryPath,
           segmentCount: result.segmentCount,
           emptySummary: result.emptySummary,
         }),
       );
-      this.db.updateTaskStatus(taskId, {
-        status: task.status,
-        summaryStatus: "completed",
-        summaryOutput: result.summaryPath,
-      });
       this.upsertAiSummaryTask(task, {
         status: "completed",
         summaryOutput: result.summaryPath,
         errorMessage: "",
+        executionTiming: JSON.stringify(result.timing),
         lastTriggeredAt: now,
         lastCompletedAt: new Date().toISOString(),
       });
@@ -363,11 +385,6 @@ export class AnalysisTriggerService implements OnModuleInit {
         }),
         err instanceof Error ? err.stack : undefined,
       );
-      this.db.updateTaskStatus(taskId, {
-        status: task.status,
-        summaryStatus: "failed",
-        summaryOutput: msg,
-      });
       this.upsertAiSummaryTask(task, {
         status: "failed",
         summaryOutput: "",
@@ -378,11 +395,11 @@ export class AnalysisTriggerService implements OnModuleInit {
       await this.notificationService.sendSummaryNotification({
         title: task.title || `${taskBvid}-${taskCid}`,
         success: false,
-        videoUrl: metadataVideoUrl,
+        videoUrl: `https://www.bilibili.com/video/${taskBvid}`,
         errorMessage: msg,
       });
     } finally {
-      if (llmVideoPath && llmVideoPath.startsWith(this.llmVideoDir)) {
+      if (llmVideoPath && isTempVideo && llmVideoPath.startsWith(this.llmVideoDir)) {
         await rm(llmVideoPath, { force: true })
           .then(() => {
             this.logger.log(
@@ -412,7 +429,10 @@ export class AnalysisTriggerService implements OnModuleInit {
     }
   }
 
-  private resolveTaskForAnalysis(taskId: number, task: TaskRecord): TaskRecord {
+  private async resolveTaskForAnalysis(
+    taskId: number,
+    task: TaskRecord,
+  ): Promise<TaskRecord> {
     const latestTask = this.db.getTaskById(taskId) ?? task;
     if (!isNil(latestTask.outputFile) && !isNil(latestTask.bvid)) {
       return latestTask;
@@ -424,6 +444,25 @@ export class AnalysisTriggerService implements OnModuleInit {
 
     const completedTask =
       this.db.findCompletedTaskByBvidAndCid(task.bvid, task.cid) ?? latestTask;
+
+    // 磁盘校验：重载文件已不存在时回退当前任务，交由下游低清恢复
+    if (
+      completedTask.outputFile &&
+      !(await this.downloadService.fileExists(completedTask.outputFile))
+    ) {
+      this.logger.warn(
+        createLogMessage(
+          "Reloaded analysis task output file is missing on disk, falling back to current task",
+          {
+            taskId,
+            bvid: completedTask.bvid,
+            cid: completedTask.cid,
+            outputFile: completedTask.outputFile,
+          },
+        ),
+      );
+      return latestTask;
+    }
 
     if (
       completedTask.id !== latestTask.id ||
@@ -446,40 +485,57 @@ export class AnalysisTriggerService implements OnModuleInit {
     return completedTask;
   }
 
-  private async shouldReuseDownloadedVideo(task: TaskRecord): Promise<{
-    reuseHighRes: boolean;
-    downloadedQuality?: number;
-    availableQualityCount: number;
-  }> {
-    if (!task.bvid || !task.cid) {
-      return { reuseHighRes: true, availableQualityCount: 0 };
-    }
-    const parsed = await this.downloadService.parseVideo(task.bvid, task.cid);
-    const qualityIds = parsed.videoQualityList
-      .map((q) => q.id)
-      .sort((a, b) => a - b);
-    if (qualityIds.length <= 1) {
-      return {
-        reuseHighRes: true,
-        downloadedQuality: task.quality,
-        availableQualityCount: qualityIds.length,
-      };
-    }
-
-    const downloadedQuality = task.quality ?? qualityIds[qualityIds.length - 1];
-    return {
-      reuseHighRes: downloadedQuality <= qualityIds[0],
-      downloadedQuality,
-      availableQualityCount: qualityIds.length,
-    };
-  }
-
   private resolveSummaryDir(task: TaskRecord): string {
     const base = resolve(process.cwd(), "summaryDir");
-    const safeTitle = (task.title ?? `${task.bvid}-${task.cid}`)
-      .replace(/[<>:"/\\|?*]/g, "_")
-      .slice(0, 120);
-    return join(base, safeTitle || "analysis");
+    const bvid = task.bvid;
+    const cid = task.cid;
+    if (!bvid || typeof cid !== "number") {
+      return join(base, "analysis");
+    }
+
+    // 命名：{标题}-{bvid}-{cid}（标题完整不截断，非法字符清洗）
+    const titleBase = (task.title ?? "").trim();
+    const titlePart = titleBase ? sanitizeFileName(titleBase) : "";
+    const candidateName = titlePart
+      ? `${titlePart}-${bvid}-${cid}`
+      : `${bvid}-${cid}`;
+    const suffix = `-${bvid}-${cid}`;
+
+    // 同资源已存在 summary 目录则复用（标题变化不产生孤儿目录），优先精确匹配候选名
+    let existingDir: string | undefined;
+    try {
+      existingDir = readdirSync(base, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort((a, b) => {
+          const aExact = a === candidateName ? -1 : 0;
+          const bExact = b === candidateName ? -1 : 0;
+          return aExact - bExact || a.localeCompare(b);
+        })
+        .find(
+          (n) =>
+            n === candidateName ||
+            n.endsWith(suffix) ||
+            n === `${bvid}-${cid}`,
+        );
+    } catch {
+      // summaryDir 尚不存在，忽略
+    }
+
+    if (existingDir && existingDir !== candidateName) {
+      this.logger.log(
+        createLogMessage(
+          "Analysis reusing existing summary directory for resource",
+          {
+            bvid,
+            cid,
+            existingDir,
+            candidateName,
+          },
+        ),
+      );
+    }
+    return join(base, existingDir ?? candidateName);
   }
 
   private getLlmConfig(): LlmConfig {
@@ -502,8 +558,34 @@ export class AnalysisTriggerService implements OnModuleInit {
     };
   }
 
-  getAiSummaryTasks(): AiSummaryTaskRecord[] {
-    return this.db.listAiSummaryTasks();
+  getAiSummaryTasks(): AiSummaryTaskView[] {
+    return this.db.listAiSummaryTasks().map((r) => ({
+      ...r,
+      executionTiming: this.parseExecutionTiming(r.executionTiming),
+    }));
+  }
+
+  private parseExecutionTiming(raw?: string): AiSummaryExecutionTiming | undefined {
+    if (!raw) {
+      return undefined;
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return undefined;
+      }
+      const p = parsed as { llmMs?: unknown; screenshotMs?: unknown; totalMs?: unknown };
+      if (
+        typeof p.llmMs !== "number" ||
+        typeof p.screenshotMs !== "number" ||
+        typeof p.totalMs !== "number"
+      ) {
+        return undefined;
+      }
+      return { llmMs: p.llmMs, screenshotMs: p.screenshotMs, totalMs: p.totalMs };
+    } catch {
+      return undefined;
+    }
   }
 
   private upsertAiSummaryTask(
@@ -512,6 +594,7 @@ export class AnalysisTriggerService implements OnModuleInit {
       status: string;
       summaryOutput?: string;
       errorMessage?: string;
+      executionTiming?: string;
       lastTriggeredAt?: string;
       lastCompletedAt?: string;
     },
@@ -528,6 +611,7 @@ export class AnalysisTriggerService implements OnModuleInit {
       status: fields.status,
       summaryOutput: fields.summaryOutput,
       errorMessage: fields.errorMessage,
+      executionTiming: fields.executionTiming,
       lastTriggeredAt: fields.lastTriggeredAt,
       lastCompletedAt: fields.lastCompletedAt,
     });

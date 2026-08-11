@@ -197,6 +197,7 @@ export interface AiSummaryTaskEntry {
   status: string;
   summaryOutput?: string | null;
   errorMessage?: string | null;
+  executionTiming?: { llmMs: number; screenshotMs: number; totalMs: number };
   createdAt?: string;
   updatedAt?: string;
   lastTriggeredAt?: string;

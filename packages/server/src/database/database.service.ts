@@ -54,6 +54,7 @@ export interface AiSummaryTaskRecord {
   status: string;
   summaryOutput?: string;
   errorMessage?: string;
+  executionTiming?: string;
   createdAt?: string;
   updatedAt?: string;
   lastTriggeredAt?: string;
@@ -179,6 +180,13 @@ export class DatabaseService {
       ON ai_summary_task(updated_at DESC);
     `);
 
+    // 已有数据库升级: ai_summary_task 补充执行耗时列
+    try {
+      this.db.exec(`ALTER TABLE ai_summary_task ADD COLUMN execution_timing TEXT`);
+    } catch {
+      // 列已存在的忽略
+    }
+
     // 已有数据库升级: 补充 subtitle_lang 列
     try {
       this.db.exec(`ALTER TABLE task ADD COLUMN subtitle_lang TEXT`);
@@ -209,6 +217,57 @@ export class DatabaseService {
     } catch {
       // 列已存在的忽略
     }
+
+    // 状态单一来源迁移：把历史 task.summary_status 合并进 ai_summary_task（幂等）
+    // ai_summary_task 是 AI 总结状态的唯一权威；此后不再向 task 写入 summary 状态。
+    this.db.exec(`
+      INSERT OR IGNORE INTO ai_summary_task (
+        bvid, cid, title, status, summary_output, error_message,
+        created_at, updated_at, last_triggered_at, last_completed_at
+      )
+      SELECT
+        t.bvid, t.cid, t.title, t.summary_status, t.summary_output, NULL,
+        COALESCE(t.completedAt, t.createdAt, datetime('now')),
+        COALESCE(t.completedAt, t.createdAt, datetime('now')),
+        NULL,
+        CASE
+          WHEN t.summary_status = 'completed' THEN COALESCE(t.completedAt, t.createdAt)
+          ELSE NULL
+        END
+      FROM task t
+      WHERE t.bvid IS NOT NULL
+        AND t.cid IS NOT NULL
+        AND t.summary_status IS NOT NULL
+        AND t.summary_status != 'none'
+    `);
+
+    // 子任务资源级键迁移：analysis_sub_task 按 (bvid,cid,quality) 活跃唯一
+    // 先对同组重复记录去重（保留最新 id，其余标 failed），再建部分唯一索引（幂等）。
+    // 部分索引（WHERE status != 'failed'）允许保留失败历史行，同时强制活跃行唯一。
+    try {
+      this.db.exec(`
+        UPDATE analysis_sub_task
+        SET status = 'failed',
+            error_message = COALESCE(error_message, 'superseded by newer record')
+        WHERE id NOT IN (
+          SELECT MAX(id) FROM analysis_sub_task GROUP BY bvid, cid, quality
+        )
+      `);
+      this.db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_analysis_sub_task_active
+        ON analysis_sub_task(bvid, cid, quality)
+        WHERE status != 'failed'
+      `);
+    } catch (err) {
+      this.logger.warn(
+        createLogMessage(
+          "Analysis sub task unique index creation failed; continuing without hard uniqueness",
+          {
+            error: err instanceof Error ? err.message : String(err),
+          },
+        ),
+      );
+    }
   }
 
   // ==================== CRUD ====================
@@ -225,8 +284,8 @@ export class DatabaseService {
       t.outputPath,
       t.subtitle_lang AS subtitleLang,
       t.auto_summary AS autoSummary,
-      COALESCE(ast.status, t.summary_status) AS summaryStatus,
-      COALESCE(ast.summary_output, t.summary_output) AS summaryOutput,
+      ast.status AS summaryStatus,
+      ast.summary_output AS summaryOutput,
       t.status,
       t.progress,
       t.speed,
@@ -253,6 +312,7 @@ export class DatabaseService {
       status,
       summary_output AS summaryOutput,
       error_message AS errorMessage,
+      execution_timing AS executionTiming,
       created_at AS createdAt,
       updated_at AS updatedAt,
       last_triggered_at AS lastTriggeredAt,
@@ -335,14 +395,12 @@ export class DatabaseService {
     }
   }
 
-  /** 更新任务状态（完成/失败时） */
+  /** 更新任务状态（完成/失败时）。AI 总结状态由 ai_summary_task 单一来源，不在此写入。 */
   updateTaskStatus(
     id: number,
     fields: {
       status: string;
       autoSummary?: number;
-      summaryStatus?: string;
-      summaryOutput?: string;
       outputFile?: string;
       fileSize?: number;
       errorCode?: string;
@@ -356,10 +414,6 @@ export class DatabaseService {
     const setClauses: string[] = ["status = @status", "updatedAt = @updatedAt"];
     if (fields.autoSummary !== undefined)
       setClauses.push("auto_summary = @autoSummary");
-    if (fields.summaryStatus !== undefined)
-      setClauses.push("summary_status = @summaryStatus");
-    if (fields.summaryOutput !== undefined)
-      setClauses.push("summary_output = @summaryOutput");
     if (fields.outputFile !== undefined)
       setClauses.push("outputFile = @outputFile");
     if (fields.fileSize !== undefined) setClauses.push("fileSize = @fileSize");
@@ -379,8 +433,6 @@ export class DatabaseService {
         id,
         status: fields.status,
         autoSummary: fields.autoSummary ?? null,
-        summaryStatus: fields.summaryStatus ?? null,
-        summaryOutput: fields.summaryOutput ?? null,
         outputFile: fields.outputFile ?? null,
         fileSize: fields.fileSize ?? null,
         errorCode: fields.errorCode ?? null,
@@ -395,15 +447,10 @@ export class DatabaseService {
       });
 
     const statusChanged = previous?.status !== fields.status;
-    const summaryChanged =
-      fields.summaryStatus !== undefined &&
-      previous?.summaryStatus !== fields.summaryStatus;
     const shouldLog =
       statusChanged ||
-      summaryChanged ||
       fields.errorMessage !== undefined ||
       fields.outputFile !== undefined ||
-      fields.summaryOutput !== undefined ||
       fields.autoSummary !== undefined ||
       fields.durationMs !== undefined;
 
@@ -415,23 +462,14 @@ export class DatabaseService {
         fromStatus: previous?.status,
         toStatus: fields.status,
         status: fields.status,
-        summaryStatus: fields.summaryStatus,
         autoSummary: fields.autoSummary,
         outputFile: fields.outputFile,
-        summaryPath:
-          fields.summaryStatus === "completed"
-            ? fields.summaryOutput
-            : undefined,
-        error:
-          fields.errorMessage ??
-          (fields.summaryStatus === "failed"
-            ? fields.summaryOutput
-            : undefined),
+        error: fields.errorMessage,
         durationMs: fields.durationMs,
         progress: fields.progress,
       };
 
-      if (fields.status === "failed" || fields.summaryStatus === "failed") {
+      if (fields.status === "failed") {
         this.logger.error(
           createLogMessage("Persisted task status change", details),
         );
@@ -696,7 +734,8 @@ export class DatabaseService {
     }
   }
 
-  getAnalysisSubTasksByTaskId(taskId: number): AnalysisSubTaskRecord[] {
+  /** 按资源（bvid+cid）查询分析子任务 —— 资源级键，跨任务溯源 */
+  getAnalysisSubTasks(bvid: string, cid: number): AnalysisSubTaskRecord[] {
     return this.db
       .prepare(
         `
@@ -712,11 +751,11 @@ export class DatabaseService {
           created_at AS createdAt,
           completed_at AS completedAt
         FROM analysis_sub_task
-        WHERE task_id = ?
+        WHERE bvid = ? AND cid = ?
         ORDER BY created_at ASC
       `,
       )
-      .all(taskId) as AnalysisSubTaskRecord[];
+      .all(bvid, cid) as AnalysisSubTaskRecord[];
   }
 
   getAiSummaryTaskByResource(
@@ -766,10 +805,92 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * 原子认领 AI 总结：pending/analyzing 时拒绝认领，否则置为 pending。
+   * 单进程 + better-sqlite3 同步事务内保证互斥，防并发双跑。
+   */
+  claimAiSummaryTask(record: {
+    bvid: string;
+    cid: number;
+    title?: string;
+    sourceTaskId?: number;
+  }): { claimed: boolean; record: AiSummaryTaskRecord | undefined } {
+    const now = new Date().toISOString();
+    const res = this.db
+      .prepare(
+        `
+        INSERT INTO ai_summary_task (
+          bvid, cid, title, source_task_id, status, summary_output, error_message,
+          created_at, updated_at, last_triggered_at, last_completed_at
+        )
+        VALUES (
+          @bvid, @cid, @title, @sourceTaskId, 'pending', NULL, NULL,
+          @now, @now, @now, NULL
+        )
+        ON CONFLICT(bvid, cid) DO UPDATE SET
+          title = excluded.title,
+          source_task_id = excluded.source_task_id,
+          status = 'pending',
+          execution_timing = NULL,
+          updated_at = @now,
+          last_triggered_at = @now
+        WHERE status NOT IN ('pending', 'analyzing')
+      `,
+      )
+      .run({
+        bvid: record.bvid,
+        cid: record.cid,
+        title: record.title ?? null,
+        sourceTaskId: record.sourceTaskId ?? null,
+        now,
+      });
+
+    return {
+      claimed: res.changes > 0,
+      record: this.getAiSummaryTaskByResource(record.bvid, record.cid),
+    };
+  }
+
+  /**
+   * 启动对账：低清下载队列为进程内存态，重启即失效。
+   * 遗留 created 子任务标 failed；遗留 pending/analyzing 的总结标 failed。
+   * ai_summary_task 为状态单一来源，task 镜像由读取侧 JOIN 覆盖，无需同步。
+   */
+  reconcileStaleAnalysisState(): {
+    failedSubTasks: number;
+    failedSummaryTasks: number;
+  } {
+    const now = new Date().toISOString();
+    const lowResMsg = "服务重启，低清下载中断";
+    const summaryMsg = "服务重启，AI 总结中断，请重新触发";
+
+    const subRes = this.db
+      .prepare(
+        `UPDATE analysis_sub_task SET status = 'failed', error_message = @msg, completed_at = @now WHERE status = 'created'`,
+      )
+      .run({ msg: lowResMsg, now });
+
+    const sumRes = this.db
+      .prepare(
+        `UPDATE ai_summary_task SET status = 'failed', error_message = @msg, updated_at = @now, last_completed_at = @now WHERE status IN ('pending', 'analyzing')`,
+      )
+      .run({ msg: summaryMsg, now });
+
+    return {
+      failedSubTasks: subRes.changes,
+      failedSummaryTasks: sumRes.changes,
+    };
+  }
+
   upsertAiSummaryTask(record: AiSummaryTaskRecord): AiSummaryTaskRecord {
     const now = new Date().toISOString();
     const existing = this.getAiSummaryTaskByResource(record.bvid, record.cid);
     const createdAt = existing?.createdAt ?? record.createdAt ?? now;
+    // executionTiming 未提供时保留既有值（避免普通状态更新清空最近成功耗时）
+    const executionTiming =
+      record.executionTiming !== undefined
+        ? record.executionTiming
+        : (existing?.executionTiming ?? null);
     this.db
       .prepare(
         `
@@ -781,6 +902,7 @@ export class DatabaseService {
           status,
           summary_output,
           error_message,
+          execution_timing,
           created_at,
           updated_at,
           last_triggered_at,
@@ -794,6 +916,7 @@ export class DatabaseService {
           @status,
           @summaryOutput,
           @errorMessage,
+          @executionTiming,
           @createdAt,
           @updatedAt,
           @lastTriggeredAt,
@@ -805,6 +928,7 @@ export class DatabaseService {
           status = excluded.status,
           summary_output = excluded.summary_output,
           error_message = excluded.error_message,
+          execution_timing = excluded.execution_timing,
           updated_at = excluded.updated_at,
           last_triggered_at = excluded.last_triggered_at,
           last_completed_at = excluded.last_completed_at
@@ -818,6 +942,7 @@ export class DatabaseService {
         status: record.status,
         summaryOutput: record.summaryOutput ?? null,
         errorMessage: record.errorMessage ?? null,
+        executionTiming,
         createdAt,
         updatedAt: record.updatedAt ?? now,
         lastTriggeredAt: record.lastTriggeredAt ?? null,

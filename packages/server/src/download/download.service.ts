@@ -646,6 +646,11 @@ export class DownloadService implements OnModuleInit {
     this.abortControllers.get(id)?.abort();
   }
 
+  /** 磁盘存在性校验（供分析编排层复用视频资源前确认文件真实存在） */
+  async fileExists(path: string): Promise<boolean> {
+    return this.fileStore.exists(path);
+  }
+
   /** 获取任务列表（内存缓存） */
   getTasks(): TaskEntry[] {
     return Array.from(this.taskCache.values()).sort(

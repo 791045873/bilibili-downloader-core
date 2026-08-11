@@ -20,7 +20,7 @@ import {
   type MultimodalContent,
 } from "@bilibili-downloader/adapters/llm";
 import { generateMarkdown, type DocumentInput } from "./document-generator.js";
-import type { ScreenshotSourceResolver } from "./screenshot-source-resolver.js";
+import type { ScreenshotSourceResolver } from "./analysis-video-resolver.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 
 function formatSubtitleEntry(entry: SrtEntry): string {
@@ -75,6 +75,8 @@ export interface AnalysisOutput {
   segmentCount: number;
   /** 是否为空内容文档 */
   emptySummary: boolean;
+  /** 执行耗时明细（LLM 分析 / 截图 / 总计，毫秒） */
+  timing: { llmMs: number; screenshotMs: number; totalMs: number };
 }
 
 /** LLM #1 响应结构：视频与字幕分析 */
@@ -136,6 +138,10 @@ export class AnalysisEngine {
     const screenshotsDir = join(input.summaryDir, "screenshots");
     await mkdir(screenshotsDir, { recursive: true });
 
+    const analysisStartMs = Date.now();
+    let llmMs = 0;
+    let screenshotMs = 0;
+
     const screenshots: string[] = [];
 
     // 1. 解析字幕（可选：subtitlePath 未传或文件不存在时跳过，仅传视频给 LLM）
@@ -159,6 +165,7 @@ export class AnalysisEngine {
     }
 
     // 2. LLM: 视频 + 字幕分析，直接返回用于截图的时间戳
+    const llmStartMs = Date.now();
     let analysis: SubtitleAnalysis;
     try {
       const userContent: MultimodalContent[] = [
@@ -180,6 +187,7 @@ export class AnalysisEngine {
           },
         ],
       })) as unknown as SubtitleAnalysis;
+      llmMs = Date.now() - llmStartMs;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
@@ -191,7 +199,10 @@ export class AnalysisEngine {
         }),
         err instanceof Error ? err.stack : undefined,
       );
-      return await this.writeEmptySummary(input, screenshots);
+      throw new Error(
+        `LLM 多模态分析失败（需先启动 Python 视觉代理服务，并确保 QWEN_VISION_PROXY_URL 可访问）: ${message}`,
+        err instanceof Error ? { cause: err } : undefined,
+      );
     }
 
     const summaryItems = normalizeSummaryItems(analysis);
@@ -228,6 +239,7 @@ export class AnalysisEngine {
     const processedSegments: DocumentInput["segments"] = [];
 
     // 3. 按 LLM 返回的精确时间戳直接截图，不再做二次多模态选图
+    const screenshotStartMs = Date.now();
     for (let si = 0; si < summaryItems.length; si++) {
       const item = summaryItems[si];
       const seconds = transTimestampToSeconds(item.timestamp);
@@ -335,6 +347,7 @@ export class AnalysisEngine {
         })),
       });
     }
+    screenshotMs = Date.now() - screenshotStartMs;
 
     // 4. 生成 Markdown
     const doc = generateMarkdown({
@@ -369,6 +382,11 @@ export class AnalysisEngine {
       screenshotFiles: screenshots,
       segmentCount: processedSegments.length,
       emptySummary: processedSegments.length === 0,
+      timing: {
+        llmMs,
+        screenshotMs,
+        totalMs: Date.now() - analysisStartMs,
+      },
     };
   }
 
@@ -419,6 +437,7 @@ export class AnalysisEngine {
       screenshotFiles: existingScreenshots,
       segmentCount: 0,
       emptySummary: true,
+      timing: { llmMs: 0, screenshotMs: 0, totalMs: 0 },
     };
   }
 }

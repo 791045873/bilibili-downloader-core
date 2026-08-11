@@ -24,6 +24,8 @@ packages/server/src/
 │   ├── analysis-engine.ts      ← 核心编排：字幕分析 → 截图 → 多模态筛选 → 文档生成
 │   ├── analysis.controller.ts  ← 临时调试 API
 │   ├── analysis.module.ts      ← NestJS 模块装配
+│   ├── analysis-trigger.service.ts ← 下载完成后自动触发分析（原子认领 + 低清等待 + runAnalysis）
+│   ├── analysis-video-resolver.ts ← 资产决策层：LLM 分析视频 / 截图源统一裁决（磁盘优先）
 │   ├── document-generator.ts   ← Markdown 文档组装
 │   └── index.ts
 
@@ -184,12 +186,23 @@ server/src/analysis/ ‐‐‐→ adapters/src/ffmpeg/ (截图)
 server/src/analysis/ ‐‐‐→ adapters/src/parser/ (SRT 解析)
 server/src/analysis/ ‐‐‐→ server/python/        (可选：多模态本地文件代理)
 server/src/analysis/ ‐‐‐→ core (SubtitleInfo 等类型，如需要)
+server/src/analysis/analysis-video-resolver.ts
+  ‐‐‐→ download.service (fileExists / resolveBestVideoStream / createTask / executeTask)
+  ‐‐‐→ download-scheduler (低清下载调度)
+  ‐‐‐→ database.service (子任务资源级查询)
 
 adapters/src/llm/     ‐‐‐→ 外部 HTTP API (千问文本 / 备用多模态)
 adapters/src/llm/     ‐‐‐→ Python 薄代理 HTTP API (可选多模态)
 adapters/src/ffmpeg/  ‐‐‐→ 系统 ffmpeg / ffprobe 二进制
 server/python/        ‐‐‐→ DashScope Python SDK
 ```
+
+## 2026-08-11 基线更新
+
+- `analysis-trigger.service.ts` 引入**原子认领**（`ai_summary_task` 条件 upsert）防并发双跑；全部前置决策与 analyze 在 `runAnalysis()` 的 try/catch 内，异常统一落 `failed` 并通知。
+- 新增 `analysis-video-resolver.ts` 资产决策层：`resolveAnalysisVideo`（LLM 分析视频：低清子任务文件 → 高清任务文件，磁盘优先，均缺失时重置子任务并调度低清重下）与 `resolve`（截图源：远端流 → 已完成本地下载 → 同步重下，全程磁盘校验）。原 `screenshot-source-resolver.ts` 并入该模块。
+- AI 总结状态以 `ai_summary_task` 为**单一权威来源**（`task.summary_status/summary_output` 不再双写，读取由 `taskSelectSql` 直接 JOIN `ai_summary_task`）；`analysis_sub_task` 改为资源级键 `(bvid, cid, quality)`（部分唯一索引，`task_id` 仅溯源）；summary 输出目录按 `{标题}-{bvid}-{cid}/` 命名（标题完整不截断、非法字符清洗；同资源已存在目录则复用，标题变化不产生孤儿目录，bvid-cid 为稳定锚点）。
+- 启动时执行状态对账：遗留 `created` 子任务与 `pending/analyzing` 总结标 `failed`，避免重启后永久等待。
 
 ## 环境变量
 

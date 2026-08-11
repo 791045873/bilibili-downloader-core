@@ -29,6 +29,7 @@ export class DownloadScheduler implements OnModuleInit {
   private readonly maxConcurrentLowRes: number;
   private readonly runningSet = new Set<number>();
   private readonly lowResRunningSet = new Set<number>();
+  private readonly lowResRunningResources = new Set<string>();
   private readonly lowResQueue: LowResDownloadJob[] = [];
 
   onAnalysisTrigger?: (taskId: number) => void;
@@ -134,12 +135,13 @@ export class DownloadScheduler implements OnModuleInit {
   }
 
   scheduleLowResDownload(job: LowResDownloadJob): void {
+    // 资源级去重：同 bvid+cid 只允许一个排队/执行中的低清下载
     const existsInQueue = this.lowResQueue.some(
-      (j) =>
-        j.taskId === job.taskId &&
-        j.analysisSubTaskId === job.analysisSubTaskId,
+      (j) => j.bvid === job.bvid && j.cid === job.cid,
     );
-    const existsRunning = this.lowResRunningSet.has(job.analysisSubTaskId);
+    const existsRunning = this.lowResRunningResources.has(
+      `${job.bvid}-${job.cid}`,
+    );
     if (existsInQueue || existsRunning) {
       this.logger.warn(
         createLogMessage(
@@ -219,6 +221,7 @@ export class DownloadScheduler implements OnModuleInit {
     ) {
       const job = this.lowResQueue.shift()!;
       this.lowResRunningSet.add(job.analysisSubTaskId);
+      this.lowResRunningResources.add(`${job.bvid}-${job.cid}`);
       this.logger.log(
         createLogMessage("Claimed low resolution download for execution", {
           taskId: job.taskId,
@@ -269,6 +272,7 @@ export class DownloadScheduler implements OnModuleInit {
         })
         .finally(() => {
           this.lowResRunningSet.delete(job.analysisSubTaskId);
+          this.lowResRunningResources.delete(`${job.bvid}-${job.cid}`);
           this.logger.log(
             createLogMessage("Low resolution task slot released", {
               taskId: job.taskId,

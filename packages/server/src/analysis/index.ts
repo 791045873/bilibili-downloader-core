@@ -6,9 +6,10 @@ export { AnalysisEngine } from "./analysis-engine.js";
 export type { AnalysisInput, AnalysisOutput } from "./analysis-engine.js";
 export { generateMarkdown } from "./document-generator.js";
 export type { DocumentInput } from "./document-generator.js";
-export { DefaultScreenshotSourceResolver } from "./screenshot-source-resolver.js";
+export { AnalysisVideoResolver } from "./analysis-video-resolver.js";
 export type {
+  AnalysisVideoResolveResult,
   ScreenshotSourceResolver,
   ScreenshotSourceResolverInput,
   ScreenshotSourceResolveResult,
-} from "./screenshot-source-resolver.js";
+} from "./analysis-video-resolver.js";

@@ -11,7 +11,7 @@ import { isAbsolute, join } from "node:path";
 import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
 import type { LlmConfig } from "@bilibili-downloader/adapters/llm";
 import type { VideoPage } from "@bilibili-downloader/core/ports";
-import { DefaultScreenshotSourceResolver } from "./screenshot-source-resolver.js";
+import { AnalysisVideoResolver } from "./analysis-video-resolver.js";
 import { DatabaseService } from "../database/database.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
@@ -41,7 +41,7 @@ export class AnalysisController {
   private readonly logger = new Logger(AnalysisController.name);
 
   constructor(
-    private readonly screenshotSourceResolver: DefaultScreenshotSourceResolver,
+    private readonly analysisVideoResolver: AnalysisVideoResolver,
     private readonly analysisTriggerService: AnalysisTriggerService,
     private readonly databaseService: DatabaseService,
     private readonly downloadScheduler: DownloadScheduler,
@@ -74,7 +74,7 @@ export class AnalysisController {
     const engine = new AnalysisEngine(
       this.getLlmConfig(),
       undefined,
-      this.screenshotSourceResolver,
+      this.analysisVideoResolver,
     );
     return engine.analyze(input);
   }
@@ -111,6 +111,28 @@ export class AnalysisController {
         message: `${created.message}，下载完成后将自动触发 AI 总结`,
       };
     }
+
+    const summaryTask = this.databaseService.getAiSummaryTaskByResource(
+      body.bvid,
+      body.cid,
+    );
+    if (
+      summaryTask &&
+      (summaryTask.status === "pending" || summaryTask.status === "analyzing")
+    ) {
+      this.logger.warn(
+        createLogMessage(
+          "AI summary trigger rejected because summary already in progress",
+          {
+            bvid: body.bvid,
+            cid: body.cid,
+            summaryStatus: summaryTask.status,
+          },
+        ),
+      );
+      throw new ConflictException("当前资源的 AI 总结正在进行中，请勿重复触发");
+    }
+
     if (task.autoSummary) {
       this.logger.warn(
         createLogMessage(

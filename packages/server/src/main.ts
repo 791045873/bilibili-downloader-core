@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createLogMessage } from "./logging/server-log.util.js";
 
-const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
+const PORT = Number.parseInt(process.env.PORT ?? "3100", 10);
 const publicDir = join(process.cwd(), "public");
 const logger = new Logger("Bootstrap");
 

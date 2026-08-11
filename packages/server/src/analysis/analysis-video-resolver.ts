@@ -1,7 +1,20 @@
+/**
+ * 视频资产决策层 — AI 总结用视频与截图源的统一裁决
+ *
+ * 职责：
+ * - resolveAnalysisVideo：LLM 分析视频（低清子任务文件 → 高清任务文件，取第一个真实存在者；均缺失时重置子任务并重新调度低清下载）
+ * - resolve：截图源（远端流 → 已完成本地下载 → 同步重下），全程磁盘校验
+ *
+ * 收敛了此前散落在 trigger() / ScreenshotSourceResolver 中的资产决策逻辑，
+ * 所有磁盘校验以 NodeFileStore.exists 为唯一入口。
+ */
+
 import { Injectable, Logger } from "@nestjs/common";
+import { mkdir } from "node:fs/promises";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { DatabaseService } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
+import { DownloadScheduler } from "../download/download-scheduler.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 
 export interface ScreenshotSourceResolverInput {
@@ -26,15 +39,109 @@ export interface ScreenshotSourceResolver {
   ): Promise<ScreenshotSourceResolveResult>;
 }
 
+export type AnalysisVideoResolveResult =
+  | { status: "ready"; path: string; isTemp: boolean }
+  | { status: "downloading" };
+
 @Injectable()
-export class DefaultScreenshotSourceResolver implements ScreenshotSourceResolver {
-  private readonly logger = new Logger(DefaultScreenshotSourceResolver.name);
+export class AnalysisVideoResolver implements ScreenshotSourceResolver {
+  private readonly logger = new Logger(AnalysisVideoResolver.name);
 
   constructor(
     private readonly downloadService: DownloadService,
     private readonly databaseService: DatabaseService,
+    private readonly downloadScheduler: DownloadScheduler,
   ) {}
 
+  /**
+   * 决策 LLM 分析视频：低清子任务文件 → 高清任务文件，取第一个真实存在者。
+   * 均不存在时重置失效子任务并重新调度低清下载，返回 downloading。
+   */
+  async resolveAnalysisVideo(input: {
+    taskId: number;
+    bvid: string;
+    cid: number;
+    title?: string;
+    preferredLowResPath?: string;
+    highResPath?: string;
+    llmVideoDir: string;
+  }): Promise<AnalysisVideoResolveResult> {
+    if (
+      input.preferredLowResPath &&
+      (await this.downloadService.fileExists(input.preferredLowResPath))
+    ) {
+      return { status: "ready", path: input.preferredLowResPath, isTemp: true };
+    }
+
+    if (
+      input.highResPath &&
+      (await this.downloadService.fileExists(input.highResPath))
+    ) {
+      return { status: "ready", path: input.highResPath, isTemp: false };
+    }
+
+    // 无可用视频：重置失效子任务并重新调度低清下载（资源级键，同资源唯一）
+    await mkdir(input.llmVideoDir, { recursive: true });
+    const subTasks = this.databaseService.getAnalysisSubTasks(
+      input.bvid,
+      input.cid,
+    );
+    const stale = subTasks.find((s) => s.status !== "failed");
+
+    let analysisSubTaskId: number;
+    if (stale) {
+      this.databaseService.updateAnalysisSubTaskStatus(stale.id!, {
+        status: "created",
+        errorMessage: "",
+        completedAt: "",
+      });
+      analysisSubTaskId = stale.id!;
+    } else {
+      const failed = subTasks.find((s) => s.status === "failed");
+      if (failed) {
+        this.databaseService.updateAnalysisSubTaskStatus(failed.id!, {
+          status: "created",
+          errorMessage: "",
+          completedAt: "",
+        });
+        analysisSubTaskId = failed.id!;
+      } else {
+        analysisSubTaskId = this.databaseService.insertAnalysisSubTask({
+          taskId: input.taskId,
+          bvid: input.bvid,
+          cid: input.cid,
+          quality: 0,
+          status: "created",
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    this.downloadScheduler.scheduleLowResDownload({
+      taskId: input.taskId,
+      analysisSubTaskId,
+      bvid: input.bvid,
+      cid: input.cid,
+      title: input.title ?? `${input.bvid}-${input.cid}`,
+    });
+
+    this.logger.log(
+      createLogMessage(
+        "Analysis scheduled low resolution video download because no usable video exists",
+        {
+          taskId: input.taskId,
+          analysisSubTaskId,
+          bvid: input.bvid,
+          cid: input.cid,
+          outputPath: input.llmVideoDir,
+        },
+      ),
+    );
+
+    return { status: "downloading" };
+  }
+
+  /** 截图源解析：本地直用；bilibili 走 远端流 → 已完成本地下载 → 同步重下 三级降级 */
   async resolve(
     params: ScreenshotSourceResolverInput,
   ): Promise<ScreenshotSourceResolveResult> {
@@ -99,7 +206,11 @@ export class DefaultScreenshotSourceResolver implements ScreenshotSourceResolver
       bvid,
       cid,
     );
-    if (completedTask?.outputFile && (completedTask.quality ?? 0) >= 80) {
+    if (
+      completedTask?.outputFile &&
+      (completedTask.quality ?? 0) >= 80 &&
+      (await this.downloadService.fileExists(completedTask.outputFile))
+    ) {
       this.logger.log(
         createLogMessage(
           "Using completed local download as screenshot source",
@@ -114,6 +225,20 @@ export class DefaultScreenshotSourceResolver implements ScreenshotSourceResolver
         ),
       );
       return { source: completedTask.outputFile, sourceType: "local" };
+    }
+    if (completedTask?.outputFile && (completedTask.quality ?? 0) >= 80) {
+      this.logger.warn(
+        createLogMessage(
+          "Completed local download file is missing on disk, skipping this fallback",
+          {
+            taskId: completedTask.id,
+            bvid,
+            cid,
+            quality: completedTask.quality,
+            outputFile: completedTask.outputFile,
+          },
+        ),
+      );
     }
 
     if (!bestStream) {
