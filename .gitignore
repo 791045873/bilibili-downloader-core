@@ -6,5 +6,7 @@ dist/
 downloads
 __pycache__/
 .venv/
+*.egg-info/
+build/
 
 summaryDir/

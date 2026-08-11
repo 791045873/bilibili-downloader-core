@@ -31,7 +31,7 @@ packages/server/src/
 
 packages/server/python/
 ├── qwen_vision_proxy.py        ← Python 薄代理：本地文件路径 → DashScope SDK
-└── requirements.txt            ← Python 依赖
+└── pyproject.toml              ← Python 依赖（锁定版本，安装进 .venv）
 ```
 
 ## 架构原则

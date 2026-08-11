@@ -9,8 +9,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "setup:vision-proxy": "python -m pip install -r python/requirements.txt",
-    "start:vision-proxy": "python python/qwen_vision_proxy.py",
+    "start:vision-proxy": "node ../../scripts/start-vision-proxy.mjs",
     "start:prod": "node --env-file=.env dist/main",
     "typecheck": "tsc --noEmit"
   },

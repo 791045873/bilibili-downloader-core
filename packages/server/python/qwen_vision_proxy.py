@@ -10,6 +10,7 @@ OpenAI-style response body.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,15 +18,16 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, unquote
 
+logger = logging.getLogger("qwen_vision_proxy")
+
 def missing_dependency_exit(missing_dependency: str, missing_module: str) -> NoReturn:
-    requirements_path = Path(__file__).with_name("requirements.txt")
+    python_dir = Path(__file__).resolve().parent
     sys.stderr.write(
         "Qwen vision proxy is missing Python dependency "
         f"'{missing_dependency}' (module: {missing_module}).\n"
-        "Install the proxy requirements with:\n"
-        f"  python -m pip install -r \"{requirements_path}\"\n"
-        "Or run from packages/server:\n"
-        "  pnpm setup:vision-proxy\n"
+        "Install the proxy dependencies from the repo root with:\n"
+        f"  pnpm setup:vision-proxy\n"
+        f"  (declared in {python_dir / 'pyproject.toml'})\n"
     )
     raise SystemExit(1)
 
@@ -178,6 +180,7 @@ class VisionProxyHandler(BaseHTTPRequestHandler):
 
             status_code = status_code_of(response)
             if status_code is not None and status_code != 200:
+                logger.warning("dashscope call failed: %s %s", getattr(response, "code", None), getattr(response, "message", None))
                 self.send_json(502, {
                     "error": "dashscope call failed",
                     "status_code": status_code,
@@ -194,10 +197,11 @@ class VisionProxyHandler(BaseHTTPRequestHandler):
                 }],
             })
         except Exception as err:  # noqa: BLE001 - thin debug proxy should surface all failures as JSON.
+            logger.exception("request failed: %s %s", self.command, self.path)
             self.send_json(500, {"error": str(err)})
 
     def log_message(self, format: str, *args: Any) -> None:
-        return
+        logger.info("%s - %s", self.address_string(), format % args)
 
     def send_json(self, status: int, body: dict[str, Any]) -> None:
         encoded = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -209,6 +213,11 @@ class VisionProxyHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        stream=sys.stderr,
+    )
     server = ThreadingHTTPServer((HOST, PORT), VisionProxyHandler)
-    print(f"Qwen vision proxy listening on http://{HOST}:{PORT}/v1/chat/completions")
+    logger.info("Qwen vision proxy listening on http://%s:%s/v1/chat/completions", HOST, PORT)
     server.serve_forever()
