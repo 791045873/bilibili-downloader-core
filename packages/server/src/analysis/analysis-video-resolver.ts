@@ -16,6 +16,7 @@ import { DatabaseService } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { createLogMessage } from "../logging/server-log.util.js";
+import isNil from "lodash/isNil.js";
 
 export interface ScreenshotSourceResolverInput {
   metadata: {
@@ -162,7 +163,7 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
 
     const bvid = metadata.bvid;
     const cid = metadata.cid;
-    if (!bvid || !cid) {
+    if (isNil(bvid) || isNil(cid)) {
       throw new Error("metadata.type=bilibili 时必须提供 bvid 和 cid");
     }
 
