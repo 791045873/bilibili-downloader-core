@@ -405,6 +405,14 @@ function formatBytes(bytes: number): string {
           >
             {{ aiSummaryButtonLabel(task) }}
           </button>
+          <!-- 非下载中 → 删除（仅删数据库记录，不删磁盘） -->
+          <button
+            v-if="task.status !== 'downloading'"
+            class="shrink-0 rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-red-600 hover:border-red-400 hover:text-red-500 transition-colors"
+            @click="handleDelete(task.id)"
+          >
+            删除
+          </button>
         </div>
       </div>
 

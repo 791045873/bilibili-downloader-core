@@ -565,6 +565,21 @@ export class AnalysisTriggerService implements OnModuleInit {
     }));
   }
 
+  getAiSummaryTaskById(id: number): AiSummaryTaskView | undefined {
+    const record = this.db.getAiSummaryTaskById(id);
+    if (!record) {
+      return undefined;
+    }
+    return {
+      ...record,
+      executionTiming: this.parseExecutionTiming(record.executionTiming),
+    };
+  }
+
+  deleteAiSummaryTask(id: number): boolean {
+    return this.db.deleteAiSummaryTask(id);
+  }
+
   private parseExecutionTiming(raw?: string): AiSummaryExecutionTiming | undefined {
     if (!raw) {
       return undefined;

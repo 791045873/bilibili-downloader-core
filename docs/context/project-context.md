@@ -16,9 +16,9 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `docs/requirements/2026-08-03-download-task-list-ai-summary.md`
+- Active requirement: `docs/requirements/2026-08-11-task-and-summary-delete.md`
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-08-03-download-task-list-ai-summary-plan.md`
+- Active plan: `docs/plans/2026-08-11-task-and-summary-delete-plan.md`
 - Active backlog item: `下载任务列表分页、过滤与 AI 总结入口`
 - AI autonomy: `plan-first`（2026-08-04 已切换到方案 B，更新后的计划需重新审计后再实施）
 - Current blocker: `updated plan requires independent re-audit before implementation; current fail evidence is recorded in docs/audits/2026-08-04-plan-reaudit-download-task-list-scheme-b.md`

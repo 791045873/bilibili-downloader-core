@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Controller,
+  Delete,
   Get,
   Logger,
   NotFoundException,
@@ -70,5 +71,28 @@ export class AnalysisTaskController {
   @Get("/summary-tasks")
   getAiSummaryTasks() {
     return this.analysisTriggerService.getAiSummaryTasks();
+  }
+
+  @Delete("/summary-tasks/:id")
+  deleteAiSummaryTask(@Param("id") id: string) {
+    const summaryTaskId = Number.parseInt(id, 10);
+    if (Number.isNaN(summaryTaskId)) {
+      this.logger.warn(`Delete ai summary task rejected due to invalid id: ${id}`);
+      throw new BadRequestException("无效的任务 ID");
+    }
+
+    const summaryTask = this.analysisTriggerService.getAiSummaryTaskById(summaryTaskId);
+    if (!summaryTask) {
+      this.logger.warn(
+        `Delete ai summary task rejected due to not-found: ${summaryTaskId}`,
+      );
+      throw new NotFoundException("AI 总结任务不存在");
+    }
+    if (summaryTask.status === "pending" || summaryTask.status === "analyzing") {
+      throw new ConflictException("进行中的 AI 总结不可删除");
+    }
+
+    this.analysisTriggerService.deleteAiSummaryTask(summaryTaskId);
+    return { message: "已删除" };
   }
 }

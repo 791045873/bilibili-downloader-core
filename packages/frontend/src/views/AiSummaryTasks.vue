@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import type { AiSummaryTaskEntry } from "../types";
-import { getAiSummaryTasks } from "../api";
+import { deleteAiSummaryTask, getAiSummaryTasks } from "../api";
 
 const loading = ref(true);
 const refreshing = ref(false);
+const deleting = ref(false);
 const error = ref("");
 const tasks = ref<AiSummaryTaskEntry[]>([]);
 
@@ -106,6 +107,22 @@ async function refreshTasks() {
   await loadTasks();
 }
 
+function isInProgress(task: AiSummaryTaskEntry): boolean {
+  return task.status === "pending" || task.status === "analyzing";
+}
+
+async function handleDelete(task: AiSummaryTaskEntry) {
+  deleting.value = true;
+  try {
+    await deleteAiSummaryTask(task.id);
+    await loadTasks();
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : "删除 AI 总结任务失败";
+  } finally {
+    deleting.value = false;
+  }
+}
+
 onMounted(async () => {
   await loadTasks();
 });
@@ -145,6 +162,7 @@ onMounted(async () => {
             <th class="px-4 py-3 font-medium">执行耗时</th>
             <th class="px-4 py-3 font-medium">总结输出</th>
             <th class="px-4 py-3 font-medium">更新时间</th>
+            <th class="px-4 py-3 font-medium">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -187,6 +205,18 @@ onMounted(async () => {
             </td>
             <td class="whitespace-nowrap px-4 py-3 text-zinc-400">
               {{ formatTime(task.updatedAt) }}
+            </td>
+            <td class="whitespace-nowrap px-4 py-3">
+              <button
+                class="rounded-md border border-zinc-300 px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:text-zinc-400"
+                :class="isInProgress(task)
+                  ? ''
+                  : 'text-red-600 hover:border-red-400 hover:text-red-500'"
+                :disabled="isInProgress(task) || deleting"
+                @click="handleDelete(task)"
+              >
+                {{ isInProgress(task) ? "进行中" : "删除" }}
+              </button>
             </td>
           </tr>
         </tbody>

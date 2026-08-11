@@ -777,6 +777,30 @@ export class DatabaseService {
       .all() as AiSummaryTaskRecord[];
   }
 
+  getAiSummaryTaskById(id: number): AiSummaryTaskRecord | undefined {
+    return this.db
+      .prepare(`${this.aiSummaryTaskSelectSql} WHERE id = ? LIMIT 1`)
+      .get(id) as AiSummaryTaskRecord | undefined;
+  }
+
+  /** 删除 AI 总结任务记录（仅删 DB，不删磁盘；进行中记录条件拒绝，避免删后被管道以新 id 复活） */
+  deleteAiSummaryTask(id: number): boolean {
+    const result = this.db
+      .prepare(
+        "DELETE FROM ai_summary_task WHERE id = ? AND status NOT IN ('pending', 'analyzing')",
+      )
+      .run(id);
+    if (result.changes > 0) {
+      this.logger.log(
+        createLogMessage("Deleted ai_summary_task row from database", {
+          summaryTaskId: id,
+        }),
+      );
+      return true;
+    }
+    return false;
+  }
+
   private buildTaskStatusFilter(statusGroup: TaskStatusGroup): {
     whereClause: string;
     queryParams: Array<string>;

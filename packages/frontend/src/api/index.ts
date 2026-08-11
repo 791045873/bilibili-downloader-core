@@ -198,6 +198,10 @@ export async function getAiSummaryTasks(): Promise<AiSummaryTaskEntry[]> {
   return request("/summary-tasks");
 }
 
+export async function deleteAiSummaryTask(id: number): Promise<void> {
+  await request(`/summary-tasks/${id}`, { method: "DELETE" });
+}
+
 // ==================== 认证 ====================
 
 export async function getQrCode(): Promise<{ qrcodeKey: string; url: string }> {
