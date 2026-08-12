@@ -26,6 +26,7 @@ import { generateMarkdown, type DocumentInput } from "./document-generator.js";
 import type { ScreenshotSourceResolver } from "./analysis-video-resolver.js";
 import { transTimestampToSeconds } from "./timestamp.js";
 import { createLogMessage } from "../logging/server-log.util.js";
+import { sanitizeFileName } from "../download/file-naming.js";
 
 function formatSubtitleEntry(entry: SrtEntry): string {
   return `[${entry.index}] ${entry.text}`;
@@ -431,7 +432,7 @@ export class AnalysisEngine {
 
     const summaryPath = join(
       input.summaryDir,
-      `${input.videoTitle}-summary.md`,
+      `${sanitizeFileName(input.videoTitle)}-summary.md`,
     );
     await writeFile(summaryPath, doc, "utf-8");
 
@@ -493,7 +494,7 @@ export class AnalysisEngine {
     });
     const summaryPath = join(
       input.summaryDir,
-      `${input.videoTitle}-summary.md`,
+      `${sanitizeFileName(input.videoTitle)}-summary.md`,
     );
     await writeFile(summaryPath, doc, "utf-8");
     this.logger.warn(
