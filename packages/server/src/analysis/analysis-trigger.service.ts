@@ -32,6 +32,12 @@ export interface AiSummaryTaskView
   executionTiming?: AiSummaryExecutionTiming;
 }
 
+function parseVisionProxyTimeoutMs(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 @Injectable()
 export class AnalysisTriggerService implements OnModuleInit {
   private readonly logger = new Logger(AnalysisTriggerService.name);
@@ -550,6 +556,9 @@ export class AnalysisTriggerService implements OnModuleInit {
     const modelName = process.env.QWEN_MODEL;
     const visionProxyUrl = process.env.QWEN_VISION_PROXY_URL;
     const visionModelName = process.env.QWEN_VISION_MODEL;
+    const visionProxyTimeoutMs = parseVisionProxyTimeoutMs(
+      process.env.QWEN_VISION_PROXY_TIMEOUT_MS,
+    );
 
     if (!apiKey || !baseUrl || !modelName) {
       throw new Error("缺少 LLM 配置：QWEN_API_KEY/QWEN_API_BASE/QWEN_MODEL");
@@ -561,6 +570,7 @@ export class AnalysisTriggerService implements OnModuleInit {
       modelName,
       visionProxyUrl,
       visionModelName,
+      visionProxyTimeoutMs,
     };
   }
 

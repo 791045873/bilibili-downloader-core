@@ -13,12 +13,14 @@ import json
 import logging
 import os
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 from urllib.parse import urlparse, unquote
 
 logger = logging.getLogger("qwen_vision_proxy")
+
 
 def missing_dependency_exit(missing_dependency: str, missing_module: str) -> NoReturn:
     python_dir = Path(__file__).resolve().parent
@@ -48,6 +50,11 @@ load_dotenv(SERVER_DIR / ".env")
 
 HOST = os.getenv("QWEN_VISION_PROXY_HOST", "127.0.0.1")
 PORT = int(os.getenv("QWEN_VISION_PROXY_PORT", "8765"))
+MAX_BODY_BYTES = int(os.getenv("QWEN_VISION_PROXY_MAX_BODY_BYTES", str(16 * 1024 * 1024)))
+MAX_CONCURRENCY = int(os.getenv("QWEN_VISION_PROXY_MAX_CONCURRENCY", "8"))
+SOCKET_TIMEOUT = float(os.getenv("QWEN_VISION_PROXY_SOCKET_TIMEOUT", "120"))
+
+_request_slots = threading.BoundedSemaphore(max(1, MAX_CONCURRENCY))
 
 
 def normalize_media_url(value: str) -> str:
@@ -155,13 +162,56 @@ def build_call_options(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 class VisionProxyHandler(BaseHTTPRequestHandler):
+    timeout = SOCKET_TIMEOUT
+
+    def _acquire_slot(self) -> bool:
+        if _request_slots.acquire(blocking=False):
+            return True
+        self.close_connection = True
+        self.safe_send_json(503, {"error": "server busy"})
+        return False
+
+    def do_GET(self) -> None:
+        if not self._acquire_slot():
+            return
+        try:
+            if self.path != "/healthz":
+                self.safe_send_json(404, {"error": "not found"})
+                return
+            self.safe_send_json(200, {"status": "ok"})
+        finally:
+            _request_slots.release()
+
     def do_POST(self) -> None:
+        if not self._acquire_slot():
+            return
+        try:
+            self._handle_post()
+        finally:
+            _request_slots.release()
+
+    def _handle_post(self) -> None:
         if self.path != "/v1/chat/completions":
-            self.send_json(404, {"error": "not found"})
+            self.safe_send_json(404, {"error": "not found"})
             return
 
         try:
-            content_length = int(self.headers.get("Content-Length", "0"))
+            content_length_header = self.headers.get("Content-Length")
+            if not content_length_header:
+                self.safe_send_json(400, {"error": "missing Content-Length header"})
+                return
+            try:
+                content_length = int(content_length_header)
+            except ValueError:
+                self.safe_send_json(400, {"error": "invalid Content-Length header"})
+                return
+            if content_length < 0:
+                self.safe_send_json(400, {"error": "negative Content-Length header"})
+                return
+            if content_length > MAX_BODY_BYTES:
+                self.safe_send_json(413, {"error": f"request body exceeds limit of {MAX_BODY_BYTES} bytes"})
+                return
+
             payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
             api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("DASH_SCOPE_API_KEY")
             if not api_key:
@@ -181,7 +231,7 @@ class VisionProxyHandler(BaseHTTPRequestHandler):
             status_code = status_code_of(response)
             if status_code is not None and status_code != 200:
                 logger.warning("dashscope call failed: %s %s", getattr(response, "code", None), getattr(response, "message", None))
-                self.send_json(502, {
+                self.safe_send_json(502, {
                     "error": "dashscope call failed",
                     "status_code": status_code,
                     "code": getattr(response, "code", None),
@@ -189,7 +239,7 @@ class VisionProxyHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            self.send_json(200, {
+            self.safe_send_json(200, {
                 "choices": [{
                     "message": {
                         "content": extract_text(response),
@@ -198,7 +248,10 @@ class VisionProxyHandler(BaseHTTPRequestHandler):
             })
         except Exception as err:  # noqa: BLE001 - thin debug proxy should surface all failures as JSON.
             logger.exception("request failed: %s %s", self.command, self.path)
-            self.send_json(500, {"error": str(err)})
+            self.safe_send_json(500, {"error": str(err)})
+
+    def address_string(self) -> str:
+        return self.client_address[0]
 
     def log_message(self, format: str, *args: Any) -> None:
         logger.info("%s - %s", self.address_string(), format % args)
@@ -210,6 +263,12 @@ class VisionProxyHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
+
+    def safe_send_json(self, status: int, body: dict[str, Any]) -> None:
+        try:
+            self.send_json(status, body)
+        except OSError:
+            logger.debug("client disconnected before response write: %s", self.address_string())
 
 
 if __name__ == "__main__":

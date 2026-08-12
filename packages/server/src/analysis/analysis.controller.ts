@@ -309,6 +309,9 @@ export class AnalysisController {
     const modelName = process.env.QWEN_MODEL;
     const visionProxyUrl = process.env.QWEN_VISION_PROXY_URL;
     const visionModelName = process.env.QWEN_VISION_MODEL;
+    const visionProxyTimeoutMs = parseVisionProxyTimeoutMs(
+      process.env.QWEN_VISION_PROXY_TIMEOUT_MS,
+    );
 
     if (!apiKey) {
       throw new BadRequestException("缺少环境变量 QWEN_API_KEY");
@@ -326,8 +329,15 @@ export class AnalysisController {
       modelName,
       visionProxyUrl,
       visionModelName,
+      visionProxyTimeoutMs,
     };
   }
+}
+
+function parseVisionProxyTimeoutMs(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function validateRequest(body: AnalysisRequest): void {

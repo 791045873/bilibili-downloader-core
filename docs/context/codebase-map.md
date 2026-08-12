@@ -15,7 +15,7 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | Adapters     | `packages/adapters/src/`      | B站 API 适配（基于 bilibili-api-sdk）、HTTP 下载器、FFmpeg、文件系统 | 2026-08-07    | high       |
 | Server       | `packages/server/src/`        | NestJS 后端 API，下载任务管理、视频分析编排、全局请求日志 | 2026-08-11    | high       |
 | Server Logging | `packages/server/src/logging/` | RequestLoggingInterceptor、safe log allowlist、请求体安全裁剪 | 2026-08-02 | high |
-| Vision Proxy | `packages/server/python/`     | 可选 Python 薄代理，仅负责 DashScope 本地视觉文件调用（pyproject.toml 锁定依赖 + .venv） | 2026-08-11    | medium     |
+| Vision Proxy | `packages/server/python/`     | 可选 Python 薄代理，仅负责 DashScope 本地视觉文件调用（pyproject.toml 锁定依赖 + .venv；body 上限/socket 超时/并发上限/healthz，start-vision-proxy 自动重启） | 2026-08-12    | medium     |
 | Frontend     | `packages/frontend/src/`      | Vue 3 前端，视频输入、下载列表、设置              | 2026-06-02    | high       |
 | Docker       | `packages/docker/`            | Dockerfile 与构建脚本                            | 2026-06-02    | high       |
 | Config       | `tsconfig.base.json`, `pnpm-workspace.yaml`, `package.json` | 项目配置                          | 2026-06-02    | high       |

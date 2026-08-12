@@ -93,6 +93,7 @@ Python 层是系统架构中的本地文件传输适配层，目的仅是复用 
 - Python 代理接收 OpenAI-style `MultimodalRequest`，将其中 `image_url.url` 的本地路径转换为 DashScope SDK 支持的 `file://...` 输入，调用 `MultiModalConversation.call()` 后返回 OpenAI-style `choices[0].message.content`。
 - Python 代理只允许非 Base64 图片输入；发现 `data:` 或 `;base64,` 应拒绝。
 - 该代理要求与 Node server 运行在同一台机器或共享同一文件系统，否则 Python 无法读取 Node 生成的本地截图。
+- 健壮性不变量（2026-08-12 起）：`/v1/chat/completions` 的 POST 行为与返回体保持稳定；请求 body 有大小上限（413）、socket 有读写超时、并发有上限（503）、单次异常只影响当次请求不拖垮服务；`GET /healthz` 提供探活；`start-vision-proxy` 自动重启自愈。Node 侧代理路径对瞬时网络错误与代理 5xx 自动重试 1 次（固定 2s 间隔；超时与 4xx 不重试，2026-08-13 起）。
 
 运行形态：
 
@@ -222,6 +223,14 @@ DASHSCOPE_BASE_HTTP_API_URL=
 QWEN_VISION_PROXY_HOST=127.0.0.1
 QWEN_VISION_PROXY_PORT=8765
 
+# 可选：Python 薄代理健壮性参数（均有默认值，可不配置）。
+# QWEN_VISION_PROXY_MAX_BODY_BYTES：代理 HTTP body 上限（默认 16777216=16MB），超出返回 413；视频文件由 SDK 本机读取，不经过 body。
+# QWEN_VISION_PROXY_MAX_CONCURRENCY：并发请求上限（默认 8），超出返回 503。
+# QWEN_VISION_PROXY_SOCKET_TIMEOUT：连接 socket 读/写超时秒数（默认 120）。
+# QWEN_VISION_PROXY_TIMEOUT_MS：Node 侧多模态代理调用超时毫秒数（默认 600000=10 分钟），客户端内部兜底。
+# VISION_PROXY_NO_RESTART：置 1 时禁用 start-vision-proxy 自动重启（运维/脚本逃生门）。
+# 探活：GET http://127.0.0.1:8765/healthz 返回 200 {"status":"ok"}。
+
 # 可选：未启用 Python 薄代理时的云端 URL 备用路径。
 TENCENT_COS_SECRET_ID=AKID...
 TENCENT_COS_SECRET_KEY=...
@@ -234,7 +243,8 @@ TENCENT_COS_SIGNED_URL_EXPIRES_SECONDS=3600
 - 读取位置：`packages/server/src/` 的配置模块（NestJS ConfigModule 或 process.env）
 - `QWEN_API_KEY`, `QWEN_API_BASE`, `QWEN_MODEL` 用于文本分析调用
 - `QWEN_VISION_PROXY_URL`, `QWEN_VISION_MODEL` 透传到 `LlmConfig`，控制多模态调用是否走 Python 薄代理
-- `DASHSCOPE_*`, `QWEN_VISION_PROXY_HOST`, `QWEN_VISION_PROXY_PORT` 由 Python 薄代理读取
+- `QWEN_VISION_PROXY_TIMEOUT_MS` 透传到 `LlmConfig.visionProxyTimeoutMs`（默认值由客户端内部兜底，覆盖 AI 总结与手动分析两个调用面）
+- `DASHSCOPE_*`, `QWEN_VISION_PROXY_HOST`, `QWEN_VISION_PROXY_PORT`, `QWEN_VISION_PROXY_MAX_BODY_BYTES`, `QWEN_VISION_PROXY_MAX_CONCURRENCY`, `QWEN_VISION_PROXY_SOCKET_TIMEOUT` 由 Python 薄代理读取
 - `TENCENT_COS_*` 是未启用 Python 薄代理时的备用路径；截图上传后以签名 URL 提供给多模态模型，模型调用结束后删除临时对象
 
 ## 已有能力复用

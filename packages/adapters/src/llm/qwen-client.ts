@@ -7,12 +7,25 @@
 
 import { summarizeResponseBody, summarizeUrl } from "../safe-error-context.js";
 
+const VISION_PROXY_DEFAULT_TIMEOUT_MS = 600_000;
+const VISION_PROXY_MAX_ATTEMPTS = 2;
+const VISION_PROXY_RETRY_DELAY_MS = 2000;
+
+function isRetryableProxyStatus(status: number): boolean {
+  return status === 500 || status === 502 || status === 503;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface LlmConfig {
   apiKey: string;
   baseUrl: string;
   modelName: string;
   visionProxyUrl?: string;
   visionModelName?: string;
+  visionProxyTimeoutMs?: number;
 }
 
 /** 纯文本聊天请求 */
@@ -134,29 +147,60 @@ export class QwenClient {
 
     if (this.config.visionProxyUrl) {
       const safeProxyEndpoint = summarizeUrl(this.config.visionProxyUrl);
-      const response = await this.httpClient(this.config.visionProxyUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
+      const timeoutMs =
+        this.config.visionProxyTimeoutMs ?? VISION_PROXY_DEFAULT_TIMEOUT_MS;
 
-      if (!response.ok) {
-        const err = await response.text().catch(() => response.statusText);
-        throw new Error(
-          `LLM 多模态代理调用失败 (status=${response.status}, endpoint=${safeProxyEndpoint}): ${summarizeResponseBody(err || response.statusText)}`,
+      for (let attempt = 1; ; attempt++) {
+        let response: Response;
+        try {
+          response = await fetchWithTimeout(
+            this.httpClient,
+            this.config.visionProxyUrl,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(requestBody),
+            },
+            timeoutMs,
+          );
+        } catch (err) {
+          if (err instanceof Error && err.name === "AbortError") {
+            throw new Error(
+              `LLM 多模态代理调用超时 (${timeoutMs}ms, endpoint=${safeProxyEndpoint})`,
+            );
+          }
+          if (attempt < VISION_PROXY_MAX_ATTEMPTS) {
+            await delay(VISION_PROXY_RETRY_DELAY_MS);
+            continue;
+          }
+          throw err;
+        }
+
+        if (!response.ok) {
+          const err = await response.text().catch(() => response.statusText);
+          if (
+            isRetryableProxyStatus(response.status) &&
+            attempt < VISION_PROXY_MAX_ATTEMPTS
+          ) {
+            await delay(VISION_PROXY_RETRY_DELAY_MS);
+            continue;
+          }
+          throw new Error(
+            `LLM 多模态代理调用失败 (status=${response.status}, endpoint=${safeProxyEndpoint}): ${summarizeResponseBody(err || response.statusText)}`,
+          );
+        }
+
+        const rawBody = await response.json();
+        const rawContent = extractRawContent(
+          rawBody,
+          "LLM 多模态代理返回空响应",
         );
+        return {
+          data: JSON.parse(rawContent) as object,
+          rawContent,
+          model: requestBody.model,
+        };
       }
-
-      const rawBody = await response.json();
-      const rawContent = extractRawContent(
-        rawBody,
-        "LLM 多模态代理返回空响应",
-      );
-      return {
-        data: JSON.parse(rawContent) as object,
-        rawContent,
-        model: requestBody.model,
-      };
     }
 
     const url = `${this.config.baseUrl}/chat/completions`;
@@ -184,6 +228,21 @@ export class QwenClient {
       rawContent,
       model: requestBody.model,
     };
+  }
+}
+
+async function fetchWithTimeout(
+  httpClient: typeof fetch,
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await httpClient(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
   }
 }
 
