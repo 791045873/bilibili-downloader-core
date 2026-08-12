@@ -63,6 +63,8 @@ const client = new BilibiliClient(options?: ClientOptions)
 | `cookies` | `string` | - | 预置 Cookie 字符串（如从浏览器导出：`'SESSDATA=xxx; bili_jct=xxx; DedeUserID=xxx'`） |
 | `session` | `object` | - | 预置会话字段，**优先于 `cookies`**，见下表 |
 | `autoInit` | `boolean` | `true` | 是否自动异步初始化 `buvid` / `bili_ticket`（失败不影响主流程） |
+| `cache` | `object` | 开启 | 接口级缓存配置，见[接口级缓存](#接口级缓存) |
+| `retry` | `object` | 开启 | 业务错误码自动重试配置，见[自动重试](#自动重试) |
 
 `session` 字段：`sessData`、`biliJct`、`dedeUserID`、`accessToken`、`buvid3`、`buvid4`。
 
@@ -83,6 +85,10 @@ const client = new BilibiliClient(options?: ClientOptions)
 | `client.http` | `BilibiliHttp` | 底层 HTTP 封装（高级用法） |
 | `client.wbi` | `WbiKeyManager` | WBI key 管理（自动） |
 
+### client.clearCache(): void
+
+清空全部接口缓存（内存或磁盘）。身份切换或需要强制 fresh 数据时调用。
+
 ### client.cookieString(): string
 
 返回当前会话的 Cookie 字符串，用于持久化保存（见[会话与持久化](#3-会话与持久化)）。
@@ -90,6 +96,57 @@ const client = new BilibiliClient(options?: ClientOptions)
 ### 多账号
 
 每个 `BilibiliClient` 持有独立的 `Session` 与 `CookieJar`，直接 new 多个实例即可并发管理多账号。
+
+### 接口级缓存
+
+默认开启：同一接口（相同 URL + 参数 + 登录身份）在 TTL（默认 24h）内复用缓存，不再请求 B 站。仅缓存 GET 读接口的成功响应（`code === 0`）。
+
+**不缓存清单（内置，不可通过配置放开）**：
+
+- 全部写操作（含 GET 语义的 `history.delete`）
+- `playurl`（UGC/PGC，CDN 地址带时效）
+- 登录态探测（nav）与 login 模块全部
+- 弹幕 buffer 接口、`search.suggest` 等绕过 `BaseApi.request` 的接口
+
+```ts
+new BilibiliClient({
+  cache: {
+    enabled: true,              // 默认 true
+    ttlMs: 24 * 60 * 60 * 1000, // 默认 24h
+    maxEntries: 500,            // 内存/磁盘容量上限
+    store: new FileCacheStore('/path/to/cache'), // 磁盘持久化；默认内存
+  },
+})
+
+// 单次调用控制（内置排除项不可开启缓存）
+await client.comment.list({ oid: 1, cache: false })
+await client.video.view({ bvid: 'x', cache: { ttlMs: 60_000 } })
+```
+
+| 存储实现 | 说明 |
+| --- | --- |
+| `MemoryCacheStore` | 默认。per-client 内存 `Map`，跨实例不共享，进程重启清空 |
+| `FileCacheStore(dir, { maxEntries })` | 磁盘持久化。每条目一个 JSON 文件（`sha1(key).json`），原子写、损坏自愈、容量淘汰；同目录多实例共享，跨进程重启保留 |
+
+缓存 I/O 失败（读损坏、写失败）静默降级，不影响接口调用主流程。
+
+### 自动重试
+
+默认开启：业务错误码（默认 `-412`，含 HTTP 412 全形态）自动重试，指数退避（约 1s/2s/4s/8s + 0~250ms 抖动），**总共最多 5 次请求**（`maxRetries` 默认 4），仍失败抛 `BiliError`。首次重试前自动刷新 buvid + bili_ticket。
+
+```ts
+new BilibiliClient({
+  retry: {
+    enabled: true,            // 默认 true
+    maxRetries: 4,            // 总共 maxRetries+1 次请求
+    baseDelayMs: 1000,        // 退避基数
+    codes: [-412],            // 触发重试的错误码
+    refreshCredentials: true, // 首次重试前刷新 buvid/bili_ticket
+  },
+})
+```
+
+覆盖范围：`BaseApi.request` 与 `postForm`。`bangumi/cheese.playurl`、`search.suggest`、弹幕 buffer、login 模块等绕过 `BaseApi.request` 的接口不覆盖。
 
 ---
 

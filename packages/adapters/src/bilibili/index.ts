@@ -14,5 +14,7 @@ export {
   createBilibiliSdkClient,
   BilibiliSdkClient,
   type BilibiliClient,
+  type BilibiliSdkClientOptions,
 } from "./sdk-client.js";
+export { FileCacheStore, MemoryCacheStore, type ApiCacheStore } from "bilibili-api-sdk";
 export { QUALITY_MAP, CODEC_MAP } from "./constants.js";

@@ -2,6 +2,16 @@ export { BilibiliClient, type ClientOptions } from './client.js'
 
 export { BiliError } from './errors.js'
 
+export {
+  MemoryCacheStore,
+  FileCacheStore,
+  DEFAULT_CACHE_TTL_MS,
+  buildCacheKey,
+  identityFingerprint,
+  isCacheableRequest,
+  type ApiCacheStore,
+} from './cache/cacheStore.js'
+
 export { BilibiliHttp, DEFAULT_USER_AGENT, type HttpOptions, type HttpResult } from './http/http.js'
 export { CookieJar, parseSetCookie, cookieDomainOf, type Cookie } from './http/cookieJar.js'
 

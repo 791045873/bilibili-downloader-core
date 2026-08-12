@@ -3,11 +3,12 @@ import { createBilibiliSdkClient } from "@bilibili-downloader/adapters/bilibili"
 import type { BilibiliSdkClient } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliResourceParser } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliStreamProvider } from "@bilibili-downloader/adapters/bilibili";
+import { BilibiliSubtitleProvider } from "@bilibili-downloader/adapters/bilibili";
+import { FileCacheStore } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliAuthProvider } from "@bilibili-downloader/adapters/bilibili-auth";
 import { HttpDownloader } from "@bilibili-downloader/adapters/downloader";
 import { FfmpegMerger } from "@bilibili-downloader/adapters/ffmpeg";
 import { NodeFileStore } from "@bilibili-downloader/adapters/fs";
-import { BilibiliSubtitleProvider } from "@bilibili-downloader/adapters/bilibili";
 import {
   ResolutionService,
   DownloadExecutionUseCase,
@@ -100,7 +101,9 @@ export class DownloadService implements OnModuleInit {
     const cookieString = this.cookieFile
       ? await this.loadCookieString(this.cookieFile)
       : undefined;
-    this.biliClient = createBilibiliSdkClient(cookieString);
+    this.biliClient = createBilibiliSdkClient(cookieString, {
+      cacheStore: new FileCacheStore(join(this.outputDir, "bili-api-cache")),
+    });
     this.fileStore = new NodeFileStore();
     this.merger = new FfmpegMerger();
 

@@ -4,6 +4,12 @@ import { Session } from './auth/session.js'
 import { WbiKeyManager } from './auth/wbi.js'
 import { BiliTicketManager } from './auth/biliTicket.js'
 import type { ApiContext } from './api/base.js'
+import { DEFAULT_CACHE_TTL_MS, MemoryCacheStore, type ApiCacheStore } from './cache/cacheStore.js'
+import {
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_RETRY_BASE_DELAY_MS,
+  type RetryConfig,
+} from './api/base.js'
 import { LoginApi } from './api/login.js'
 import { VideoApi } from './api/video.js'
 import { UserApi } from './api/user.js'
@@ -32,6 +38,21 @@ export interface ClientOptions {
   }
   /** 是否自动发起 buvid/bili_ticket 初始化，默认 true */
   autoInit?: boolean
+  /** 接口级缓存配置。默认开启（内存缓存，TTL 24h）。 */
+  cache?: {
+    enabled?: boolean
+    ttlMs?: number
+    maxEntries?: number
+    store?: ApiCacheStore
+  }
+  /** 业务错误码自动重试配置（默认 -412，最多重试 4 次 = 总共 5 次请求）。 */
+  retry?: {
+    enabled?: boolean
+    maxRetries?: number
+    baseDelayMs?: number
+    codes?: number[]
+    refreshCredentials?: boolean
+  }
 }
 
 /** 哔哩哔哩 API 客户端（入口） */
@@ -54,6 +75,8 @@ export class BilibiliClient {
   readonly cheese: CheeseApi
   readonly player: PlayerApi
 
+  private readonly cacheStore?: ApiCacheStore
+
   constructor(options: ClientOptions = {}) {
     const jar = new CookieJar()
     if (options.cookies) jar.setFromString(options.cookies)
@@ -73,7 +96,34 @@ export class BilibiliClient {
     this.wbi = new WbiKeyManager()
     this.biliTicket = new BiliTicketManager()
 
-    const ctx: ApiContext = { http: this.http, session: this.session, wbi: this.wbi }
+    // cookies 携带 SESSDATA 但未显式传入 session.sessData 时同步到 session，
+    // 保证接口缓存的登录身份指纹（SESSDATA 短哈希）在多账号场景下正确隔离
+    if (!this.session.sessData) {
+      const sessFromCookies = this.http.jar.get('bilibili.com', 'SESSDATA')
+      if (sessFromCookies) this.session.apply({ sessData: sessFromCookies })
+    }
+
+    const cacheEnabled = options.cache?.enabled !== false
+    this.cacheStore = cacheEnabled
+      ? (options.cache?.store ?? new MemoryCacheStore(options.cache?.maxEntries ?? 500))
+      : undefined
+
+    const retryCfg: RetryConfig = {
+      enabled: options.retry?.enabled !== false,
+      maxRetries: options.retry?.maxRetries ?? DEFAULT_MAX_RETRIES,
+      baseDelayMs: options.retry?.baseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS,
+      codes: options.retry?.codes ?? [-412],
+      refreshCredentials: options.retry?.refreshCredentials !== false,
+    }
+
+    const ctx: ApiContext = {
+      http: this.http,
+      session: this.session,
+      wbi: this.wbi,
+      biliTicket: this.biliTicket,
+      cache: this.cacheStore ? { store: this.cacheStore, ttlMs: options.cache?.ttlMs ?? DEFAULT_CACHE_TTL_MS } : undefined,
+      retry: retryCfg,
+    }
     this.login = new LoginApi(ctx)
     this.video = new VideoApi(ctx)
     this.user = new UserApi(ctx)
@@ -104,6 +154,11 @@ export class BilibiliClient {
   /** 获取会话 Cookie 字符串（可持久化保存） */
   cookieString(): string {
     return this.http.jar.buildHeader('bilibili.com') || this.http.jar.toString()
+  }
+
+  /** 清空全部接口缓存（内存或磁盘） */
+  clearCache(): void {
+    this.cacheStore?.clear()
   }
 
   /**

@@ -79,6 +79,48 @@ const cookie = client.cookieString()   // "SESSDATA=...; bili_jct=...; ..."
 const client2 = new BilibiliClient({ cookies: cookie })
 ```
 
+## 接口级缓存
+
+默认开启：同一接口（相同 URL + 参数 + 登录身份）在 24 小时内复用缓存，不再请求 B 站。
+
+- 仅缓存 GET 读接口的成功（`code === 0`）响应；写操作（含 GET 语义的 `history.delete`）、`playurl`（CDN 地址带时效）、登录态探测与登录模块、弹幕 buffer 接口一律不缓存。
+- 缓存 key 基于签名前的业务参数（WBI 的 `wts`/`w_rid` 变化不影响命中），并按登录身份（SESSDATA）隔离。
+- 内存缓存为每个 client 独立持有；磁盘缓存（`FileCacheStore`）跨进程重启保留，且同一目录可被多个 client 实例共享。
+
+```ts
+import { BilibiliClient, FileCacheStore } from 'bilibili-api-sdk'
+
+// 默认：内存缓存（TTL 24h）
+const client = new BilibiliClient({ cookies })
+
+// 磁盘持久化缓存（目录由调用方指定）
+const client = new BilibiliClient({
+  cookies,
+  cache: { store: new FileCacheStore('/path/to/bili-api-cache') },
+})
+
+// 关闭 / 调整参数
+new BilibiliClient({ cache: { enabled: false } })
+new BilibiliClient({ cache: { ttlMs: 10 * 60 * 1000, maxEntries: 1000 } })
+
+// 单次调用关闭或缩短 TTL（内置排除项不可开启缓存）
+await client.comment.list({ oid: 1, cache: false })
+await client.video.view({ bvid: 'BV1L9Uoa9EUx', cache: { ttlMs: 60_000 } })
+
+// 手动清空（如强制 fresh）
+client.clearCache()
+```
+
+## 业务错误码自动重试
+
+默认开启：接口返回 `code: -412`（或 HTTP 412）时自动重试，指数退避（约 1s/2s/4s/8s + 抖动），**总共最多 5 次请求**，仍失败则抛 `BiliError(-412)`。首次重试前自动刷新 buvid + bili_ticket（可关闭）。`bangumi/cheese.playurl`、`search.suggest` 等绕过 `BaseApi.request` 的接口不在重试覆盖范围。
+
+```ts
+new BilibiliClient({
+  retry: { enabled: true, maxRetries: 4, baseDelayMs: 1000, refreshCredentials: true },
+})
+```
+
 ## 目录结构
 
 ```

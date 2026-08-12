@@ -11,7 +11,7 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | Area         | Path                          | Notes                                          | Last Verified | Confidence |
 | ------------ | ----------------------------- | ---------------------------------------------- | ------------- | ---------- |
 | Core         | `packages/core/src/`          | 下载领域模型、用例编排、ports 接口                | 2026-06-02    | high       |
-| Bilibili SDK | `packages/bilibili-api-sdk/`  | B站非官方 REST API SDK（workspace 包，含 vitest 测试） | 2026-08-07    | high       |
+| Bilibili SDK | `packages/bilibili-api-sdk/`  | B站非官方 REST API SDK（workspace 包，含 vitest 测试；内建接口级缓存 MemoryCacheStore/FileCacheStore 与 -412 自动重试） | 2026-08-12    | high       |
 | Adapters     | `packages/adapters/src/`      | B站 API 适配（基于 bilibili-api-sdk）、HTTP 下载器、FFmpeg、文件系统 | 2026-08-07    | high       |
 | Server       | `packages/server/src/`        | NestJS 后端 API，下载任务管理、视频分析编排、全局请求日志 | 2026-08-11    | high       |
 | Server Logging | `packages/server/src/logging/` | RequestLoggingInterceptor、safe log allowlist、请求体安全裁剪 | 2026-08-02 | high |
@@ -31,7 +31,7 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | 修改视频分析能力      | `packages/server/src/analysis/` | `packages/adapters/src/llm/`, `packages/adapters/src/ffmpeg/`, `packages/server/python/` | `pnpm typecheck`, `pnpm build` | 2026-08-12    | high       |
 | 新增 UI 页面         | `packages/frontend/src/`      | `packages/server/src/` (API)              | `pnpm typecheck`                | 2026-06-02    | high       |
 | 修改下载器行为        | `packages/adapters/src/`      | `packages/core/src/` (ports)              | `pnpm typecheck`                | 2026-06-02    | high       |
-| 修改 B站 API 适配     | `packages/adapters/src/bilibili/` | `packages/bilibili-api-sdk/` (底层接口), `packages/core/src/` (domain models) | `pnpm typecheck`, `pnpm --filter bilibili-api-sdk test` | 2026-08-07    | high       |
+| 修改 B站 API 适配     | `packages/adapters/src/bilibili/` | `packages/bilibili-api-sdk/` (底层接口), `packages/core/src/` (domain models) | `pnpm typecheck`, `pnpm --filter bilibili-api-sdk test`, `pnpm --filter @bilibili-downloader/server typecheck` | 2026-08-12    | high       |
 | 修改部署配置          | `packages/docker/`            | `package.json` (scripts)                  | `pnpm docker:build`             | 2026-06-02    | high       |
 
 ## Large Or Fragile Files

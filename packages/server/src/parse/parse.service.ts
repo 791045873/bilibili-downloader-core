@@ -10,6 +10,7 @@ import {
   BilibiliResourceParser,
   BilibiliSpaceProvider,
   BilibiliStreamProvider,
+  FileCacheStore,
   createBilibiliSdkClient,
 } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliAuthProvider } from "@bilibili-downloader/adapters/bilibili-auth";
@@ -51,7 +52,9 @@ export class ParseService implements OnModuleInit {
     this.authProvider = new BilibiliAuthProvider();
     this.cookieString = await this.loadCookieString(this.cookieFile);
 
-    const biliClient = createBilibiliSdkClient(this.cookieString);
+    const biliClient = createBilibiliSdkClient(this.cookieString, {
+      cacheStore: new FileCacheStore(join(this.outputDir, "bili-api-cache")),
+    });
     this.resourceParser = new BilibiliResourceParser();
     this.streamProvider = new BilibiliStreamProvider(biliClient);
     this.favoritesProvider = new BilibiliFavoritesProvider(biliClient);
