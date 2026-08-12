@@ -175,4 +175,46 @@ export class AnalysisTaskController {
 
     return { message: "AI 总结触发中" };
   }
+
+  @Post("/summary-tasks/:id/rebuild")
+  @HttpCode(HttpStatus.OK)
+  rebuildAiSummaryTask(@Param("id") id: string) {
+    const summaryTaskId = Number.parseInt(id, 10);
+    if (Number.isNaN(summaryTaskId)) {
+      this.logger.warn(
+        `Rebuild ai summary task rejected due to invalid id: ${id}`,
+      );
+      throw new BadRequestException("无效的任务 ID");
+    }
+
+    // 校验需要 rawResponse，使用 databaseService 完整记录（service 视图已剥离 rawResponse）
+    const record = this.databaseService.getAiSummaryTaskById(summaryTaskId);
+    if (!record) {
+      this.logger.warn(
+        `Rebuild ai summary task rejected due to not-found: ${summaryTaskId}`,
+      );
+      throw new NotFoundException("AI 总结任务不存在");
+    }
+    if (record.status !== "completed") {
+      throw new ConflictException("仅已完成的 AI 总结可使用存储内容重新构建");
+    }
+    if (!record.rawResponse) {
+      throw new ConflictException("无可用的大模型返回内容，无法重新构建");
+    }
+    if (!this.analysisTriggerService.tryStartRebuild(summaryTaskId)) {
+      throw new ConflictException("正在重新构建中");
+    }
+
+    void this.analysisTriggerService
+      .runRebuild(summaryTaskId)
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `AI summary rebuild failed for summary task ${summaryTaskId}: ${message}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+      });
+
+    return { message: "重新构建已开始" };
+  }
 }

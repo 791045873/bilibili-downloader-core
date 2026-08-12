@@ -3,6 +3,9 @@
  *
  * 核心编排流程：
  *   字幕解析 → LLM 分析视频和字幕 → 按模型返回时间戳截图 → 生成文档
+ *
+ * 也支持"基于已存储 LLM 返回内容重建"（rebuild）：跳过 LLM 与字幕，
+ * 仅用 raw_response + 视频文件重建截图与 Markdown 报告（不依赖 LLM 配置）。
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -21,25 +24,11 @@ import {
 } from "@bilibili-downloader/adapters/llm";
 import { generateMarkdown, type DocumentInput } from "./document-generator.js";
 import type { ScreenshotSourceResolver } from "./analysis-video-resolver.js";
+import { transTimestampToSeconds } from "./timestamp.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 
 function formatSubtitleEntry(entry: SrtEntry): string {
   return `[${entry.index}] ${entry.text}`;
-}
-
-function transTimestampToSeconds(timestamp: string): number | undefined {
-  const normalized = timestamp.trim();
-  const parts = normalized.split(":").map((part) => Number.parseInt(part, 10));
-
-  if (
-    parts.length !== 3 ||
-    parts.some((part) => !Number.isFinite(part) || part < 0)
-  ) {
-    return undefined;
-  }
-
-  const [hours, minutes, seconds] = parts;
-  return hours * 3600 + minutes * 60 + seconds;
 }
 
 export interface AnalysisInput {
@@ -114,20 +103,31 @@ function buildAnalysisSystemPrompt(): string {
 
 export class AnalysisEngine {
   private readonly logger = new Logger(AnalysisEngine.name);
-  private readonly llmClient: QwenClient;
+  private readonly llmConfig?: LlmConfig;
+  private readonly httpClient?: typeof fetch;
+  private llmClient?: QwenClient;
   private readonly screenshotter: FfmpegScreenshot;
-  private readonly llmConfig: LlmConfig;
   private readonly screenshotSourceResolver?: ScreenshotSourceResolver;
 
   constructor(
-    llmConfig: LlmConfig,
+    llmConfig?: LlmConfig,
     httpClient?: typeof fetch,
     screenshotSourceResolver?: ScreenshotSourceResolver,
   ) {
     this.llmConfig = llmConfig;
-    this.llmClient = new QwenClient(llmConfig, httpClient);
+    this.httpClient = httpClient;
     this.screenshotter = new FfmpegScreenshot();
     this.screenshotSourceResolver = screenshotSourceResolver;
+  }
+
+  private ensureLlmClient(): QwenClient {
+    if (!this.llmClient) {
+      if (!this.llmConfig) {
+        throw new Error("缺少 LLM 配置：QWEN_API_KEY/QWEN_API_BASE/QWEN_MODEL");
+      }
+      this.llmClient = new QwenClient(this.llmConfig, this.httpClient);
+    }
+    return this.llmClient;
   }
 
   async analyze(input: AnalysisInput): Promise<AnalysisOutput> {
@@ -144,17 +144,10 @@ export class AnalysisEngine {
       }),
     );
 
-    await mkdir(input.summaryDir, { recursive: true });
-    const screenshotsDir = join(input.summaryDir, "screenshots");
-    await mkdir(screenshotsDir, { recursive: true });
-
     const analysisStartMs = Date.now();
     let llmMs = 0;
-    let screenshotMs = 0;
     let llmRawResponse = "";
     let llmModelName = "";
-
-    const screenshots: string[] = [];
 
     // 1. 解析字幕（可选：subtitlePath 未传或文件不存在时跳过，仅传视频给 LLM）
     let fullSubtitleText = "";
@@ -170,7 +163,8 @@ export class AnalysisEngine {
       );
     }
 
-    if (!this.llmClient.usesVisionProxy()) {
+    const llmClient = this.ensureLlmClient();
+    if (!llmClient.usesVisionProxy()) {
       throw new Error(
         "视频分析需要配置 QWEN_VISION_PROXY_URL，以便通过 Python 薄代理读取本地视频文件",
       );
@@ -186,7 +180,7 @@ export class AnalysisEngine {
       if (fullSubtitleText.length > 0) {
         userContent.push({ type: "text", text: fullSubtitleText });
       }
-      const llmResult = await this.llmClient.multimodalChat({
+      const llmResult = await llmClient.multimodalChat({
         model: "",
         stream: false,
         enable_thinking: false,
@@ -220,6 +214,60 @@ export class AnalysisEngine {
       );
     }
 
+    // 3. LLM 之后：规范化、截图、生成文档
+    return this.buildOutput(
+      input,
+      analysis,
+      llmRawResponse,
+      llmModelName,
+      llmMs,
+      analysisStartMs,
+    );
+  }
+
+  /**
+   * 基于已存储的 LLM 返回内容重建总结（不调用 LLM、不解析字幕）。
+   * rawResponse 为模型返回的 content 原文（成功时已由 analyze 存储，为可解析 JSON）。
+   */
+  async rebuild(
+    input: AnalysisInput,
+    rawResponse: string,
+    modelName: string,
+  ): Promise<AnalysisOutput> {
+    let analysis: SubtitleAnalysis;
+    try {
+      analysis = JSON.parse(rawResponse) as unknown as SubtitleAnalysis;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`存储的原始返回不是有效 JSON，无法重新构建: ${message}`);
+    }
+    this.logger.log(
+      createLogMessage("Analysis rebuild started from stored raw response", {
+        bvid: input.metadata.bvid,
+        cid: input.metadata.cid,
+        summaryDir: input.summaryDir,
+        modelName,
+      }),
+    );
+    return this.buildOutput(input, analysis, rawResponse, modelName, 0, Date.now());
+  }
+
+  /** LLM 之后共享处理：规范化 items → 截图 → 生成 Markdown（analyze 与 rebuild 复用） */
+  private async buildOutput(
+    input: AnalysisInput,
+    analysis: SubtitleAnalysis,
+    rawResponse: string,
+    modelName: string,
+    llmMs: number,
+    startTotalMs: number,
+  ): Promise<AnalysisOutput> {
+    await mkdir(input.summaryDir, { recursive: true });
+    const screenshotsDir = join(input.summaryDir, "screenshots");
+    await mkdir(screenshotsDir, { recursive: true });
+
+    let screenshotMs = 0;
+    const screenshots: string[] = [];
+
     const summaryItems = normalizeSummaryItems(analysis);
     if (summaryItems.length === 0) {
       this.logger.warn(
@@ -232,8 +280,8 @@ export class AnalysisEngine {
       return await this.writeEmptySummary(
         input,
         screenshots,
-        llmRawResponse,
-        llmModelName,
+        rawResponse,
+        modelName,
       );
     }
 
@@ -258,7 +306,7 @@ export class AnalysisEngine {
 
     const processedSegments: DocumentInput["segments"] = [];
 
-    // 3. 按 LLM 返回的精确时间戳直接截图，不再做二次多模态选图
+    // 按 LLM 返回的精确时间戳直接截图，不再做二次多模态选图
     const screenshotStartMs = Date.now();
     for (let si = 0; si < summaryItems.length; si++) {
       const item = summaryItems[si];
@@ -369,14 +417,14 @@ export class AnalysisEngine {
     }
     screenshotMs = Date.now() - screenshotStartMs;
 
-    // 4. 生成 Markdown
+    // 生成 Markdown
     const doc = generateMarkdown({
       videoTitle: input.videoTitle,
       videoUrl:
         input.metadata.type === "bilibili"
           ? (input.metadata.videoUrl ?? "")
           : "",
-      modelName: this.llmConfig.visionModelName ?? this.llmConfig.modelName,
+      modelName,
       createdAt: new Date().toString(),
       segments: processedSegments,
     });
@@ -405,10 +453,10 @@ export class AnalysisEngine {
       timing: {
         llmMs,
         screenshotMs,
-        totalMs: Date.now() - analysisStartMs,
+        totalMs: Date.now() - startTotalMs,
       },
-      rawResponse: llmRawResponse,
-      modelName: llmModelName,
+      rawResponse,
+      modelName,
     };
   }
 
@@ -439,7 +487,7 @@ export class AnalysisEngine {
         input.metadata.type === "bilibili"
           ? (input.metadata.videoUrl ?? "")
           : "",
-      modelName: this.llmConfig.visionModelName ?? this.llmConfig.modelName,
+      modelName,
       createdAt: new Date().toString(),
       segments: [],
     });

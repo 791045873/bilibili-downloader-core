@@ -36,6 +36,8 @@ export interface AiSummaryTaskView
 export class AnalysisTriggerService implements OnModuleInit {
   private readonly logger = new Logger(AnalysisTriggerService.name);
   private readonly llmVideoDir: string;
+  /** 正在基于已存储内容重建总结的 summary-task id（内存防抖，防并发重复构建） */
+  private readonly rebuildingIds = new Set<number>();
 
   constructor(
     private readonly db: DatabaseService,
@@ -583,6 +585,118 @@ export class AnalysisTriggerService implements OnModuleInit {
 
   deleteAiSummaryTask(id: number): boolean {
     return this.db.deleteAiSummaryTask(id);
+  }
+
+  /** 尝试抢占"基于已存储内容重建"：本次占用成功返回 true，已被占用返回 false */
+  tryStartRebuild(id: number): boolean {
+    if (this.rebuildingIds.has(id)) {
+      return false;
+    }
+    this.rebuildingIds.add(id);
+    return true;
+  }
+
+  /**
+   * 使用已存储的 LLM 返回内容（raw_response）重建总结报告与截图，不调用 LLM。
+   * 调用方（控制器）应先经 tryStartRebuild 认领；本方法 finally 中统一释放。
+   * 失败不改写记录状态（非破坏性，仅记录日志）。
+   */
+  async runRebuild(id: number): Promise<void> {
+    try {
+      const record = this.db.getAiSummaryTaskById(id);
+      if (!record) {
+        this.logger.warn(
+          createLogMessage("Summary rebuild aborted because record was not found", {
+            id,
+          }),
+        );
+        return;
+      }
+      if (record.status !== "completed" || !record.rawResponse) {
+        this.logger.warn(
+          createLogMessage("Summary rebuild aborted because record is not rebuildable", {
+            id,
+            status: record.status,
+            hasRawResponse: Boolean(record.rawResponse),
+          }),
+        );
+        return;
+      }
+      if (!record.bvid || typeof record.cid !== "number") {
+        this.logger.warn(
+          createLogMessage("Summary rebuild aborted because record lacks video identity", {
+            id,
+            bvid: record.bvid,
+            cid: record.cid,
+          }),
+        );
+        return;
+      }
+
+      const task = this.db.findLatestTaskByBvidAndCid(record.bvid, record.cid);
+      if (!task || !task.bvid || typeof task.cid !== "number") {
+        throw new Error("无对应的下载任务，无法重新构建");
+      }
+      const outputFile = task.outputFile;
+      if (!outputFile || !(await this.downloadService.fileExists(outputFile))) {
+        throw new Error("视频文件不存在，无法重新构建截图");
+      }
+
+      const now = new Date().toISOString();
+      const input: AnalysisInput = {
+        videoPath: outputFile,
+        screenshotVideoPath: outputFile,
+        summaryDir: this.resolveSummaryDir(task),
+        videoTitle: task.title || `${task.bvid}-${task.cid}`,
+        metadata: {
+          type: "bilibili",
+          videoUrl: `https://www.bilibili.com/video/${task.bvid}`,
+          bvid: task.bvid,
+          cid: task.cid,
+        },
+      };
+      const engine = new AnalysisEngine(
+        undefined,
+        undefined,
+        this.analysisVideoResolver,
+      );
+      const result = await engine.rebuild(
+        input,
+        record.rawResponse,
+        record.modelName ?? "",
+      );
+
+      this.upsertAiSummaryTask(task, {
+        status: "completed",
+        summaryOutput: result.summaryPath,
+        errorMessage: "",
+        executionTiming: JSON.stringify(result.timing),
+        lastTriggeredAt: now,
+        lastCompletedAt: new Date().toISOString(),
+      });
+      this.logger.log(
+        createLogMessage("Summary rebuild completed", {
+          id,
+          bvid: record.bvid,
+          cid: record.cid,
+          summaryPath: result.summaryPath,
+          segmentCount: result.segmentCount,
+          emptySummary: result.emptySummary,
+        }),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        createLogMessage("Summary rebuild failed", {
+          id,
+          error: msg,
+        }),
+        err instanceof Error ? err.stack : undefined,
+      );
+      // 非破坏性：不改写记录状态
+    } finally {
+      this.rebuildingIds.delete(id);
+    }
   }
 
   private parseExecutionTiming(raw?: string): AiSummaryExecutionTiming | undefined {

@@ -214,6 +214,12 @@ export async function retriggerAiSummaryTask(
   return request(`/summary-tasks/${id}/retrigger`, { method: "POST" });
 }
 
+export async function rebuildAiSummaryTask(
+  id: number,
+): Promise<{ message: string }> {
+  return request(`/summary-tasks/${id}/rebuild`, { method: "POST" });
+}
+
 // ==================== 认证 ====================
 
 export async function getQrCode(): Promise<{ qrcodeKey: string; url: string }> {

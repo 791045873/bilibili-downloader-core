@@ -6,6 +6,7 @@ import {
   deleteAiSummaryTask,
   getAiSummaryTaskRawResponse,
   getAiSummaryTasks,
+  rebuildAiSummaryTask,
   retriggerAiSummaryTask,
 } from "../api";
 
@@ -22,6 +23,9 @@ const rawDialogTitle = ref("");
 const rawDialogContent = ref("");
 const rawDialogError = ref("");
 const rawDialogIsFallbackError = ref(false);
+const rawDialogTask = ref<AiSummaryTaskEntry | null>(null);
+const rebuilding = ref(false);
+const rebuildMessage = ref("");
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -150,11 +154,13 @@ async function handleRetrigger(task: AiSummaryTaskEntry) {
 }
 
 async function openRawResponse(task: AiSummaryTaskEntry) {
+  rawDialogTask.value = task;
   rawDialogTitle.value =
     (task.title || `${task.bvid}-${task.cid}`) + " - 原始返回";
   rawDialogContent.value = "";
   rawDialogError.value = "";
   rawDialogIsFallbackError.value = false;
+  rebuildMessage.value = "";
   rawDialogVisible.value = true;
   rawDialogLoading.value = true;
   try {
@@ -171,6 +177,23 @@ async function openRawResponse(task: AiSummaryTaskEntry) {
     rawDialogError.value = e instanceof Error ? e.message : "获取原始返回失败";
   } finally {
     rawDialogLoading.value = false;
+  }
+}
+
+async function handleRebuildFromRaw() {
+  const task = rawDialogTask.value;
+  if (!task) return;
+  rebuilding.value = true;
+  rebuildMessage.value = "";
+  rawDialogError.value = "";
+  try {
+    await rebuildAiSummaryTask(task.id);
+    rebuildMessage.value = "已开始重新构建总结，请刷新任务状态后查看结果";
+    await loadTasks();
+  } catch (e: unknown) {
+    rawDialogError.value = e instanceof Error ? e.message : "重新构建总结失败";
+  } finally {
+    rebuilding.value = false;
   }
 }
 
@@ -319,6 +342,24 @@ onMounted(async () => {
       </p>
       <div v-if="!rawDialogContent && !rawDialogIsFallbackError" class="py-6 text-center text-sm text-zinc-400">
         无原始返回（历史记录或本次未成功返回模型内容）
+      </div>
+      <div
+        v-if="rawDialogTask && rawDialogTask.status === 'completed'"
+        class="mt-4 flex items-center gap-3 border-t border-zinc-200 pt-4"
+      >
+        <button
+          class="rounded-md border border-zinc-300 px-4 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:text-zinc-400"
+          :class="rebuilding
+            ? ''
+            : 'text-emerald-600 hover:border-emerald-400 hover:text-emerald-500'"
+          :disabled="rebuilding"
+          @click="handleRebuildFromRaw"
+        >
+          {{ rebuilding ? "重新构建中..." : "重新构建总结" }}
+        </button>
+        <span v-if="rebuildMessage" class="text-sm text-emerald-600">
+          {{ rebuildMessage }}
+        </span>
       </div>
     </Dialog>
   </div>
