@@ -198,6 +198,7 @@ export interface AiSummaryTaskEntry {
   summaryOutput?: string | null;
   errorMessage?: string | null;
   executionTiming?: { llmMs: number; screenshotMs: number; totalMs: number };
+  modelName?: string | null;
   createdAt?: string;
   updatedAt?: string;
   lastTriggeredAt?: string;

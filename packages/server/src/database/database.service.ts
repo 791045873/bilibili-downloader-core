@@ -55,6 +55,9 @@ export interface AiSummaryTaskRecord {
   summaryOutput?: string;
   errorMessage?: string;
   executionTiming?: string;
+  /** 本次执行记录：成功=模型返回 content 原文；失败=错误信息 */
+  rawResponse?: string;
+  modelName?: string;
   createdAt?: string;
   updatedAt?: string;
   lastTriggeredAt?: string;
@@ -168,6 +171,8 @@ export class DatabaseService {
         status TEXT NOT NULL DEFAULT 'pending',
         summary_output TEXT,
         error_message TEXT,
+        raw_response TEXT,
+        model_name TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         last_triggered_at TEXT,
@@ -183,6 +188,18 @@ export class DatabaseService {
     // 已有数据库升级: ai_summary_task 补充执行耗时列
     try {
       this.db.exec(`ALTER TABLE ai_summary_task ADD COLUMN execution_timing TEXT`);
+    } catch {
+      // 列已存在的忽略
+    }
+
+    // 已有数据库升级: ai_summary_task 补充模型原始返回与模型名列
+    try {
+      this.db.exec(`ALTER TABLE ai_summary_task ADD COLUMN raw_response TEXT`);
+    } catch {
+      // 列已存在的忽略
+    }
+    try {
+      this.db.exec(`ALTER TABLE ai_summary_task ADD COLUMN model_name TEXT`);
     } catch {
       // 列已存在的忽略
     }
@@ -313,6 +330,8 @@ export class DatabaseService {
       summary_output AS summaryOutput,
       error_message AS errorMessage,
       execution_timing AS executionTiming,
+      raw_response AS rawResponse,
+      model_name AS modelName,
       created_at AS createdAt,
       updated_at AS updatedAt,
       last_triggered_at AS lastTriggeredAt,
@@ -856,6 +875,8 @@ export class DatabaseService {
           source_task_id = excluded.source_task_id,
           status = 'pending',
           execution_timing = NULL,
+          raw_response = NULL,
+          model_name = NULL,
           updated_at = @now,
           last_triggered_at = @now
         WHERE status NOT IN ('pending', 'analyzing')
@@ -915,6 +936,16 @@ export class DatabaseService {
       record.executionTiming !== undefined
         ? record.executionTiming
         : (existing?.executionTiming ?? null);
+    // rawResponse/modelName 未提供时保留既有值（与 executionTiming 同语义；
+    // 新一次认领已把它们清空，终态才写入本次结果：成功=模型返回 content 原文，失败=错误信息）
+    const rawResponse =
+      record.rawResponse !== undefined
+        ? record.rawResponse
+        : (existing?.rawResponse ?? null);
+    const modelName =
+      record.modelName !== undefined
+        ? record.modelName
+        : (existing?.modelName ?? null);
     this.db
       .prepare(
         `
@@ -927,6 +958,8 @@ export class DatabaseService {
           summary_output,
           error_message,
           execution_timing,
+          raw_response,
+          model_name,
           created_at,
           updated_at,
           last_triggered_at,
@@ -941,6 +974,8 @@ export class DatabaseService {
           @summaryOutput,
           @errorMessage,
           @executionTiming,
+          @rawResponse,
+          @modelName,
           @createdAt,
           @updatedAt,
           @lastTriggeredAt,
@@ -953,6 +988,8 @@ export class DatabaseService {
           summary_output = excluded.summary_output,
           error_message = excluded.error_message,
           execution_timing = excluded.execution_timing,
+          raw_response = excluded.raw_response,
+          model_name = excluded.model_name,
           updated_at = excluded.updated_at,
           last_triggered_at = excluded.last_triggered_at,
           last_completed_at = excluded.last_completed_at
@@ -967,6 +1004,8 @@ export class DatabaseService {
         summaryOutput: record.summaryOutput ?? null,
         errorMessage: record.errorMessage ?? null,
         executionTiming,
+        rawResponse,
+        modelName,
         createdAt,
         updatedAt: record.updatedAt ?? now,
         lastTriggeredAt: record.lastTriggeredAt ?? null,

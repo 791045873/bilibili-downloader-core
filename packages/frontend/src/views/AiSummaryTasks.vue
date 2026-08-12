@@ -1,13 +1,27 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import Dialog from "primevue/dialog";
 import type { AiSummaryTaskEntry } from "../types";
-import { deleteAiSummaryTask, getAiSummaryTasks } from "../api";
+import {
+  deleteAiSummaryTask,
+  getAiSummaryTaskRawResponse,
+  getAiSummaryTasks,
+  retriggerAiSummaryTask,
+} from "../api";
 
 const loading = ref(true);
 const refreshing = ref(false);
 const deleting = ref(false);
+const retriggering = ref(false);
 const error = ref("");
 const tasks = ref<AiSummaryTaskEntry[]>([]);
+
+const rawDialogVisible = ref(false);
+const rawDialogLoading = ref(false);
+const rawDialogTitle = ref("");
+const rawDialogContent = ref("");
+const rawDialogError = ref("");
+const rawDialogIsFallbackError = ref(false);
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -123,6 +137,43 @@ async function handleDelete(task: AiSummaryTaskEntry) {
   }
 }
 
+async function handleRetrigger(task: AiSummaryTaskEntry) {
+  retriggering.value = true;
+  try {
+    await retriggerAiSummaryTask(task.id);
+    await loadTasks();
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : "重新 AI 总结失败";
+  } finally {
+    retriggering.value = false;
+  }
+}
+
+async function openRawResponse(task: AiSummaryTaskEntry) {
+  rawDialogTitle.value =
+    (task.title || `${task.bvid}-${task.cid}`) + " - 原始返回";
+  rawDialogContent.value = "";
+  rawDialogError.value = "";
+  rawDialogIsFallbackError.value = false;
+  rawDialogVisible.value = true;
+  rawDialogLoading.value = true;
+  try {
+    const result = await getAiSummaryTaskRawResponse(task.id);
+    if (result.rawResponse) {
+      rawDialogContent.value = result.rawResponse;
+    } else if (task.errorMessage) {
+      rawDialogContent.value = task.errorMessage;
+      rawDialogIsFallbackError.value = true;
+    } else {
+      rawDialogContent.value = "";
+    }
+  } catch (e: unknown) {
+    rawDialogError.value = e instanceof Error ? e.message : "获取原始返回失败";
+  } finally {
+    rawDialogLoading.value = false;
+  }
+}
+
 onMounted(async () => {
   await loadTasks();
 });
@@ -158,6 +209,7 @@ onMounted(async () => {
           <tr class="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
             <th class="px-4 py-3 font-medium">视频标题</th>
             <th class="px-4 py-3 font-medium">状态</th>
+            <th class="px-4 py-3 font-medium">模型</th>
             <th class="px-4 py-3 font-medium">总结时间</th>
             <th class="px-4 py-3 font-medium">执行耗时</th>
             <th class="px-4 py-3 font-medium">总结输出</th>
@@ -191,6 +243,10 @@ onMounted(async () => {
               </div>
             </td>
             <td class="whitespace-nowrap px-4 py-3 text-zinc-700">
+              <span v-if="task.modelName" :title="task.modelName">{{ task.modelName }}</span>
+              <span v-else class="text-zinc-400">—</span>
+            </td>
+            <td class="whitespace-nowrap px-4 py-3 text-zinc-700">
               {{ summaryTime(task) }}
             </td>
             <td class="px-4 py-3">
@@ -207,20 +263,63 @@ onMounted(async () => {
               {{ formatTime(task.updatedAt) }}
             </td>
             <td class="whitespace-nowrap px-4 py-3">
-              <button
-                class="rounded-md border border-zinc-300 px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:text-zinc-400"
-                :class="isInProgress(task)
-                  ? ''
-                  : 'text-red-600 hover:border-red-400 hover:text-red-500'"
-                :disabled="isInProgress(task) || deleting"
-                @click="handleDelete(task)"
-              >
-                {{ isInProgress(task) ? "进行中" : "删除" }}
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  class="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-800"
+                  @click="openRawResponse(task)"
+                >
+                  查看原始
+                </button>
+                <button
+                  class="rounded-md border border-zinc-300 px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:text-zinc-400"
+                  :class="isInProgress(task)
+                    ? ''
+                    : 'text-emerald-600 hover:border-emerald-400 hover:text-emerald-500'"
+                  :disabled="isInProgress(task) || retriggering"
+                  @click="handleRetrigger(task)"
+                >
+                  重新总结
+                </button>
+                <button
+                  class="rounded-md border border-zinc-300 px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:text-zinc-400"
+                  :class="isInProgress(task)
+                    ? ''
+                    : 'text-red-600 hover:border-red-400 hover:text-red-500'"
+                  :disabled="isInProgress(task) || deleting"
+                  @click="handleDelete(task)"
+                >
+                  {{ isInProgress(task) ? "进行中" : "删除" }}
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <Dialog
+      v-model:visible="rawDialogVisible"
+      :header="rawDialogTitle"
+      :modal="true"
+      :closable="true"
+      :style="{ width: '720px' }"
+    >
+      <div v-if="rawDialogLoading" class="py-6 text-center text-sm text-zinc-500">
+        加载中...
+      </div>
+      <div v-else-if="rawDialogError" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+        {{ rawDialogError }}
+      </div>
+      <pre
+        v-if="rawDialogContent"
+        class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all rounded-lg bg-zinc-50 p-4 text-xs leading-relaxed text-zinc-800"
+      >{{ rawDialogContent }}</pre>
+      <p v-if="rawDialogIsFallbackError" class="mt-2 text-xs text-red-500">
+        本次无模型原始返回，以上为记录中的错误信息
+      </p>
+      <div v-if="!rawDialogContent && !rawDialogIsFallbackError" class="py-6 text-center text-sm text-zinc-400">
+        无原始返回（历史记录或本次未成功返回模型内容）
+      </div>
+    </Dialog>
   </div>
 </template>

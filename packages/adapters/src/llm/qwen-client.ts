@@ -43,6 +43,13 @@ export interface MultimodalRequest {
   response_format?: { type: "json_object" };
 }
 
+/** 多模态聊天结果：解析后的数据 + 模型返回的原始 content 原文 + 实际使用模型 */
+export interface MultimodalChatResult {
+  data: object;
+  rawContent: string;
+  model: string;
+}
+
 function assertNoBase64MediaUrls(params: MultimodalRequest): void {
   for (const message of params.messages) {
     if (!Array.isArray(message.content)) continue;
@@ -106,13 +113,17 @@ export class QwenClient {
       );
     }
 
-    return parseOpenAiJsonResponse(await response.json(), "LLM 返回空响应");
+    return JSON.parse(
+      extractRawContent(await response.json(), "LLM 返回空响应"),
+    ) as object;
   }
 
   /**
    * 多模态调用（文本 + 图片/视频 URL/本地路径）
    */
-  async multimodalChat(params: MultimodalRequest): Promise<object> {
+  async multimodalChat(
+    params: MultimodalRequest,
+  ): Promise<MultimodalChatResult> {
     assertNoBase64MediaUrls(params);
 
     const requestBody = {
@@ -136,10 +147,16 @@ export class QwenClient {
         );
       }
 
-      return parseOpenAiJsonResponse(
-        await response.json(),
+      const rawBody = await response.json();
+      const rawContent = extractRawContent(
+        rawBody,
         "LLM 多模态代理返回空响应",
       );
+      return {
+        data: JSON.parse(rawContent) as object,
+        rawContent,
+        model: requestBody.model,
+      };
     }
 
     const url = `${this.config.baseUrl}/chat/completions`;
@@ -160,14 +177,17 @@ export class QwenClient {
       );
     }
 
-    return parseOpenAiJsonResponse(
-      await response.json(),
-      "LLM 多模态返回空响应",
-    );
+    const rawBody = await response.json();
+    const rawContent = extractRawContent(rawBody, "LLM 多模态返回空响应");
+    return {
+      data: JSON.parse(rawContent) as object,
+      rawContent,
+      model: requestBody.model,
+    };
   }
 }
 
-function parseOpenAiJsonResponse(body: unknown, emptyMessage: string): object {
+function extractRawContent(body: unknown, emptyMessage: string): string {
   const content = (
     body as {
       choices?: Array<{ message?: { content?: string } }>;
@@ -178,5 +198,5 @@ function parseOpenAiJsonResponse(body: unknown, emptyMessage: string): object {
     throw new Error(emptyMessage);
   }
 
-  return JSON.parse(content) as object;
+  return content;
 }

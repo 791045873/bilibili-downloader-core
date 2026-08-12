@@ -77,6 +77,10 @@ export interface AnalysisOutput {
   emptySummary: boolean;
   /** 执行耗时明细（LLM 分析 / 截图 / 总计，毫秒） */
   timing: { llmMs: number; screenshotMs: number; totalMs: number };
+  /** LLM 模型接口成功返回的原始 content 原文 */
+  rawResponse: string;
+  /** 实际使用的模型名称 */
+  modelName: string;
 }
 
 /** LLM #1 响应结构：视频与字幕分析 */
@@ -147,6 +151,8 @@ export class AnalysisEngine {
     const analysisStartMs = Date.now();
     let llmMs = 0;
     let screenshotMs = 0;
+    let llmRawResponse = "";
+    let llmModelName = "";
 
     const screenshots: string[] = [];
 
@@ -180,7 +186,7 @@ export class AnalysisEngine {
       if (fullSubtitleText.length > 0) {
         userContent.push({ type: "text", text: fullSubtitleText });
       }
-      analysis = (await this.llmClient.multimodalChat({
+      const llmResult = await this.llmClient.multimodalChat({
         model: "",
         stream: false,
         enable_thinking: false,
@@ -192,8 +198,11 @@ export class AnalysisEngine {
             content: userContent,
           },
         ],
-      })) as unknown as SubtitleAnalysis;
+      });
+      analysis = llmResult.data as unknown as SubtitleAnalysis;
       llmMs = Date.now() - llmStartMs;
+      llmRawResponse = llmResult.rawContent;
+      llmModelName = llmResult.model;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
@@ -220,7 +229,12 @@ export class AnalysisEngine {
           emptySummary: true,
         }),
       );
-      return await this.writeEmptySummary(input, screenshots);
+      return await this.writeEmptySummary(
+        input,
+        screenshots,
+        llmRawResponse,
+        llmModelName,
+      );
     }
 
     const resolvedSource = input.screenshotVideoPath
@@ -393,6 +407,8 @@ export class AnalysisEngine {
         screenshotMs,
         totalMs: Date.now() - analysisStartMs,
       },
+      rawResponse: llmRawResponse,
+      modelName: llmModelName,
     };
   }
 
@@ -414,6 +430,8 @@ export class AnalysisEngine {
   private async writeEmptySummary(
     input: AnalysisInput,
     existingScreenshots: string[],
+    rawResponse: string,
+    modelName: string,
   ): Promise<AnalysisOutput> {
     const doc = generateMarkdown({
       videoTitle: input.videoTitle,
@@ -444,6 +462,8 @@ export class AnalysisEngine {
       segmentCount: 0,
       emptySummary: true,
       timing: { llmMs: 0, screenshotMs: 0, totalMs: 0 },
+      rawResponse,
+      modelName,
     };
   }
 }

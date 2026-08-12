@@ -26,9 +26,9 @@ export interface AiSummaryExecutionTiming {
   totalMs: number;
 }
 
-/** AI 总结任务对外视图：executionTiming 解析为对象 */
+/** AI 总结任务对外视图：executionTiming 解析为对象；rawResponse 不出接口（仅入库；成功=模型原始返回，失败=错误信息） */
 export interface AiSummaryTaskView
-  extends Omit<AiSummaryTaskRecord, "executionTiming"> {
+  extends Omit<AiSummaryTaskRecord, "executionTiming" | "rawResponse"> {
   executionTiming?: AiSummaryExecutionTiming;
 }
 
@@ -132,6 +132,7 @@ export class AnalysisTriggerService implements OnModuleInit {
             status: "failed",
             summaryOutput: "",
             errorMessage: result.error,
+            rawResponse: result.error,
             lastCompletedAt: new Date().toISOString(),
           });
           void this.notificationService.sendSummaryNotification({
@@ -365,6 +366,8 @@ export class AnalysisTriggerService implements OnModuleInit {
         summaryOutput: result.summaryPath,
         errorMessage: "",
         executionTiming: JSON.stringify(result.timing),
+        rawResponse: result.rawResponse,
+        modelName: result.modelName,
         lastTriggeredAt: now,
         lastCompletedAt: new Date().toISOString(),
       });
@@ -389,6 +392,7 @@ export class AnalysisTriggerService implements OnModuleInit {
         status: "failed",
         summaryOutput: "",
         errorMessage: msg,
+        rawResponse: msg,
         lastTriggeredAt: now,
         lastCompletedAt: new Date().toISOString(),
       });
@@ -559,9 +563,9 @@ export class AnalysisTriggerService implements OnModuleInit {
   }
 
   getAiSummaryTasks(): AiSummaryTaskView[] {
-    return this.db.listAiSummaryTasks().map((r) => ({
-      ...r,
-      executionTiming: this.parseExecutionTiming(r.executionTiming),
+    return this.db.listAiSummaryTasks().map(({ rawResponse: _raw, ...rest }) => ({
+      ...rest,
+      executionTiming: this.parseExecutionTiming(rest.executionTiming),
     }));
   }
 
@@ -570,9 +574,10 @@ export class AnalysisTriggerService implements OnModuleInit {
     if (!record) {
       return undefined;
     }
+    const { rawResponse: _raw, ...rest } = record;
     return {
-      ...record,
-      executionTiming: this.parseExecutionTiming(record.executionTiming),
+      ...rest,
+      executionTiming: this.parseExecutionTiming(rest.executionTiming),
     };
   }
 
@@ -610,6 +615,8 @@ export class AnalysisTriggerService implements OnModuleInit {
       summaryOutput?: string;
       errorMessage?: string;
       executionTiming?: string;
+      rawResponse?: string;
+      modelName?: string;
       lastTriggeredAt?: string;
       lastCompletedAt?: string;
     },
@@ -627,6 +634,8 @@ export class AnalysisTriggerService implements OnModuleInit {
       summaryOutput: fields.summaryOutput,
       errorMessage: fields.errorMessage,
       executionTiming: fields.executionTiming,
+      rawResponse: fields.rawResponse,
+      modelName: fields.modelName,
       lastTriggeredAt: fields.lastTriggeredAt,
       lastCompletedAt: fields.lastCompletedAt,
     });

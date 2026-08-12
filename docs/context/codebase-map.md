@@ -28,7 +28,7 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | 新增下载能力         | `packages/core/src/`          | `packages/adapters/src/`                  | `pnpm typecheck`                | 2026-06-02    | high       |
 | 新增 API 端点        | `packages/server/src/`        | `packages/core/src/` (usecase)            | `pnpm typecheck`                | 2026-06-02    | high       |
 | 修改 server 可观测性 | `packages/server/src/logging/` | `packages/server/src/download/`, `packages/server/src/analysis/`, `docs/testing/2026/` | `pnpm --filter @bilibili-downloader/server typecheck`, `pnpm typecheck`, `pnpm build` | 2026-08-02 | high |
-| 修改视频分析能力      | `packages/server/src/analysis/` | `packages/adapters/src/llm/`, `packages/adapters/src/ffmpeg/`, `packages/server/python/` | `pnpm typecheck`, `pnpm build` | 2026-07-07    | high       |
+| 修改视频分析能力      | `packages/server/src/analysis/` | `packages/adapters/src/llm/`, `packages/adapters/src/ffmpeg/`, `packages/server/python/` | `pnpm typecheck`, `pnpm build` | 2026-08-12    | high       |
 | 新增 UI 页面         | `packages/frontend/src/`      | `packages/server/src/` (API)              | `pnpm typecheck`                | 2026-06-02    | high       |
 | 修改下载器行为        | `packages/adapters/src/`      | `packages/core/src/` (ports)              | `pnpm typecheck`                | 2026-06-02    | high       |
 | 修改 B站 API 适配     | `packages/adapters/src/bilibili/` | `packages/bilibili-api-sdk/` (底层接口), `packages/core/src/` (domain models) | `pnpm typecheck`, `pnpm --filter bilibili-api-sdk test` | 2026-08-07    | high       |

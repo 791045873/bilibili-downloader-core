@@ -4,6 +4,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Logger,
   NotFoundException,
   Param,
@@ -73,6 +75,27 @@ export class AnalysisTaskController {
     return this.analysisTriggerService.getAiSummaryTasks();
   }
 
+  @Get("/summary-tasks/:id/raw-response")
+  getAiSummaryTaskRawResponse(@Param("id") id: string) {
+    const summaryTaskId = Number.parseInt(id, 10);
+    if (Number.isNaN(summaryTaskId)) {
+      this.logger.warn(
+        `Get ai summary task raw response rejected due to invalid id: ${id}`,
+      );
+      throw new BadRequestException("无效的任务 ID");
+    }
+
+    const record = this.databaseService.getAiSummaryTaskById(summaryTaskId);
+    if (!record) {
+      this.logger.warn(
+        `Get ai summary task raw response rejected due to not-found: ${summaryTaskId}`,
+      );
+      throw new NotFoundException("AI 总结任务不存在");
+    }
+
+    return { rawResponse: record.rawResponse ?? null };
+  }
+
   @Delete("/summary-tasks/:id")
   deleteAiSummaryTask(@Param("id") id: string) {
     const summaryTaskId = Number.parseInt(id, 10);
@@ -94,5 +117,62 @@ export class AnalysisTaskController {
 
     this.analysisTriggerService.deleteAiSummaryTask(summaryTaskId);
     return { message: "已删除" };
+  }
+
+  @Post("/summary-tasks/:id/retrigger")
+  @HttpCode(HttpStatus.OK)
+  retriggerAiSummaryTask(@Param("id") id: string) {
+    const summaryTaskId = Number.parseInt(id, 10);
+    if (Number.isNaN(summaryTaskId)) {
+      this.logger.warn(
+        `Retrigger ai summary task rejected due to invalid id: ${id}`,
+      );
+      throw new BadRequestException("无效的任务 ID");
+    }
+
+    const summaryTask =
+      this.analysisTriggerService.getAiSummaryTaskById(summaryTaskId);
+    if (!summaryTask) {
+      this.logger.warn(
+        `Retrigger ai summary task rejected due to not-found: ${summaryTaskId}`,
+      );
+      throw new NotFoundException("AI 总结任务不存在");
+    }
+    if (
+      summaryTask.status === "pending" ||
+      summaryTask.status === "analyzing"
+    ) {
+      throw new ConflictException("进行中的 AI 总结不可重新触发");
+    }
+
+    // 下载任务记录可能已被删除（删除路径独立），按资源查找当前下载任务
+    const task = this.databaseService.findLatestTaskByBvidAndCid(
+      summaryTask.bvid,
+      summaryTask.cid,
+    );
+    if (!task || typeof task.id !== "number") {
+      this.logger.warn(
+        `Retrigger ai summary task rejected because no download task exists for summary task ${summaryTaskId} (${summaryTask.bvid}-${summaryTask.cid})`,
+      );
+      throw new ConflictException("无对应的下载任务，无法重新总结");
+    }
+    if (task.status !== "success") {
+      throw new ConflictException("仅已完成下载任务可触发 AI 总结");
+    }
+
+    this.databaseService.updateTaskStatus(task.id, {
+      status: task.status,
+      autoSummary: 1,
+    });
+
+    void this.analysisTriggerService.trigger(task.id).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `AI summary retrigger failed for summary task ${summaryTaskId}: ${message}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+    });
+
+    return { message: "AI 总结触发中" };
   }
 }

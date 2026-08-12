@@ -198,8 +198,20 @@ export async function getAiSummaryTasks(): Promise<AiSummaryTaskEntry[]> {
   return request("/summary-tasks");
 }
 
+export async function getAiSummaryTaskRawResponse(
+  id: number,
+): Promise<{ rawResponse: string | null }> {
+  return request(`/summary-tasks/${id}/raw-response`);
+}
+
 export async function deleteAiSummaryTask(id: number): Promise<void> {
   await request(`/summary-tasks/${id}`, { method: "DELETE" });
+}
+
+export async function retriggerAiSummaryTask(
+  id: number,
+): Promise<{ message: string }> {
+  return request(`/summary-tasks/${id}/retrigger`, { method: "POST" });
 }
 
 // ==================== 认证 ====================
