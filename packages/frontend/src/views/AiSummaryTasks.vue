@@ -30,13 +30,13 @@ const rebuildMessage = ref("");
 function statusLabel(status: string): string {
   switch (status) {
     case "pending":
-      return "待总结";
+      return "待处理";
     case "analyzing":
-      return "总结中";
+      return "处理中";
     case "failed":
-      return "总结失败";
+      return "失败";
     case "completed":
-      return "总结完成";
+      return "完成";
     default:
       return status;
   }
@@ -61,7 +61,14 @@ function formatTime(value?: string): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("zh-CN", { hour12: false });
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 }
 
 function summaryTime(task: AiSummaryTaskEntry): string {
@@ -92,20 +99,17 @@ function derivedTotalMs(task: AiSummaryTaskEntry): number | undefined {
   return end - start;
 }
 
-function timingLine(task: AiSummaryTaskEntry): string {
+function timingRows(task: AiSummaryTaskEntry): string[] {
   const t = task.executionTiming;
-  const parts: string[] = [];
   if (t) {
-    if (t.llmMs > 0) parts.push(`LLM ${formatMs(t.llmMs)}`);
-    if (t.screenshotMs > 0) parts.push(`截图 ${formatMs(t.screenshotMs)}`);
-    if (t.totalMs > 0) parts.push(`总计 ${formatMs(t.totalMs)}`);
+    const rows: string[] = [];
+    if (t.screenshotMs > 0) rows.push(`截图 ${formatMs(t.screenshotMs)}`);
+    if (t.totalMs > 0) rows.push(`总计 ${formatMs(t.totalMs)}`);
+    if (rows.length > 0) return rows;
   }
-  if (parts.length === 0) {
-    // 回退：无耗时明细（历史任务/空内容总结）时，用 lastCompletedAt - lastTriggeredAt 推导总计
-    const derived = derivedTotalMs(task);
-    return derived !== undefined ? `总计 ${formatMs(derived)}` : "";
-  }
-  return parts.join(" · ");
+  // 回退：无耗时明细（历史任务/空内容总结）时，用 lastCompletedAt - lastTriggeredAt 推导总计
+  const derived = derivedTotalMs(task);
+  return derived !== undefined ? [`总计 ${formatMs(derived)}`] : [];
 }
 
 async function loadTasks() {
@@ -235,7 +239,6 @@ onMounted(async () => {
             <th class="px-4 py-3 font-medium">模型</th>
             <th class="px-4 py-3 font-medium">总结时间</th>
             <th class="px-4 py-3 font-medium">执行耗时</th>
-            <th class="px-4 py-3 font-medium">总结输出</th>
             <th class="px-4 py-3 font-medium">更新时间</th>
             <th class="px-4 py-3 font-medium">操作</th>
           </tr>
@@ -265,21 +268,21 @@ onMounted(async () => {
                 {{ task.errorMessage }}
               </div>
             </td>
-            <td class="whitespace-nowrap px-4 py-3 text-zinc-700">
-              <span v-if="task.modelName" :title="task.modelName">{{ task.modelName }}</span>
+            <td class="px-4 py-3">
+              <span
+                v-if="task.modelName"
+                class="block max-w-[80px] truncate text-zinc-700"
+                :title="task.modelName"
+              >{{ task.modelName }}</span>
               <span v-else class="text-zinc-400">—</span>
             </td>
             <td class="whitespace-nowrap px-4 py-3 text-zinc-700">
               {{ summaryTime(task) }}
             </td>
             <td class="px-4 py-3">
-              <span v-if="timingLine(task)" class="text-xs text-zinc-700">{{ timingLine(task) }}</span>
-              <span v-else class="text-zinc-400">—</span>
-            </td>
-            <td class="px-4 py-3">
-              <span v-if="task.summaryOutput" class="max-w-[260px] break-all text-xs text-zinc-500" :title="task.summaryOutput">
-                {{ task.summaryOutput }}
-              </span>
+              <div v-if="timingRows(task).length > 0" class="space-y-0.5 text-xs text-zinc-700">
+                <div v-for="row in timingRows(task)" :key="row">{{ row }}</div>
+              </div>
               <span v-else class="text-zinc-400">—</span>
             </td>
             <td class="whitespace-nowrap px-4 py-3 text-zinc-400">
