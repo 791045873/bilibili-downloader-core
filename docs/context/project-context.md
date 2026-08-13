@@ -32,7 +32,7 @@ Rule:
 
 ## Current Technical Baseline
 
-- Frontend stack: Vue 3 + Vite + TypeScript
+- Frontend stack: React 19 + Vite + TypeScript（Zustand 状态管理 + antd 组件库 + TanStack Query 服务端状态）
 - Backend stack: NestJS + TypeScript
 - Database/model source: SQLite（better-sqlite3，通过 server 包管理）
 

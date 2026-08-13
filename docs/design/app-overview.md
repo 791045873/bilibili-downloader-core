@@ -8,12 +8,12 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 
 | Surface | Description | Runtime |
 | --- | --- | --- |
-| Web Frontend | 视频链接输入、Section 选择器、视频解析、下载列表查看、AI 总结任务列表、设置管理 | Vue 3 SPA（浏览器） |
+| Web Frontend | 视频链接输入、Section 选择器、视频解析、下载列表查看、AI 总结任务列表、设置管理 | React 19 SPA（浏览器） |
 | Docker | 容器化部署，Server + Frontend + Python 视觉代理打包为单镜像，通过挂载 volume 管理下载文件与日志；外部仅暴露 `PORT=3000`，Python 代理仅在容器内 `127.0.0.1:8765` 提供服务；`OUTPUT_DIR=/download`、`LOG_DIR=/download/logs`，日志按天轮转保留最近 7 天 | Docker 容器 |
 
 ## Primary Navigation Model
 
-- Web 前端：单页应用（SPA），使用 vue-router 管理页面路由
+- Web 前端：单页应用（SPA），使用 react-router 7 管理页面路由
 
 ## Main User Roles
 

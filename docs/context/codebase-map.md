@@ -16,7 +16,7 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | Server       | `packages/server/src/`        | NestJS 后端 API，下载任务管理、视频分析编排、全局请求日志 | 2026-08-11    | high       |
 | Server Logging | `packages/server/src/logging/` | RequestLoggingInterceptor、safe log allowlist、请求体安全裁剪；`FileConsoleLogger`（`LOG_DIR` 开启终端+文件双写，`rotating-file-stream` 按天轮转，`LOG_MAX_FILES` 保留数） | 2026-08-13 | high |
 | Vision Proxy | `packages/server/python/`     | 可选 Python 薄代理，仅负责 DashScope 本地视觉文件调用（pyproject.toml 锁定依赖 + .venv；body 上限/socket 超时/并发上限/healthz，start-vision-proxy 自动重启） | 2026-08-12    | medium     |
-| Frontend     | `packages/frontend/src/`      | Vue 3 前端，视频输入、下载列表、设置              | 2026-06-02    | high       |
+| Frontend     | `packages/frontend/src/`      | React 19 SPA，视频输入、下载列表、AI 总结任务、设置（react-router 7 + Zustand + antd 6 + TanStack Query + Tailwind 4） | 2026-08-14    | high       |
 | Docker       | `packages/docker/`            | Dockerfile、单端口入口与 Node/Python 启动编排      | 2026-08-13    | high       |
 | Config       | `tsconfig.base.json`, `pnpm-workspace.yaml`, `package.json` | 项目配置                          | 2026-06-02    | high       |
 | Tests        | 无统一测试目录                    | 当前无自动化测试                                  | 2026-06-02    | low        |

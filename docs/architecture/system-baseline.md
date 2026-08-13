@@ -14,7 +14,7 @@ packages/
 ├── adapters/   — B站 API、HTTP 下载器、FFmpeg、文件系统适配
 ├── cli/        — 命令行入口（当前不可用，待修复）
 ├── server/     — NestJS 后端 API
-├── frontend/   — Vue 3 前端
+├── frontend/   — React 19 前端
 └── docker/     — Dockerfile 与构建脚本
 ```
 
@@ -22,8 +22,10 @@ packages/
 
 ## Frontend Stack
 
-- Vue 3 + Vite + TypeScript
-- 组件库：待定（UI 优化需求中）
+- React 19 + Vite + TypeScript
+- 路由：react-router 7（library 模式，createBrowserRouter + lazy）
+- 状态管理：Zustand（客户端状态，localStorage persist）+ TanStack Query（服务端状态）
+- 组件库：antd 6 + Tailwind 4（布局工具类）
 
 ## Backend Stack
 
@@ -33,7 +35,7 @@ packages/
 
 ## State Management Approach
 
-- 前端：Vue 3 reactivity（ref/reactive）
+- 前端：Zustand（设置/登录/下载队列，持久化到 localStorage）+ TanStack Query（列表/详情等服务端数据）
 - 后端：NestJS service 层管理业务状态，SQLite 持久化
 
 ## Data Access Approach

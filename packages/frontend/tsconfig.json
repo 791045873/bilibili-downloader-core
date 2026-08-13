@@ -10,15 +10,14 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
-    "jsxImportSource": "vue",
+    "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
     },
     "types": ["vite/client"],
-    "noEmit": true,
+    "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "env.d.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "env.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -1,34 +1,31 @@
 {
   "name": "@bilibili-downloader/frontend",
   "version": "0.0.1",
-  "description": "Vue3 前端 - Bilibili 下载器管理界面",
+  "description": "React 前端 - Bilibili 下载器管理界面",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
-    "typecheck": "vue-tsc -b"
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@primevue/themes": "^4.5.4",
-    "@vueuse/core": "^14.3.0",
-    "@vueuse/integrations": "^14.3.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "lucide-vue-next": "^1.0.0",
-    "pinia": "^3.0.0",
-    "primevue": "^4.5.5",
-    "qrcode": "^1.5.4",
-    "tailwind-merge": "^3.6.0",
-    "vue": "^3.5.0",
-    "vue-router": "^4.5.0"
+    "@ant-design/icons": "^6.3.2",
+    "@tanstack/react-query": "^5.101.4",
+    "antd": "^6.6.0",
+    "dayjs": "^1.11.21",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router": "^7.18.2",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.3.0",
-    "@vitejs/plugin-vue": "^5.0.0",
-    "tailwindcss": "^4.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.7.0",
-    "vite": "^6.0.0",
-    "vue-tsc": "^2.0.0"
+    "vite": "^8.2.1"
   }
 }
