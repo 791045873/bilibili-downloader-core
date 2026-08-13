@@ -8,3 +8,10 @@
 - `.dockerignore` 排除 `.env`、虚拟环境、缓存与构建产物，避免敏感配置进入构建上下文。
 - `.dockerignore` 进一步排除本地下载、总结截图和测试素材，减少 Docker context 传输时间。
 - 验证：`pnpm typecheck`、`pnpm build` 已通过；Docker 构建与运行冒烟待命令完成后补充。
+- 状态补充：修复前的 `bilibili-downloader:optimized-check` 曾构建成功，但运行时发现
+  `better-sqlite3` native binding 缺失，且镜像误包含本地运行数据，不能作为最终成果。
+- 已修复 runtime native binding 编译与嵌套目录排除；修复后的默认
+  `node:24-alpine` 构建因基础镜像层下载长期停滞而中断，尚未产出可用于冒烟验证的新镜像。
+- 待处理：在网络可稳定拉取 `node:24-alpine` 后重新执行 `pnpm docker:build`，
+  完成前端、Node API、Python healthz、SQLite、Docker health、端口与进程退出验证，
+  再更新计划并执行独立 closure audit。

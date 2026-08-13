@@ -34,4 +34,13 @@
 
 ## 执行证据
 
-待 Docker 构建与容器冒烟执行后补充命令、退出码和关键响应。
+- `pnpm typecheck`：exit 0。
+- `pnpm build`：exit 0。
+- `docker buildx build --check`：exit 0。
+- 修复前的 `bilibili-downloader:optimized-check` 镜像曾成功生成，但运行时
+  `better-sqlite3` native binding 缺失，且大小约 2.07GB；该结果判定为不通过。
+- 已在 Dockerfile 中增加 runtime 闭包内的 `better-sqlite3` 源码编译，并通过
+  `.dockerignore` 排除嵌套 `downloads`、`summaryDir`、`test_assets`。
+- 修复后执行默认 `pnpm docker:build` 时，`node:24-alpine` 的约 53.10MB 基础镜像层
+  在约 95 分钟后仅下载至 33.55MB，任务被中断，未生成新镜像。
+- 当前结论：静态检查与项目构建通过；最终 Docker 镜像构建、容器运行和冒烟验证尚未通过。

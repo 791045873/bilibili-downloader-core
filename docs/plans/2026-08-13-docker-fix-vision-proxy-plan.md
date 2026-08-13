@@ -1,6 +1,6 @@
 # 2026-08-13 Docker 镜像修复并纳入 Python 视觉代理
 
-> Plan Status: planned
+> Plan Status: implementation complete, verification blocked
 > Last Reviewed: 2026-08-13
 > Source: 用户需求——(1) 修复 `docker:build` 既有问题（builder 阶段 better-sqlite3 缺编译工具链）；(2) 现有 Dockerfile 只考虑了 Node 服务，需把 Python 视觉代理也纳入镜像
 > Related: `docs/plans/2026-08-13-production-file-logging-plan.md`（已关闭，引入 LOG_DIR/LOG_MAX_FILES）、`docs/plans/2026-08-12-vision-proxy-robustness-plan.md`、`docs/plans/2026-08-11-vision-proxy-python-best-practice.md`
@@ -151,4 +151,7 @@ Targets: `docs/design/app-overview.md`, `docs/architecture/system-baseline.md`, 
 
 ## Closure
 
-Status Note: 待实施与闭核算。
+Status Note: 实现已完成并提交；`pnpm typecheck`、`pnpm build`、
+`docker buildx build --check` 已通过。修复后的默认 `node:24-alpine` 镜像构建因基础镜像层
+下载长期停滞而中断，尚未产出最终镜像。待网络恢复后重新构建，完成容器冒烟验证和独立
+closure audit；在此之前计划保持未关闭状态。
