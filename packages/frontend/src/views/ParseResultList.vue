@@ -40,11 +40,11 @@ const settingsStore = useSettingsStore();
 const queueStore = useDownloadQueueStore();
 
 const loading = ref(true);
-const loadingMore = ref(false);
 const error = ref("");
 const items = ref<ListItem[]>([]);
 const page = ref(1);
-const pageSize = 20;
+const pageSize = ref(20);
+const total = ref(0);
 const hasMore = ref(false);
 const title = ref("解析结果");
 
@@ -60,7 +60,10 @@ const currentType = computed<ListType | null>(() => {
 });
 
 const selectedCount = computed(() => items.value.filter((i) => i.selected).length);
-const canLoadMore = computed(() => hasMore.value && currentType.value !== "video");
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(total.value / pageSize.value)),
+);
+const showPagination = computed(() => currentType.value !== "video");
 
 const colorPalette = [
   "border-l-rose-500",
@@ -160,45 +163,45 @@ function parsePositiveInt(value: unknown): number | null {
   return n;
 }
 
-async function fetchList(targetPage: number, append: boolean) {
+async function fetchList(targetPage: number) {
   const type = currentType.value;
   if (!type) {
     error.value = "缺少列表类型参数";
     return;
   }
 
-  if (!append) {
-    loading.value = true;
-    error.value = "";
-  } else {
-    loadingMore.value = true;
-  }
+  loading.value = true;
+  error.value = "";
 
   try {
     let normalized: ListItem[] = [];
+    let totalCount = 0;
 
     if (type === "user-videos") {
       const mid = parsePositiveInt(route.query.mid);
       if (!mid) throw new Error("缺少有效 mid 参数");
       title.value = "投稿视频";
-      const result = await getUserSpaceVideos(mid, targetPage, pageSize);
+      const result = await getUserSpaceVideos(mid, targetPage, pageSize.value);
       normalized = normalizeSinglePage(result.items);
       hasMore.value = result.hasMore;
+      totalCount = result.total;
     } else if (type === "ugc-season") {
       const seasonId = parsePositiveInt(route.query.seasonId);
       if (!seasonId) throw new Error("缺少有效 seasonId 参数");
       title.value = "UGC 合集";
-      const result = await getUgcSeasonVideos(seasonId, targetPage, pageSize);
+      const result = await getUgcSeasonVideos(seasonId, targetPage, pageSize.value);
       const currentBvid = typeof route.query.currentBvid === "string" ? route.query.currentBvid : undefined;
       normalized = normalizeSinglePage(result.items, currentBvid);
       hasMore.value = result.hasMore;
+      totalCount = result.total;
     } else if (type === "favorites") {
       const mediaId = parsePositiveInt(route.query.mediaId);
       if (!mediaId) throw new Error("缺少有效 mediaId 参数");
       title.value = "收藏夹视频";
-      const result = await getFavoritesVideos(mediaId, targetPage, pageSize);
+      const result = await getFavoritesVideos(mediaId, targetPage, pageSize.value);
       normalized = normalizeSinglePage(result.items);
       hasMore.value = result.hasMore;
+      totalCount = result.total;
     } else {
       const bvid = typeof route.query.bvid === "string" ? route.query.bvid : "";
       if (!bvid) throw new Error("缺少有效 bvid 参数");
@@ -228,13 +231,11 @@ async function fetchList(targetPage: number, append: boolean) {
         );
         hasMore.value = false;
       }
+      totalCount = normalized.length;
     }
 
-    if (append) {
-      items.value = [...items.value, ...normalized];
-    } else {
-      items.value = normalized;
-    }
+    items.value = normalized;
+    total.value = totalCount;
 
     await markDownloaded();
     page.value = targetPage;
@@ -242,7 +243,6 @@ async function fetchList(targetPage: number, append: boolean) {
     error.value = e instanceof Error ? e.message : "加载失败";
   } finally {
     loading.value = false;
-    loadingMore.value = false;
   }
 }
 
@@ -372,15 +372,21 @@ function groupClass(index: number): string {
   return `${spacing} border-l-4 ${item.groupColorClass} ${highlight}`;
 }
 
-function loadMore() {
-  if (!canLoadMore.value || loadingMore.value) return;
-  fetchList(page.value + 1, true);
+function handlePageChange(next: number) {
+  if (next < 1 || next > totalPages.value || next === page.value) return;
+  fetchList(next);
+}
+
+function handlePageSizeChange(next: number) {
+  if (next === pageSize.value) return;
+  pageSize.value = next;
+  fetchList(1);
 }
 
 onMounted(async () => {
   settingsStore.load();
   queueStore.init();
-  await fetchList(1, false);
+  await fetchList(1);
 });
 </script>
 
@@ -469,15 +475,42 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="flex justify-center">
-        <button
-          v-if="canLoadMore"
-          class="rounded-md border border-zinc-300 px-4 py-2 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-          :disabled="loadingMore"
-          @click="loadMore"
-        >
-          {{ loadingMore ? "加载中..." : "加载更多" }}
-        </button>
+      <div
+        v-if="showPagination"
+        class="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600"
+      >
+        <span>第 {{ page }} / {{ totalPages }} 页</span>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
+            <span>每页</span>
+            <select
+              class="rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800"
+              :value="pageSize"
+              @change="handlePageSizeChange(Number(($event.target as HTMLSelectElement).value))"
+            >
+              <option :value="10">10</option>
+              <option :value="20">20</option>
+              <option :value="50">50</option>
+            </select>
+            <span>条，共 {{ total }} 条</span>
+          </div>
+          <div class="flex gap-2">
+            <button
+              class="rounded-md border border-zinc-300 px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:text-zinc-300"
+              :disabled="page <= 1"
+              @click="handlePageChange(page - 1)"
+            >
+              上一页
+            </button>
+            <button
+              class="rounded-md border border-zinc-300 px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:text-zinc-300"
+              :disabled="!hasMore"
+              @click="handlePageChange(page + 1)"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
       </div>
     </template>
 

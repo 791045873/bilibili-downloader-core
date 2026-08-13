@@ -32,6 +32,15 @@ export interface AiSummaryTaskView
   executionTiming?: AiSummaryExecutionTiming;
 }
 
+/** AI 总结任务分页视图 */
+export interface PaginatedAiSummaryTaskView {
+  items: AiSummaryTaskView[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
 function parseVisionProxyTimeoutMs(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const parsed = Number(value);
@@ -574,11 +583,31 @@ export class AnalysisTriggerService implements OnModuleInit {
     };
   }
 
-  getAiSummaryTasks(): AiSummaryTaskView[] {
-    return this.db.listAiSummaryTasks().map(({ rawResponse: _raw, ...rest }) => ({
-      ...rest,
-      executionTiming: this.parseExecutionTiming(rest.executionTiming),
-    }));
+  getAiSummaryTasksPaginated(params: {
+    page: number;
+    pageSize: number;
+    status?: string;
+    search?: string;
+    updatedFrom?: string;
+    updatedTo?: string;
+  }): PaginatedAiSummaryTaskView {
+    const result = this.db.listAiSummaryTasksPaginated({
+      page: params.page,
+      pageSize: params.pageSize,
+      filter: {
+        status: params.status,
+        search: params.search,
+        updatedFrom: params.updatedFrom,
+        updatedTo: params.updatedTo,
+      },
+    });
+    return {
+      ...result,
+      items: result.items.map(({ rawResponse: _raw, ...rest }) => ({
+        ...rest,
+        executionTiming: this.parseExecutionTiming(rest.executionTiming),
+      })),
+    };
   }
 
   getAiSummaryTaskById(id: number): AiSummaryTaskView | undefined {

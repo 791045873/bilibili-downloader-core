@@ -205,6 +205,21 @@ export interface AiSummaryTaskEntry {
   lastCompletedAt?: string;
 }
 
+export type AiSummaryTaskStatus =
+  | "all"
+  | "pending"
+  | "analyzing"
+  | "failed"
+  | "completed";
+
+export interface PaginatedAiSummaryTasks {
+  items: AiSummaryTaskEntry[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
 // ---- 设置 ----
 
 export interface AppSettings {

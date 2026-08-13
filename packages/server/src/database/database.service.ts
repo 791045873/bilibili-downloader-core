@@ -81,6 +81,21 @@ export interface PaginatedTaskResult {
   hasMore: boolean;
 }
 
+export interface AiSummaryTaskListFilter {
+  status?: string;
+  search?: string;
+  updatedFrom?: string;
+  updatedTo?: string;
+}
+
+export interface PaginatedAiSummaryTaskResult {
+  items: AiSummaryTaskRecord[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
 @Injectable()
 export class DatabaseService {
   private readonly logger = new Logger(DatabaseService.name);
@@ -790,10 +805,33 @@ export class DatabaseService {
       .get(bvid, cid) as AiSummaryTaskRecord | undefined;
   }
 
-  listAiSummaryTasks(): AiSummaryTaskRecord[] {
-    return this.db
-      .prepare(`${this.aiSummaryTaskSelectSql} ORDER BY updated_at DESC`)
-      .all() as AiSummaryTaskRecord[];
+  listAiSummaryTasksPaginated(params: {
+    page: number;
+    pageSize: number;
+    filter?: AiSummaryTaskListFilter;
+  }): PaginatedAiSummaryTaskResult {
+    const { page, pageSize, filter } = params;
+    const offset = (page - 1) * pageSize;
+    const { whereClause, queryParams } = this.buildAiSummaryTaskFilter(filter);
+    const totalRow = this.db
+      .prepare(`SELECT COUNT(*) AS total FROM ai_summary_task ${whereClause}`)
+      .get(...queryParams) as { total: number };
+    const items = this.db
+      .prepare(
+        `${this.aiSummaryTaskSelectSql}
+         ${whereClause}
+         ORDER BY updated_at DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(...queryParams, pageSize, offset) as AiSummaryTaskRecord[];
+
+    return {
+      items,
+      page,
+      pageSize,
+      total: totalRow.total,
+      hasMore: offset + items.length < totalRow.total,
+    };
   }
 
   getAiSummaryTaskById(id: number): AiSummaryTaskRecord | undefined {
@@ -846,6 +884,39 @@ export class DatabaseService {
           queryParams: [],
         };
     }
+  }
+
+  private buildAiSummaryTaskFilter(filter?: AiSummaryTaskListFilter): {
+    whereClause: string;
+    queryParams: Array<string>;
+  } {
+    const clauses: string[] = [];
+    const params: string[] = [];
+
+    if (filter?.status && filter.status !== "all") {
+      clauses.push("status = ?");
+      params.push(filter.status);
+    }
+    if (filter?.search) {
+      clauses.push("COALESCE(title, '') LIKE ? ESCAPE '\\'");
+      params.push(`%${escapeLikePattern(filter.search)}%`);
+    }
+    if (filter?.updatedFrom) {
+      clauses.push("updated_at >= ?");
+      params.push(filter.updatedFrom);
+    }
+    if (filter?.updatedTo) {
+      clauses.push("updated_at <= ?");
+      params.push(filter.updatedTo);
+    }
+
+    if (clauses.length === 0) {
+      return { whereClause: "", queryParams: [] };
+    }
+    return {
+      whereClause: `WHERE ${clauses.join(" AND ")}`,
+      queryParams: params,
+    };
   }
 
   /**
@@ -1029,4 +1100,8 @@ export class DatabaseService {
 
     return persisted;
   }
+}
+
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (m) => `\\${m}`);
 }

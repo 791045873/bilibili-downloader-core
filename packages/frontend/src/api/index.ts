@@ -1,7 +1,8 @@
 import type {
-  AiSummaryTaskEntry,
+  AiSummaryTaskStatus,
   DownloadConfig,
   ParseLinkResult,
+  PaginatedAiSummaryTasks,
   PaginatedTasks,
   PaginatedVideos,
   TaskStatusGroup,
@@ -194,8 +195,23 @@ export async function triggerTaskAiSummary(
   });
 }
 
-export async function getAiSummaryTasks(): Promise<AiSummaryTaskEntry[]> {
-  return request("/summary-tasks");
+export async function getAiSummaryTasks(params?: {
+  page?: number;
+  pageSize?: number;
+  status?: AiSummaryTaskStatus;
+  search?: string;
+  updatedFrom?: string;
+  updatedTo?: string;
+}): Promise<PaginatedAiSummaryTasks> {
+  const q = new URLSearchParams({
+    page: String(params?.page ?? 1),
+    pageSize: String(params?.pageSize ?? 20),
+    status: params?.status ?? "all",
+  });
+  if (params?.search) q.set("search", params.search);
+  if (params?.updatedFrom) q.set("updatedFrom", params.updatedFrom);
+  if (params?.updatedTo) q.set("updatedTo", params.updatedTo);
+  return request(`/summary-tasks?${q.toString()}`);
 }
 
 export async function getAiSummaryTaskRawResponse(

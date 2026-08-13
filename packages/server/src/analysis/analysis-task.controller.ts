@@ -10,6 +10,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
@@ -71,8 +72,21 @@ export class AnalysisTaskController {
   }
 
   @Get("/summary-tasks")
-  getAiSummaryTasks() {
-    return this.analysisTriggerService.getAiSummaryTasks();
+  getAiSummaryTasks(
+    @Query("page") page = "1",
+    @Query("pageSize") pageSize = "20",
+    @Query("status") status = "all",
+    @Query("search") search = "",
+    @Query("updatedFrom") updatedFrom = "",
+    @Query("updatedTo") updatedTo = "",
+  ) {
+    return this.analysisTriggerService.getAiSummaryTasksPaginated({
+      ...parsePagination(page, pageSize),
+      status: parseAiSummaryStatus(status),
+      search: search.trim() || undefined,
+      updatedFrom: parseOptionalIso(updatedFrom, "updatedFrom"),
+      updatedTo: parseOptionalIso(updatedTo, "updatedTo"),
+    });
   }
 
   @Get("/summary-tasks/:id/raw-response")
@@ -217,4 +231,51 @@ export class AnalysisTaskController {
 
     return { message: "重新构建已开始" };
   }
+}
+
+const AI_SUMMARY_STATUSES = [
+  "all",
+  "pending",
+  "analyzing",
+  "failed",
+  "completed",
+] as const;
+type AiSummaryStatus = (typeof AI_SUMMARY_STATUSES)[number];
+
+function toPositiveInt(value: string, name: string): number {
+  const n = Number.parseInt(value, 10);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new BadRequestException(`${name} 必须为正整数`);
+  }
+  return n;
+}
+
+function parsePagination(
+  pageRaw: string,
+  pageSizeRaw: string,
+): { page: number; pageSize: number } {
+  return {
+    page: toPositiveInt(pageRaw, "page"),
+    pageSize: toPositiveInt(pageSizeRaw, "pageSize"),
+  };
+}
+
+function parseAiSummaryStatus(value: string): AiSummaryStatus {
+  if ((AI_SUMMARY_STATUSES as readonly string[]).includes(value)) {
+    return value as AiSummaryStatus;
+  }
+  throw new BadRequestException(
+    `status 必须为 ${AI_SUMMARY_STATUSES.join(" / ")}`,
+  );
+}
+
+function parseOptionalIso(value: string, name: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (Number.isNaN(Date.parse(trimmed))) {
+    throw new BadRequestException(`${name} 必须为有效时间`);
+  }
+  return trimmed;
 }

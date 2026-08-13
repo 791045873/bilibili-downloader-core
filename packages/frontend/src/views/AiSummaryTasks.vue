@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import Dialog from "primevue/dialog";
-import type { AiSummaryTaskEntry } from "../types";
+import type { AiSummaryTaskEntry, AiSummaryTaskStatus } from "../types";
 import {
   deleteAiSummaryTask,
   getAiSummaryTaskRawResponse,
@@ -16,6 +16,27 @@ const deleting = ref(false);
 const retriggering = ref(false);
 const error = ref("");
 const tasks = ref<AiSummaryTaskEntry[]>([]);
+
+const page = ref(1);
+const pageSize = ref(20);
+const total = ref(0);
+const hasMore = ref(false);
+const statusFilter = ref<AiSummaryTaskStatus>("all");
+const searchInput = ref("");
+const updatedFrom = ref("");
+const updatedTo = ref("");
+
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(total.value / pageSize.value)),
+);
+
+const hasActiveFilter = computed(
+  () =>
+    statusFilter.value !== "all" ||
+    searchInput.value.trim() !== "" ||
+    updatedFrom.value !== "" ||
+    updatedTo.value !== "",
+);
 
 const rawDialogVisible = ref(false);
 const rawDialogLoading = ref(false);
@@ -112,12 +133,37 @@ function timingRows(task: AiSummaryTaskEntry): string[] {
   return derived !== undefined ? [`总计 ${formatMs(derived)}`] : [];
 }
 
+function toIsoStart(date: string): string | undefined {
+  if (!date) return undefined;
+  const d = new Date(`${date}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
+function toIsoEnd(date: string): string | undefined {
+  if (!date) return undefined;
+  const d = new Date(`${date}T23:59:59.999`);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
 async function loadTasks() {
   error.value = "";
   try {
-    tasks.value = await getAiSummaryTasks();
+    const result = await getAiSummaryTasks({
+      page: page.value,
+      pageSize: pageSize.value,
+      status: statusFilter.value,
+      search: searchInput.value.trim() || undefined,
+      updatedFrom: toIsoStart(updatedFrom.value),
+      updatedTo: toIsoEnd(updatedTo.value),
+    });
+    tasks.value = result.items;
+    total.value = result.total;
+    hasMore.value = result.hasMore;
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : "加载 AI 总结任务失败";
+    tasks.value = [];
+    total.value = 0;
+    hasMore.value = false;
   } finally {
     loading.value = false;
     refreshing.value = false;
@@ -129,6 +175,44 @@ async function refreshTasks() {
   await loadTasks();
 }
 
+function applyFilters() {
+  page.value = 1;
+  void loadTasks();
+}
+
+function handleStatusChange(next: AiSummaryTaskStatus) {
+  if (statusFilter.value === next) return;
+  statusFilter.value = next;
+  applyFilters();
+}
+
+function handleSearchSubmit() {
+  applyFilters();
+}
+
+function handleSearchClear() {
+  if (!searchInput.value) return;
+  searchInput.value = "";
+  applyFilters();
+}
+
+function handleDateChange() {
+  applyFilters();
+}
+
+function handlePageChange(next: number) {
+  if (next < 1 || next > totalPages.value || next === page.value) return;
+  page.value = next;
+  void loadTasks();
+}
+
+function handlePageSizeChange(next: number) {
+  if (next === pageSize.value) return;
+  pageSize.value = next;
+  page.value = 1;
+  void loadTasks();
+}
+
 function isInProgress(task: AiSummaryTaskEntry): boolean {
   return task.status === "pending" || task.status === "analyzing";
 }
@@ -137,6 +221,9 @@ async function handleDelete(task: AiSummaryTaskEntry) {
   deleting.value = true;
   try {
     await deleteAiSummaryTask(task.id);
+    if (tasks.value.length === 1 && page.value > 1) {
+      page.value -= 1;
+    }
     await loadTasks();
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : "删除 AI 总结任务失败";
@@ -222,12 +309,78 @@ onMounted(async () => {
       </button>
     </div>
 
+    <div class="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3">
+      <label class="text-sm text-zinc-500">状态</label>
+      <select
+        class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800"
+        :value="statusFilter"
+        @change="handleStatusChange(($event.target as HTMLSelectElement).value as AiSummaryTaskStatus)"
+      >
+        <option value="all">全部</option>
+        <option value="pending">待处理</option>
+        <option value="analyzing">处理中</option>
+        <option value="completed">完成</option>
+        <option value="failed">失败</option>
+      </select>
+
+      <label class="ml-2 text-sm text-zinc-500">标题</label>
+      <input
+        v-model="searchInput"
+        type="text"
+        placeholder="按视频标题搜索"
+        class="w-48 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800"
+        @keyup.enter="handleSearchSubmit"
+      />
+      <button
+        class="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
+        @click="handleSearchSubmit"
+      >
+        搜索
+      </button>
+      <button
+        v-if="searchInput"
+        class="rounded-md border border-zinc-300 px-2 py-2 text-sm text-zinc-500 hover:bg-zinc-100"
+        @click="handleSearchClear"
+      >
+        清除
+      </button>
+
+      <label class="ml-2 text-sm text-zinc-500">更新自</label>
+      <input
+        v-model="updatedFrom"
+        type="date"
+        class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800"
+        @change="handleDateChange"
+      />
+      <label class="text-sm text-zinc-500">至</label>
+      <input
+        v-model="updatedTo"
+        type="date"
+        class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800"
+        @change="handleDateChange"
+      />
+
+      <div class="ml-auto flex items-center gap-2 text-sm text-zinc-500">
+        <span>每页</span>
+        <select
+          class="rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800"
+          :value="pageSize"
+          @change="handlePageSizeChange(Number(($event.target as HTMLSelectElement).value))"
+        >
+          <option :value="10">10</option>
+          <option :value="20">20</option>
+          <option :value="50">50</option>
+        </select>
+        <span>条，共 {{ total }} 条</span>
+      </div>
+    </div>
+
     <div v-if="error" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
       {{ error }}
     </div>
 
     <div v-if="!loading && tasks.length === 0" class="rounded-lg border border-zinc-200 bg-white p-12 text-center text-zinc-500">
-      暂无 AI 总结任务
+      {{ hasActiveFilter ? "无匹配的 AI 总结任务" : "暂无 AI 总结任务" }}
     </div>
 
     <div v-if="tasks.length > 0" class="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
@@ -321,6 +474,26 @@ onMounted(async () => {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div v-if="tasks.length > 0" class="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">
+      <span>第 {{ page }} / {{ totalPages }} 页</span>
+      <div class="flex gap-2">
+        <button
+          class="rounded-md border border-zinc-300 px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:text-zinc-300"
+          :disabled="page <= 1"
+          @click="handlePageChange(page - 1)"
+        >
+          上一页
+        </button>
+        <button
+          class="rounded-md border border-zinc-300 px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:text-zinc-300"
+          :disabled="!hasMore"
+          @click="handlePageChange(page + 1)"
+        >
+          下一页
+        </button>
+      </div>
     </div>
 
     <Dialog
