@@ -15,3 +15,9 @@
 - 待处理：在网络可稳定拉取 `node:24-alpine` 后重新执行 `pnpm docker:build`，
   完成前端、Node API、Python healthz、SQLite、Docker health、端口与进程退出验证，
   再更新计划并执行独立 closure audit。
+- 2026-08-14 续作：按用户要求优化构建耗时，基础镜像切换为
+  `node:24.16.0-bookworm-slim`；APT/pnpm/pip 使用可覆盖国内源，Python 依赖在独立
+  venv builder 安装，runtime 仅保留 Python、FFmpeg、tini 和生产闭包。
+- 最终镜像已构建成功；`pnpm typecheck`、`pnpm build`、前端、Node API、Python
+  healthz/venv、better-sqlite3、FFmpeg、Docker health、单端口、日志、运行时裁剪、
+  无密钥失败语义和停止清理均已验证。详细证据见 testing 文档，待独立 closure audit。

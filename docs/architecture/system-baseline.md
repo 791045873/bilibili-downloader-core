@@ -51,13 +51,14 @@ packages/
 - pnpm workspace（monorepo 管理）
 - Vite（Frontend 打包）
 - tsc（Core/Adapters/Server 编译）
-- Docker（Server + Frontend 静态资源打包为单容器）
+- Docker（`node:24.16.0-bookworm-slim` 多阶段构建；Server + Frontend 静态资源 +
+  Python venv 视觉代理打包为单容器，runtime 内置 FFmpeg 与 tini）
 
 ## Deployment Shape
 
 - Docker 单容器部署（Server 运行 NestJS + 静态文件服务托管 Frontend 构建产物 + 容器内回环地址运行 Python 视觉薄代理；对外仅暴露 Node/Frontend 端口）
 - NAS 用户通过挂载 volume 将容器内下载目录映射到宿主机
-- 默认下载目录：容器内 `/downloads`，建议挂载到宿主机对应目录
+- 默认下载目录：容器内 `/download`，建议挂载到宿主机对应目录；日志默认写入 `/download/logs`
 
 ## External Platforms
 
