@@ -5,6 +5,7 @@ import { AppModule } from "./app.module.js";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createLogMessage } from "./logging/server-log.util.js";
+import { FileConsoleLogger } from "./logging/file-logger.js";
 
 const PORT = Number.parseInt(process.env.PORT ?? "3100", 10);
 const publicDir = join(process.cwd(), "public");
@@ -12,6 +13,7 @@ const logger = new Logger("Bootstrap");
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.useLogger(new FileConsoleLogger());
 
   if (existsSync(publicDir)) {
     app.useStaticAssets(publicDir);

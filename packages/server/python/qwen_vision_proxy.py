@@ -15,11 +15,33 @@ import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Any, NoReturn
 from urllib.parse import urlparse, unquote
 
 logger = logging.getLogger("qwen_vision_proxy")
+
+
+def configure_file_logging() -> None:
+    log_dir = os.getenv("LOG_DIR")
+    if not log_dir:
+        return
+    max_files = max(1, int(os.getenv("LOG_MAX_FILES", "7")))
+    try:
+        Path(log_dir).mkdir(parents=True, exist_ok=True)
+        file_handler = TimedRotatingFileHandler(
+            Path(log_dir) / "vision-proxy.log",
+            when="midnight",
+            backupCount=max_files,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+        )
+        logging.getLogger().addHandler(file_handler)
+    except OSError:
+        sys.stderr.write(f"[vision-proxy] failed to configure file logging in {log_dir}\n")
 
 
 def missing_dependency_exit(missing_dependency: str, missing_module: str) -> NoReturn:
@@ -277,6 +299,7 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
         stream=sys.stderr,
     )
+    configure_file_logging()
     server = ThreadingHTTPServer((HOST, PORT), VisionProxyHandler)
     logger.info("Qwen vision proxy listening on http://%s:%s/v1/chat/completions", HOST, PORT)
     server.serve_forever()

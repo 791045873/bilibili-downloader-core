@@ -40,7 +40,8 @@ COPY --from=builder /app/packages/frontend/dist ./public
 EXPOSE 3000
 ENV PORT=3000
 ENV OUTPUT_DIR=/download
+ENV LOG_DIR=/download/logs
 ENV MAX_CONCURRENT_DOWNLOADS=10
-RUN mkdir -p /download
+RUN mkdir -p /download /download/logs
 
 CMD ["node", "packages/server/dist/main.js"]

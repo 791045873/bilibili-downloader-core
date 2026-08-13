@@ -231,6 +231,10 @@ QWEN_VISION_PROXY_PORT=8765
 # VISION_PROXY_NO_RESTART：置 1 时禁用 start-vision-proxy 自动重启（运维/脚本逃生门）。
 # 探活：GET http://127.0.0.1:8765/healthz 返回 200 {"status":"ok"}。
 
+# 可选：生产环境文件日志。设置 LOG_DIR 后，Node 服务与 Python 薄代理除终端外同时写文件日志。
+# LOG_DIR：日志目录（Node 写 server-YYYY-MM-DD.log；Python 写 vision-proxy.log，按天轮转出 vision-proxy.log.YYYY-MM-DD）。
+# LOG_MAX_FILES：保留最近 N 天（默认 7）。未设置 LOG_DIR 时行为不变（仅终端）。
+
 # 可选：未启用 Python 薄代理时的云端 URL 备用路径。
 TENCENT_COS_SECRET_ID=AKID...
 TENCENT_COS_SECRET_KEY=...
