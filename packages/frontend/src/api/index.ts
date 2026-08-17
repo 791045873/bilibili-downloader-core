@@ -159,6 +159,7 @@ export async function checkTasks(
     status: string;
     createdAt: string;
     autoSummary?: number;
+    summaryStatus?: string;
   }[]
 > {
   return request("/tasks/check", {
@@ -234,6 +235,50 @@ export async function rebuildAiSummaryTask(
   id: number,
 ): Promise<{ message: string }> {
   return request(`/summary-tasks/${id}/rebuild`, { method: "POST" });
+}
+
+// ==================== LLM 配置 ====================
+
+export interface AnalysisLlmConfig {
+  apiKeyConfigured: boolean;
+  apiKeyMasked: string;
+  baseUrl: string;
+  modelName: string;
+}
+
+export async function getAnalysisConfig(): Promise<AnalysisLlmConfig> {
+  return request("/analysis/config");
+}
+
+export async function updateAnalysisConfig(
+  patch: Partial<{
+    apiKey: string;
+    baseUrl: string;
+    modelName: string;
+  }>,
+): Promise<AnalysisLlmConfig> {
+  return request("/analysis/config", {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
+export interface AnalysisConfigTestResult {
+  ok: boolean;
+  model?: string;
+  message?: string;
+  error?: string;
+}
+
+export async function testAnalysisConfig(patch: {
+  apiKey?: string;
+  baseUrl?: string;
+  modelName?: string;
+}): Promise<AnalysisConfigTestResult> {
+  return request("/analysis/config/test", {
+    method: "POST",
+    body: JSON.stringify(patch),
+  });
 }
 
 // ==================== 认证 ====================

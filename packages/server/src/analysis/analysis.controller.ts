@@ -4,8 +4,10 @@ import {
   Body,
   ConflictException,
   Controller,
+  Get,
   Logger,
   Post,
+  Put,
 } from "@nestjs/common";
 import { isAbsolute, join } from "node:path";
 import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
@@ -16,7 +18,10 @@ import { DatabaseService } from "../database/database.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { DownloadService } from "../download/download.service.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import {
+  createLogMessage,
+  summarizeText,
+} from "../logging/server-log.util.js";
 
 interface AnalysisRequest {
   /** LLM 分析用视频文件绝对路径（低分辨率或唯一可用分辨率） */
@@ -166,6 +171,144 @@ export class AnalysisController {
     return { message: "AI 总结触发中" };
   }
 
+  // ==================== LLM 配置 ====================
+
+  private readonly llmConfigKeys = [
+    "llm.apiKey",
+    "llm.baseUrl",
+    "llm.modelName",
+  ] as const;
+
+  private resolveLlmSettings(): Record<string, string> {
+    const stored = this.databaseService.getSettings([...this.llmConfigKeys]);
+    return {
+      "llm.apiKey": stored["llm.apiKey"] ?? "",
+      "llm.baseUrl": stored["llm.baseUrl"] ?? "",
+      "llm.modelName": stored["llm.modelName"] ?? "",
+    };
+  }
+
+  @Get("/config")
+  getLlmConfigStatus() {
+    const settings = this.resolveLlmSettings();
+    const apiKey = settings["llm.apiKey"];
+    const baseUrl = settings["llm.baseUrl"];
+    const modelName = settings["llm.modelName"];
+    const apiKeyMasked =
+      apiKey.length >= 4
+        ? `****${apiKey.slice(-4)}`
+        : apiKey
+          ? "****"
+          : "";
+
+    return {
+      apiKeyConfigured: apiKey.length > 0,
+      apiKeyMasked,
+      baseUrl,
+      modelName,
+    };
+  }
+
+  @Put("/config")
+  updateLlmConfig(
+    @Body()
+    body: {
+      apiKey?: string;
+      baseUrl?: string;
+      modelName?: string;
+    },
+  ) {
+    const patch: Record<string, string> = {};
+    if (body.apiKey !== undefined) patch["llm.apiKey"] = String(body.apiKey).trim();
+    if (body.baseUrl !== undefined) patch["llm.baseUrl"] = String(body.baseUrl).trim();
+    if (body.modelName !== undefined) patch["llm.modelName"] = String(body.modelName).trim();
+
+    this.databaseService.setSettings(patch);
+
+    this.logger.log(
+      createLogMessage("LLM config updated via frontend", {
+        fields: Object.keys(patch).filter((k) => k !== "llm.apiKey"),
+        apiKeyChanged: "llm.apiKey" in patch,
+      }),
+    );
+
+    return this.getLlmConfigStatus();
+  }
+
+  @Post("/config/test")
+  async testLlmConfig(
+    @Body()
+    body: {
+      apiKey?: string;
+      baseUrl?: string;
+      modelName?: string;
+    },
+  ): Promise<{ ok: boolean; model?: string; message?: string; error?: string }> {
+    const settings = this.resolveLlmSettings();
+    const apiKey =
+      body?.apiKey !== undefined
+        ? String(body.apiKey).trim()
+        : settings["llm.apiKey"];
+    const baseUrl =
+      body?.baseUrl !== undefined
+        ? String(body.baseUrl).trim()
+        : settings["llm.baseUrl"];
+    const modelName =
+      body?.modelName !== undefined
+        ? String(body.modelName).trim()
+        : settings["llm.modelName"];
+
+    if (!apiKey) return { ok: false, error: "缺少 API Key" };
+    if (!baseUrl) return { ok: false, error: "缺少 API 地址" };
+    if (!modelName) return { ok: false, error: "缺少模型" };
+
+    const url = `${baseUrl}/chat/completions`;
+    this.logger.log(
+      createLogMessage("LLM config connectivity test started", {
+        modelName,
+        baseUrl: summarizeText(url),
+        apiKeyProvided: apiKey.length > 0,
+      }),
+    );
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [{ role: "user", content: "ping" }],
+          max_tokens: 8,
+        }),
+      });
+
+      if (!response.ok) {
+        const raw = await response.text().catch(() => response.statusText);
+        return { ok: false, error: `HTTP ${response.status}: ${raw || response.statusText}` };
+      }
+
+      const rawBody = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+        error?: { message?: string };
+      };
+      if (rawBody.error) {
+        return { ok: false, error: `服务返回错误: ${rawBody.error.message || JSON.stringify(rawBody.error)}` };
+      }
+      const content = rawBody.choices?.[0]?.message?.content;
+      if (typeof content !== "string" || content.trim().length === 0) {
+        return { ok: false, error: "调用返回为空，请检查模型名称是否正确" };
+      }
+
+      return { ok: true, model: modelName, message: "连接成功，模型可正常调用" };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: message };
+    }
+  }
+
   private async createOneClickAiSummaryTask(bvid: string, cid: number) {
     try {
       const [resolvedVideo, parsed] = await Promise.all([
@@ -304,23 +447,23 @@ export class AnalysisController {
   }
 
   private getLlmConfig(): LlmConfig {
-    const apiKey = process.env.QWEN_API_KEY;
-    const baseUrl = process.env.QWEN_API_BASE;
-    const modelName = process.env.QWEN_MODEL;
+    const settings = this.resolveLlmSettings();
+    const apiKey = settings["llm.apiKey"];
+    const baseUrl = settings["llm.baseUrl"];
+    const modelName = settings["llm.modelName"];
     const visionProxyUrl = process.env.QWEN_VISION_PROXY_URL;
-    const visionModelName = process.env.QWEN_VISION_MODEL;
     const visionProxyTimeoutMs = parseVisionProxyTimeoutMs(
       process.env.QWEN_VISION_PROXY_TIMEOUT_MS,
     );
 
     if (!apiKey) {
-      throw new BadRequestException("缺少环境变量 QWEN_API_KEY");
+      throw new BadRequestException("缺少 LLM 配置：API Key 未设置");
     }
     if (!baseUrl) {
-      throw new BadRequestException("缺少环境变量 QWEN_API_BASE");
+      throw new BadRequestException("缺少 LLM 配置：API 地址未设置");
     }
     if (!modelName) {
-      throw new BadRequestException("缺少环境变量 QWEN_MODEL");
+      throw new BadRequestException("缺少 LLM 配置：模型未设置");
     }
 
     return {
@@ -328,7 +471,6 @@ export class AnalysisController {
       baseUrl,
       modelName,
       visionProxyUrl,
-      visionModelName,
       visionProxyTimeoutMs,
     };
   }

@@ -205,16 +205,18 @@ server/python/        ‐‐‐→ DashScope Python SDK
 - AI 总结状态以 `ai_summary_task` 为**单一权威来源**（`task.summary_status/summary_output` 不再双写，读取由 `taskSelectSql` 直接 JOIN `ai_summary_task`）；`analysis_sub_task` 改为资源级键 `(bvid, cid, quality)`（部分唯一索引，`task_id` 仅溯源）；summary 输出目录按 `{标题}-{bvid}-{cid}/` 命名（标题完整不截断、非法字符清洗；同资源已存在目录则复用，标题变化不产生孤儿目录，bvid-cid 为稳定锚点）。
 - 启动时执行状态对账：遗留 `created` 子任务与 `pending/analyzing` 总结标 `failed`，避免重启后永久等待。
 
+## 2026-08-15 基线更新
+
+- LLM 配置（API Key / API 地址 / 模型）改为前端设置页配置，存储于 `app_settings` 表（`llm.apiKey` / `llm.baseUrl` / `llm.modelName`）；`getLlmConfig()`（`analysis-trigger.service.ts` 与 `analysis.controller.ts`）仅读 DB，不再回退环境变量 `QWEN_API_KEY` / `QWEN_API_BASE` / `QWEN_MODEL`。
+- 视觉模型不再单独配置，多模态调用复用主模型（`modelName`）。
+- 新增端点：`GET/PUT /api/analysis/config`（key 掩码返回、部分更新、空串清除）、`POST /api/analysis/config/test`（连接测试，完整错误返回）。
+
 ## 环境变量
 
-新增：
+新增（仅视觉代理与日志等基础设施，LLM 账号凭据不走环境变量）：
 
 ```
 # .env
-QWEN_API_KEY=sk-your-key-here
-QWEN_API_BASE=https://dashscope.aliyuncs.com/compatible-mode/v1
-QWEN_MODEL=qwen-3.6-flash
-
 # 可选：本地多模态 Python 薄代理。配置后，多模态选图使用本地截图路径，不上传 COS/OSS。
 QWEN_VISION_PROXY_URL=http://127.0.0.1:8765/v1/chat/completions
 QWEN_VISION_MODEL=qwen3.7-plus
@@ -245,7 +247,7 @@ TENCENT_COS_SIGNED_URL_EXPIRES_SECONDS=3600
 ```
 
 - 读取位置：`packages/server/src/` 的配置模块（NestJS ConfigModule 或 process.env）
-- `QWEN_API_KEY`, `QWEN_API_BASE`, `QWEN_MODEL` 用于文本分析调用
+- API Key / API 地址 / 模型由前端设置页配置并存入 `app_settings` 表，运行时仅读 DB（`getLlmConfig()` 每次分析时读取，修改即时生效）
 - `QWEN_VISION_PROXY_URL`, `QWEN_VISION_MODEL` 透传到 `LlmConfig`，控制多模态调用是否走 Python 薄代理
 - `QWEN_VISION_PROXY_TIMEOUT_MS` 透传到 `LlmConfig.visionProxyTimeoutMs`（默认值由客户端内部兜底，覆盖 AI 总结与手动分析两个调用面）
 - `DASHSCOPE_*`, `QWEN_VISION_PROXY_HOST`, `QWEN_VISION_PROXY_PORT`, `QWEN_VISION_PROXY_MAX_BODY_BYTES`, `QWEN_VISION_PROXY_MAX_CONCURRENCY`, `QWEN_VISION_PROXY_SOCKET_TIMEOUT` 由 Python 薄代理读取

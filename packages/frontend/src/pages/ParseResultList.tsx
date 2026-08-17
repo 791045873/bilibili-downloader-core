@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Checkbox, Input, Modal, Pagination } from "antd";
+import { Button, Checkbox, Input, Modal, Pagination, Select } from "antd";
 import * as api from "../api";
 import { useSettingsStore } from "../stores/settings";
 import { useDownloadQueueStore } from "../stores/downloadQueue";
@@ -24,6 +24,53 @@ interface ListItem {
   queuedTaskId?: number;
   autoSummaryEnabled: boolean;
   highlighted: boolean;
+  taskStatus: string;
+  summaryStatus: string;
+}
+
+type DownloadStatus =
+  | "none"
+  | "created"
+  | "stopped"
+  | "downloading"
+  | "success"
+  | "failed";
+
+type AnalysisStatus =
+  | "none"
+  | "pending"
+  | "analyzing"
+  | "completed"
+  | "failed";
+
+function downloadStatusOf(status: string): DownloadStatus {
+  return (status === "" ? "none" : status) as DownloadStatus;
+}
+
+function analysisStatusOf(status: string): AnalysisStatus {
+  return (status === "" ? "none" : status) as AnalysisStatus;
+}
+
+function downloadBadge(status: string): { label: string; className: string } | null {
+  if (status === "downloading") {
+    return { label: "下载中", className: "text-sky-600" };
+  }
+  if (status === "success") {
+    return { label: "已下载", className: "text-emerald-600" };
+  }
+  return null;
+}
+
+function analysisBadge(
+  status: string,
+): { label: string; className: string } | null {
+  if (status === "pending" || status === "analyzing") {
+    return { label: "正在分析", className: "text-amber-600" };
+  }
+  if (status === "completed") {
+    return { label: "分析完成", className: "text-emerald-600" };
+  }
+  return null;
 }
 
 interface ListQueryData {
@@ -87,6 +134,8 @@ function normalizeSinglePage(
     downloaded: false,
     autoSummaryEnabled: false,
     highlighted: Boolean(currentBvid && currentBvid === video.bvid),
+    taskStatus: "",
+    summaryStatus: "",
   }));
 }
 
@@ -114,6 +163,8 @@ function normalizeVideoPages(
         downloaded: false,
         autoSummaryEnabled: false,
         highlighted,
+        taskStatus: "",
+        summaryStatus: "",
       },
     ];
   }
@@ -132,6 +183,8 @@ function normalizeVideoPages(
     downloaded: false,
     autoSummaryEnabled: false,
     highlighted,
+    taskStatus: "",
+    summaryStatus: "",
   }));
 }
 
@@ -160,6 +213,8 @@ export function Component() {
   const [actionError, setActionError] = useState("");
   const [dirOpen, setDirOpen] = useState(false);
   const [dirValue, setDirValue] = useState("");
+  const [downloadFilter, setDownloadFilter] = useState<DownloadStatus[]>([]);
+  const [analysisFilter, setAnalysisFilter] = useState<AnalysisStatus[]>([]);
 
   const listQuery = useQuery({
     queryKey: [
@@ -272,6 +327,8 @@ export function Component() {
             downloaded: Boolean(task),
             queuedTaskId: task?.id,
             autoSummaryEnabled: (task?.autoSummary ?? 0) === 1,
+            taskStatus: task?.status ?? "",
+            summaryStatus: task?.summaryStatus ?? "",
           };
         });
       }
@@ -298,6 +355,26 @@ export function Component() {
   const title = listQuery.data?.title ?? "解析结果";
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const showPagination = type !== "video";
+
+  const visibleItems = useMemo(
+    () =>
+      items.filter((item) => {
+        if (
+          downloadFilter.length > 0 &&
+          !downloadFilter.includes(downloadStatusOf(item.taskStatus))
+        ) {
+          return false;
+        }
+        if (
+          analysisFilter.length > 0 &&
+          !analysisFilter.includes(analysisStatusOf(item.summaryStatus))
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [items, downloadFilter, analysisFilter],
+  );
 
   function toggleSelect(item: ListItem, checked: boolean) {
     setItems((prev) =>
@@ -330,6 +407,8 @@ export function Component() {
             downloaded: Boolean(task),
             queuedTaskId: task?.id,
             autoSummaryEnabled: (task?.autoSummary ?? 0) === 1,
+            taskStatus: task?.status ?? "",
+            summaryStatus: task?.summaryStatus ?? "",
           };
         }),
       );
@@ -500,8 +579,45 @@ export function Component() {
             </Button>
           </div>
 
+          <div className="rounded-lg border border-zinc-200 bg-white p-4 flex flex-wrap items-center gap-4">
+            <span className="text-sm text-zinc-500">筛选</span>
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="下载状态"
+              size="small"
+              style={{ width: 200 }}
+              value={downloadFilter}
+              options={[
+                { value: "none", label: "无任务" },
+                { value: "created", label: "排队中" },
+                { value: "stopped", label: "已停止" },
+                { value: "downloading", label: "下载中" },
+                { value: "success", label: "已下载" },
+                { value: "failed", label: "下载失败" },
+              ]}
+              onChange={(v) => setDownloadFilter(v ?? [])}
+            />
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="分析状态"
+              size="small"
+              style={{ width: 200 }}
+              value={analysisFilter}
+              options={[
+                { value: "none", label: "无记录" },
+                { value: "pending", label: "等待中" },
+                { value: "analyzing", label: "正在分析" },
+                { value: "completed", label: "分析完成" },
+                { value: "failed", label: "分析失败" },
+              ]}
+              onChange={(v) => setAnalysisFilter(v ?? [])}
+            />
+          </div>
+
           <div>
-            {items.map((item, idx) => (
+            {visibleItems.map((item, idx) => (
               <div
                 key={item.key}
                 className={`rounded-r-lg border border-zinc-200 bg-white p-3 ${groupClass(idx)}`}
@@ -526,11 +642,22 @@ export function Component() {
                       <p className="truncate text-sm font-medium text-zinc-900">
                         {item.displayTitle}
                       </p>
-                      {item.downloaded && (
-                        <span className="text-xs text-emerald-600">
-                          已下载
-                        </span>
-                      )}
+                      {(() => {
+                        const badge = downloadBadge(item.taskStatus);
+                        return badge ? (
+                          <span className={`text-xs ${badge.className}`}>
+                            {badge.label}
+                          </span>
+                        ) : null;
+                      })()}
+                      {(() => {
+                        const badge = analysisBadge(item.summaryStatus);
+                        return badge ? (
+                          <span className={`text-xs ${badge.className}`}>
+                            {badge.label}
+                          </span>
+                        ) : null;
+                      })()}
                       {item.highlighted && (
                         <span className="text-xs text-rose-600">当前视频</span>
                       )}
@@ -566,6 +693,12 @@ export function Component() {
                 </div>
               </div>
             ))}
+
+            {visibleItems.length === 0 && (
+              <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-8 text-center text-sm text-zinc-500">
+                当前筛选条件下没有匹配的视频
+              </div>
+            )}
           </div>
 
           {showPagination && (

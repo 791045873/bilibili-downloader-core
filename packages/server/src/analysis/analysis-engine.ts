@@ -124,7 +124,7 @@ export class AnalysisEngine {
   private ensureLlmClient(): QwenClient {
     if (!this.llmClient) {
       if (!this.llmConfig) {
-        throw new Error("缺少 LLM 配置：QWEN_API_KEY/QWEN_API_BASE/QWEN_MODEL");
+        throw new Error("缺少 LLM 配置：请先在设置页配置 API Key/API 地址/模型");
       }
       this.llmClient = new QwenClient(this.llmConfig, this.httpClient);
     }
@@ -182,7 +182,6 @@ export class AnalysisEngine {
         userContent.push({ type: "text", text: fullSubtitleText });
       }
       const llmResult = await llmClient.multimodalChat({
-        model: "",
         stream: false,
         enable_thinking: false,
         response_format: { type: "json_object" },

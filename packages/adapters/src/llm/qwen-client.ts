@@ -24,7 +24,6 @@ export interface LlmConfig {
   baseUrl: string;
   modelName: string;
   visionProxyUrl?: string;
-  visionModelName?: string;
   visionProxyTimeoutMs?: number;
 }
 
@@ -49,7 +48,6 @@ export interface MultimodalMessage {
 
 /** 多模态聊天请求 */
 export interface MultimodalRequest {
-  model: string;
   messages: MultimodalMessage[];
   stream?: boolean;
   enable_thinking?: boolean;
@@ -141,8 +139,7 @@ export class QwenClient {
 
     const requestBody = {
       ...params,
-      model:
-        params.model || this.config.visionModelName || this.config.modelName,
+      model: this.config.modelName,
     };
 
     if (this.config.visionProxyUrl) {

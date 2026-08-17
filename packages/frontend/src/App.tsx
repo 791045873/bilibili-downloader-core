@@ -49,7 +49,7 @@ export default function App() {
                 登录
               </NavLink>
             ) : (
-              <Space size={8}>
+              <NavLink to="/login" className="flex items-center gap-2 hover:opacity-80">
                 <Avatar
                   size={28}
                   src={imageSrc(user.face)}
@@ -57,7 +57,7 @@ export default function App() {
                   className="border border-zinc-200"
                 />
                 <span className="text-sm text-zinc-600">{user.name}</span>
-              </Space>
+              </NavLink>
             )}
           </nav>
         </div>

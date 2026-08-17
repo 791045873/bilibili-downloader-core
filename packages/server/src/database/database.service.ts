@@ -200,6 +200,13 @@ export class DatabaseService {
       ON ai_summary_task(updated_at DESC);
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      )
+    `);
+
     // 已有数据库升级: ai_summary_task 补充执行耗时列
     try {
       this.db.exec(`ALTER TABLE ai_summary_task ADD COLUMN execution_timing TEXT`);
@@ -603,7 +610,13 @@ export class DatabaseService {
     pairs: { bvid: string; cid: number }[],
   ): Pick<
     TaskRecord,
-    "id" | "bvid" | "cid" | "status" | "createdAt" | "autoSummary"
+    | "id"
+    | "bvid"
+    | "cid"
+    | "status"
+    | "createdAt"
+    | "autoSummary"
+    | "summaryStatus"
   >[] {
     if (pairs.length === 0) return [];
     const placeholders = pairs.map(() => "(?, ?)").join(", ");
@@ -611,13 +624,22 @@ export class DatabaseService {
     return (
       this.db
         .prepare(
-          `SELECT id, bvid, cid, status, createdAt, auto_summary AS autoSummary FROM task
-           WHERE (bvid, cid) IN (${placeholders})
-           ORDER BY createdAt DESC`,
+          `SELECT t.id, t.bvid, t.cid, t.status, t.createdAt, t.auto_summary AS autoSummary,
+                  ast.status AS summaryStatus
+           FROM task t
+           LEFT JOIN ai_summary_task ast ON ast.bvid = t.bvid AND ast.cid = t.cid
+           WHERE (t.bvid, t.cid) IN (${placeholders})
+           ORDER BY t.createdAt DESC`,
         )
         .all(...params) as Pick<
         TaskRecord,
-        "id" | "bvid" | "cid" | "status" | "createdAt" | "autoSummary"
+        | "id"
+        | "bvid"
+        | "cid"
+        | "status"
+        | "createdAt"
+        | "autoSummary"
+        | "summaryStatus"
       >[]
     ).reduce(
       (acc, row) => {
@@ -628,7 +650,13 @@ export class DatabaseService {
       },
       [] as Pick<
         TaskRecord,
-        "id" | "bvid" | "cid" | "status" | "createdAt" | "autoSummary"
+        | "id"
+        | "bvid"
+        | "cid"
+        | "status"
+        | "createdAt"
+        | "autoSummary"
+        | "summaryStatus"
       >[],
     );
   }
@@ -661,6 +689,40 @@ export class DatabaseService {
          LIMIT 1`,
       )
       .get(bvid, cid) as TaskRecord | undefined;
+  }
+
+  // ==================== 应用设置（键值） ====================
+
+  /** 批量读取应用设置，返回 key → value（缺失的 key 不含在结果中） */
+  getSettings(keys: string[]): Record<string, string> {
+    if (keys.length === 0) return {};
+    const placeholders = keys.map(() => "?").join(", ");
+    const rows = this.db
+      .prepare(
+        `SELECT key, value FROM app_settings WHERE key IN (${placeholders})`,
+      )
+      .all(...keys) as { key: string; value: string }[];
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[row.key] = row.value;
+    }
+    return result;
+  }
+
+  /** 批量写入应用设置（upsert），value 为空串视为删除该键 */
+  setSettings(entries: Record<string, string>): void {
+    const upsert = this.db.prepare(`
+      INSERT INTO app_settings (key, value) VALUES (@key, @value)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `);
+    const remove = this.db.prepare(`DELETE FROM app_settings WHERE key = ?`);
+    for (const [key, value] of Object.entries(entries)) {
+      if (value === "") {
+        remove.run(key);
+      } else {
+        upsert.run({ key, value });
+      }
+    }
   }
 
   insertAnalysisSubTask(record: AnalysisSubTaskRecord): number {
