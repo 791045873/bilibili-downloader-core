@@ -11,6 +11,7 @@ import {
   Param,
   Post,
   Query,
+  Body,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
@@ -27,11 +28,15 @@ export class AnalysisTaskController {
   ) {}
 
   @Post("/tasks/:id/summary")
-  async triggerTaskAiSummary(@Param("id") id: string) {
+  async triggerTaskAiSummary(
+    @Param("id") id: string,
+    @Body() body: { promptId?: number } = {},
+  ) {
     const taskId = Number.parseInt(id, 10);
     if (Number.isNaN(taskId)) {
       throw new BadRequestException("无效的任务 ID");
     }
+    const promptId = parseOptionalPromptId(body?.promptId);
 
     const task = this.downloadService.getTaskById(taskId);
     if (!task) {
@@ -60,13 +65,15 @@ export class AnalysisTaskController {
       autoSummary: 1,
     });
 
-    void this.analysisTriggerService.trigger(taskId).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `Task-level AI summary trigger failed for task ${taskId}: ${message}`,
-        err instanceof Error ? err.stack : undefined,
-      );
-    });
+    void this.analysisTriggerService
+      .trigger(taskId, { promptId })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Task-level AI summary trigger failed for task ${taskId}: ${message}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+      });
 
     return { message: "AI 总结触发中" };
   }
@@ -179,13 +186,15 @@ export class AnalysisTaskController {
       autoSummary: 1,
     });
 
-    void this.analysisTriggerService.trigger(task.id).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `AI summary retrigger failed for summary task ${summaryTaskId}: ${message}`,
-        err instanceof Error ? err.stack : undefined,
-      );
-    });
+    void this.analysisTriggerService
+      .trigger(task.id, { promptId: summaryTask.promptId })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `AI summary retrigger failed for summary task ${summaryTaskId}: ${message}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+      });
 
     return { message: "AI 总结触发中" };
   }
@@ -248,6 +257,16 @@ function toPositiveInt(value: string, name: string): number {
     throw new BadRequestException(`${name} 必须为正整数`);
   }
   return n;
+}
+
+function parseOptionalPromptId(value: unknown): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new BadRequestException("promptId 必须为正整数");
+  }
+  return value;
 }
 
 function parsePagination(

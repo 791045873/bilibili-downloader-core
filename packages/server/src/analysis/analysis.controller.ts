@@ -22,6 +22,7 @@ import {
   createLogMessage,
   summarizeText,
 } from "../logging/server-log.util.js";
+import { PromptService } from "./prompt.service.js";
 
 interface AnalysisRequest {
   /** LLM 分析用视频文件绝对路径（低分辨率或唯一可用分辨率） */
@@ -51,11 +52,14 @@ export class AnalysisController {
     private readonly databaseService: DatabaseService,
     private readonly downloadScheduler: DownloadScheduler,
     private readonly downloadService: DownloadService,
+    private readonly promptService: PromptService,
   ) {}
 
   @Post("/run")
-  async runAnalyze(@Body() body: AnalysisRequest) {
+  async runAnalyze(@Body() body: AnalysisRequest & { promptId?: number }) {
     validateRequest(body);
+    const promptId = parseOptionalPromptId(body.promptId);
+    const resolved = this.promptService.resolveForRun(promptId);
     const input: AnalysisInput = {
       videoPath: body.videoPath,
       subtitlePath: body.subtitlePath,
@@ -63,6 +67,7 @@ export class AnalysisController {
       videoTitle: body.videoTitle,
       metadata: body.metadata,
       screenshotVideoPath: body.screenshotVideoPath,
+      systemPrompt: resolved.content,
     };
     this.logger.log(
       createLogMessage("Manual analysis request accepted", {
@@ -74,6 +79,11 @@ export class AnalysisController {
         hasSubtitle: Boolean(body.subtitlePath),
         hasScreenshotVideoPath: Boolean(body.screenshotVideoPath),
         sourceType: body.metadata.type,
+        promptId: resolved.promptId,
+        hasCustomSystemPrompt: Boolean(resolved.content),
+        promptName: resolved.promptId
+          ? this.promptService.get(resolved.promptId)?.name
+          : undefined,
       }),
     );
     const engine = new AnalysisEngine(
@@ -85,15 +95,19 @@ export class AnalysisController {
   }
 
   @Post("/trigger")
-  async triggerAiSummary(@Body() body: { bvid?: string; cid?: number }) {
+  async triggerAiSummary(
+    @Body() body: { bvid?: string; cid?: number; promptId?: number },
+  ) {
     if (!body?.bvid || typeof body.cid !== "number") {
       throw new BadRequestException("bvid/cid 必填");
     }
+    const promptId = parseOptionalPromptId(body.promptId);
 
     this.logger.log(
       createLogMessage("AI summary trigger requested", {
         bvid: body.bvid,
         cid: body.cid,
+        promptId,
       }),
     );
 
@@ -111,6 +125,7 @@ export class AnalysisController {
       const created = await this.createOneClickAiSummaryTask(
         body.bvid,
         body.cid,
+        promptId,
       );
       return {
         message: `${created.message}，下载完成后将自动触发 AI 总结`,
@@ -167,7 +182,7 @@ export class AnalysisController {
       }),
     );
 
-    await this.analysisTriggerService.trigger(task.id!);
+    await this.analysisTriggerService.trigger(task.id!, { promptId });
     return { message: "AI 总结触发中" };
   }
 
@@ -309,7 +324,11 @@ export class AnalysisController {
     }
   }
 
-  private async createOneClickAiSummaryTask(bvid: string, cid: number) {
+  private async createOneClickAiSummaryTask(
+    bvid: string,
+    cid: number,
+    promptId?: number,
+  ) {
     try {
       const [resolvedVideo, parsed] = await Promise.all([
         this.downloadService.getVideoInfo(bvid),
@@ -328,6 +347,7 @@ export class AnalysisController {
           cid,
           quality: highestQuality.id,
           availableQualityCount: parsed.videoQualityList.length,
+          promptId,
         }),
       );
 
@@ -344,6 +364,7 @@ export class AnalysisController {
         quality: highestQuality.id,
         codec: highestQuality.codecList[0],
         autoSummary: true,
+        promptId,
       });
 
       if (
@@ -480,6 +501,16 @@ function parseVisionProxyTimeoutMs(value: string | undefined): number | undefine
   if (!value) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseOptionalPromptId(value: unknown): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new BadRequestException("promptId 必须为正整数");
+  }
+  return value;
 }
 
 function validateRequest(body: AnalysisRequest): void {

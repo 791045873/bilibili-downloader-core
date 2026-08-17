@@ -18,6 +18,7 @@ import { DownloadService } from "../download/download.service.js";
 import { NotificationService } from "../notification/notification.service.js";
 import { sanitizeFileName } from "../download/file-naming.js";
 import { createLogMessage } from "../logging/server-log.util.js";
+import { PromptService } from "./prompt.service.js";
 
 /** AI 总结任务执行耗时明细 */
 export interface AiSummaryExecutionTiming {
@@ -60,6 +61,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     private readonly downloadService: DownloadService,
     private readonly notificationService: NotificationService,
     private readonly analysisVideoResolver: AnalysisVideoResolver,
+    private readonly promptService: PromptService,
   ) {
     this.llmVideoDir = process.env.ANALYSIS_LLM_VIDEO_DIR
       ? resolve(process.env.ANALYSIS_LLM_VIDEO_DIR)
@@ -169,10 +171,14 @@ export class AnalysisTriggerService implements OnModuleInit {
     };
   }
 
-  async trigger(taskId: number): Promise<void> {
+  async trigger(
+    taskId: number,
+    options?: { promptId?: number },
+  ): Promise<void> {
     this.logger.log(
       createLogMessage("Analysis trigger started", {
         taskId,
+        explicitPromptId: options?.promptId,
       }),
     );
 
@@ -230,12 +236,22 @@ export class AnalysisTriggerService implements OnModuleInit {
       return;
     }
 
+    // 提示词解析：显式 → task.prompt_id → 创作者绑定（按 mid）→ 系统默认 → 内置兜底
+    const resolvedPromptId = await this.resolvePromptId(task, options?.promptId);
+    this.logger.log(
+      createLogMessage("Analysis trigger resolved prompt", {
+        taskId,
+        promptId: resolvedPromptId,
+      }),
+    );
+
     // 原子认领：pending/analyzing 进行中直接拒绝，防并发双跑
     const claim = this.db.claimAiSummaryTask({
       bvid: task.bvid,
       cid: task.cid,
       title: task.title,
       sourceTaskId: task.id,
+      promptId: resolvedPromptId,
     });
     if (!claim.claimed) {
       this.logger.log(
@@ -273,6 +289,63 @@ export class AnalysisTriggerService implements OnModuleInit {
     }
 
     await this.runAnalysis(taskId, new Date().toISOString());
+  }
+
+  /**
+   * 提示词解析优先级：显式 promptId → 下载任务 prompt_id → 创作者绑定（按 mid）→ 系统默认。
+   * 某层引用的提示词不存在（已删除）则跳过该层继续向下；返回 undefined 由引擎回退内置内容。
+   * mid 解析失败（B 站接口异常）时跳过创作者绑定层。
+   */
+  private async resolvePromptId(
+    task: TaskRecord,
+    explicit?: number,
+  ): Promise<number | undefined> {
+    if (explicit !== undefined && this.promptService.get(explicit)) {
+      return explicit;
+    }
+    if (
+      task.promptId !== undefined &&
+      this.promptService.get(task.promptId)
+    ) {
+      return task.promptId;
+    }
+    if (task.bvid) {
+      const mid = await this.resolveCreatorMid(task.bvid);
+      if (mid !== undefined) {
+        const binding = this.promptService.getCreatorBinding(mid);
+        if (binding && this.promptService.get(binding.promptId)) {
+          return binding.promptId;
+        }
+      }
+    }
+    const defaultId = this.promptService.getDefaultPromptId();
+    if (defaultId !== undefined && this.promptService.get(defaultId)) {
+      return defaultId;
+    }
+    return undefined;
+  }
+
+  /** 解析视频创作者 mid；失败返回 undefined（跳过创作者绑定层） */
+  private async resolveCreatorMid(bvid: string): Promise<number | undefined> {
+    try {
+      const resolved = await this.downloadService.getVideoInfo(bvid);
+      const mid = resolved.videoInfo?.upperMid;
+      if (typeof mid === "number" && Number.isFinite(mid) && mid > 0) {
+        return mid;
+      }
+      return undefined;
+    } catch (err) {
+      this.logger.warn(
+        createLogMessage(
+          "Creator mid resolution failed, skipping creator prompt binding",
+          {
+            bvid,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        ),
+      );
+      return undefined;
+    }
   }
 
   private async runAnalysis(taskId: number, now: string): Promise<void> {
@@ -347,6 +420,15 @@ export class AnalysisTriggerService implements OnModuleInit {
       const summaryDir = this.resolveSummaryDir(task);
       const metadataVideoUrl = `https://www.bilibili.com/video/${effectiveBvid}`;
 
+      const summaryRecord = this.db.getAiSummaryTaskByResource(
+        effectiveBvid,
+        effectiveCid,
+      );
+      const resolvedPromptId = summaryRecord?.promptId;
+      const resolvedPrompt = resolvedPromptId
+        ? this.promptService.get(resolvedPromptId)
+        : undefined;
+
       const input: AnalysisInput = {
         videoPath: llmVideoPath,
         screenshotVideoPath,
@@ -359,7 +441,18 @@ export class AnalysisTriggerService implements OnModuleInit {
           bvid: effectiveBvid,
           cid: effectiveCid,
         },
+        systemPrompt: resolvedPrompt?.content,
       };
+
+      this.logger.log(
+        createLogMessage("Analysis prompt resolved for execution", {
+          taskId,
+          bvid: effectiveBvid,
+          cid: effectiveCid,
+          promptId: resolvedPromptId,
+          promptName: resolvedPrompt?.name,
+        }),
+      );
 
       const engine = new AnalysisEngine(
         this.getLlmConfig(),

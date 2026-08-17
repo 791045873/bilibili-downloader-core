@@ -13,3 +13,10 @@ export type {
   ScreenshotSourceResolverInput,
   ScreenshotSourceResolveResult,
 } from "./analysis-video-resolver.js";
+export { PromptController } from "./prompt.controller.js";
+export { PromptService } from "./prompt.service.js";
+export {
+  AI_PROMPT_FORMAT_SNIPPET,
+  BUILTIN_AI_PROMPT_CONTENT,
+  BUILTIN_AI_PROMPT_NAME,
+} from "./prompt-template.js";

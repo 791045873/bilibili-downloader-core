@@ -194,6 +194,7 @@ export interface AiSummaryTaskEntry {
   cid: number;
   title?: string;
   sourceTaskId?: number;
+  promptId?: number | null;
   status: string;
   summaryOutput?: string | null;
   errorMessage?: string | null;
@@ -218,6 +219,23 @@ export interface PaginatedAiSummaryTasks {
   pageSize: number;
   total: number;
   hasMore: boolean;
+}
+
+// ---- AI 总结提示词 ----
+
+export interface AiPrompt {
+  id: number;
+  name: string;
+  content: string;
+  isSystem: number;
+  isDefault: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PromptCreatorBinding {
+  mid: number;
+  promptId: number;
 }
 
 // ---- 设置 ----

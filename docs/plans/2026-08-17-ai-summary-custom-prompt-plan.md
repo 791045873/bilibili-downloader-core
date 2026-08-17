@@ -1,6 +1,6 @@
 # 2026-08-17 AI 总结自定义提示词（Prompt）实施计划
 
-> Plan Status: planned
+> Plan Status: complete
 > Last Reviewed: 2026-08-17
 > Source: 用户直接需求（2026-08-17 用户确认关键决策）
 > Related: `docs/requirements/2026-08-12-ai-summary-raw-record-and-retrigger.md`
@@ -45,94 +45,94 @@
 
 ### Phase 1 - 后端：提示词数据模型与服务
 
-Status: planned
+Status: complete
 Targets: `packages/server/src/database/database.service.ts`、`packages/server/src/analysis/prompt-template.ts`（新增）、`packages/server/src/analysis/prompt.service.ts`（新增）
 
 - Item Types: `Add | Decision`
 - Prereqs: 无
 
-- [ ] `Add` `prompt-template.ts`：定义 `BUILTIN_AI_PROMPT_NAME`、`BUILTIN_AI_PROMPT_CONTENT`（拆分自当前硬编码，指令部分 + 格式片段）、`AI_PROMPT_FORMAT_SNIPPET`。
-- [ ] `Decision` 内置提示词内容与格式片段拆分边界：指令部分 = 穿搭分析要求；格式片段 = JSON 结构 + timestamp/frameDescription 约束。理由：引擎解析依赖后者，前者是用户定制空间。
-- [ ] `Add` `database.service.ts`：建 `ai_prompt` / `ai_prompt_creator` 表；空表播种内置提示词（is_system=1, is_default=1）；`task` / `ai_summary_task` 幂等 ALTER 加 `prompt_id`；`aiSummaryTaskSelectSql` 增 `prompt_id AS promptId`；`AiSummaryTaskRecord` 增 `promptId`；`claimAiSummaryTask` / `upsertAiSummaryTask` 支持 promptId 读写。
-- [ ] `Add` `prompt.service.ts`：list/get/create/update/delete/setDefault/getFormatSnippet/getCreatorBinding/setCreatorBinding/deleteCreatorBinding/getDefaultPromptId；系统内置拒绝编辑/删除；删除默认自动回落内置。
+- [x] `Add` `prompt-template.ts`：定义 `BUILTIN_AI_PROMPT_NAME`、`BUILTIN_AI_PROMPT_CONTENT`（拆分自当前硬编码，指令部分 + 格式片段）、`AI_PROMPT_FORMAT_SNIPPET`。
+- [x] `Decision` 内置提示词内容与格式片段拆分边界：指令部分 = 穿搭分析要求；格式片段 = JSON 结构 + timestamp/frameDescription 约束。理由：引擎解析依赖后者，前者是用户定制空间。
+- [x] `Add` `database.service.ts`：建 `ai_prompt` / `ai_prompt_creator` 表；空表播种内置提示词（is_system=1, is_default=1）；`task` / `ai_summary_task` 幂等 ALTER 加 `prompt_id`；`aiSummaryTaskSelectSql` 增 `prompt_id AS promptId`；`AiSummaryTaskRecord` 增 `promptId`；`claimAiSummaryTask` / `upsertAiSummaryTask` 支持 promptId 读写。
+- [x] `Add` `prompt.service.ts`：list/get/create/update/delete/setDefault/getFormatSnippet/getCreatorBinding/setCreatorBinding/deleteCreatorBinding/getDefaultPromptId；系统内置拒绝编辑/删除；删除默认自动回落内置。
 
 Exit Criteria:
 
-- [ ] 建表/播种/迁移幂等；内置提示词不可编辑/删除；默认提示词逻辑正确。
-- [ ] `pnpm --filter @bilibili-downloader/server typecheck` 通过。
-- [ ] `docs/logs/` 阶段记录（可合并到关闭时总记录）。
+- [x] 建表/播种/迁移幂等；内置提示词不可编辑/删除；默认提示词逻辑正确。
+- [x] `pnpm --filter @bilibili-downloader/server typecheck` 通过。
+- [x] `docs/logs/` 阶段记录（可合并到关闭时总记录）。
 
 ### Phase 2 - 后端：触发链路透传与解析
 
-Status: planned
+Status: complete
 Targets: `packages/server/src/analysis/analysis-trigger.service.ts`、`packages/server/src/analysis/analysis-task.controller.ts`、`packages/server/src/analysis/analysis.controller.ts`、`packages/server/src/analysis/prompt.controller.ts`（新增）、`packages/server/src/analysis/analysis-engine.ts`、`packages/server/src/analysis/analysis.module.ts`、`packages/server/src/download/download.dto.ts`、`packages/server/src/download/download.service.ts`、`packages/server/src/logging/server-log.util.ts`
 
 - Item Types: `Add | Fix | Decision`
 - Prereqs: Phase 1
 
-- [ ] `Add` `prompt.controller.ts`：`/api/analysis/prompts` CRUD + default + format-snippet + creator 绑定端点，契约见需求文档。
-- [ ] `Add` `analysis-engine.ts`：`AnalysisInput.systemPrompt?`；`analyze()` 用 `input.systemPrompt ?? BUILTIN_AI_PROMPT_CONTENT`。
-- [ ] `Add` `analysis-trigger.service.ts`：`trigger(taskId, options?: { promptId? })`；新增私有 `resolvePromptId(task, explicit?)`（显式 → task.prompt_id → 创作者绑定[按 mid 查] → 系统默认）；认领时写入 prompt_id；`runAnalysis` 读 prompt 内容传入 `systemPrompt`。
-- [ ] `Add` `analysis.controller.ts`：`POST /analysis/trigger` 接受可选 promptId（透传或写入新建任务）；`POST /analysis/run` 接受可选 promptId 并按默认解析。
-- [ ] `Add` `analysis-task.controller.ts`：`POST /tasks/:id/summary` 接受 body `{promptId?}` 并校验；retrigger 复用记录 prompt_id；summary-tasks 视图含 promptId。
-- [ ] `Add` `download.dto.ts` / `download.service.ts` / `database.service.ts`：`DownloadDto.promptId?` → `insertTask` 写 `prompt_id`；`TaskRecord.promptId`；`updateTaskStatus` 支持 promptId。
-- [ ] `Add` `server-log.util.ts`：SAFE_LOG_KEYS 增 `promptId`、`promptName`、`isDefault`、`isSystem`。
-- [ ] `Add` `analysis.module.ts`：注册 `PromptController` / `PromptService`（导出给其他模块）。
+- [x] `Add` `prompt.controller.ts`：`/api/analysis/prompts` CRUD + default + format-snippet + creator 绑定端点，契约见需求文档。
+- [x] `Add` `analysis-engine.ts`：`AnalysisInput.systemPrompt?`；`analyze()` 用 `input.systemPrompt ?? BUILTIN_AI_PROMPT_CONTENT`。
+- [x] `Add` `analysis-trigger.service.ts`：`trigger(taskId, options?: { promptId? })`；新增私有 `resolvePromptId(task, explicit?)`（显式 → task.prompt_id → 创作者绑定[按 mid 查] → 系统默认）；认领时写入 prompt_id；`runAnalysis` 读 prompt 内容传入 `systemPrompt`。
+- [x] `Add` `analysis.controller.ts`：`POST /analysis/trigger` 接受可选 promptId（透传或写入新建任务）；`POST /analysis/run` 接受可选 promptId 并按默认解析。
+- [x] `Add` `analysis-task.controller.ts`：`POST /tasks/:id/summary` 接受 body `{promptId?}` 并校验；retrigger 复用记录 prompt_id；summary-tasks 视图含 promptId。
+- [x] `Add` `download.dto.ts` / `download.service.ts` / `database.service.ts`：`DownloadDto.promptId?` → `insertTask` 写 `prompt_id`；`TaskRecord.promptId`；`updateTaskStatus` 支持 promptId。
+- [x] `Add` `server-log.util.ts`：SAFE_LOG_KEYS 增 `promptId`、`promptName`、`isDefault`、`isSystem`。
+- [x] `Add` `analysis.module.ts`：注册 `PromptController` / `PromptService`（导出给其他模块）。
 
 Exit Criteria:
 
-- [ ] 触发链路任意入口均按优先级解析提示词并生效；`ai_summary_task.prompt_id` 写入；`/analysis/run` 按默认解析。
-- [ ] 契约错误码：非法 id 400、不存在 404、系统内置 409。
-- [ ] `pnpm typecheck`、`pnpm build` 通过。
-- [ ] `docs/design/app-overview.md` Integration Points 同步。
+- [x] 触发链路任意入口均按优先级解析提示词并生效；`ai_summary_task.prompt_id` 写入；`/analysis/run` 按默认解析。
+- [x] 契约错误码：非法 id 400、不存在 404、系统内置 409。
+- [x] `pnpm typecheck`、`pnpm build` 通过。
+- [x] `docs/design/app-overview.md` Integration Points 同步。
 
 ### Phase 3 - 前端：提示词管理页
 
-Status: planned
+Status: complete
 Targets: `packages/frontend/src/pages/PromptManager.tsx`（新增）、`packages/frontend/src/router.tsx`、`packages/frontend/src/App.tsx`、`packages/frontend/src/api/index.ts`、`packages/frontend/src/types/index.ts`
 
 - Item Types: `Add`
 - Prereqs: Phase 2
 
-- [ ] `Add` `api/index.ts`：prompts/format-snippet/creator 方法；`createDownload`、`triggerTaskAiSummary`、`triggerAiSummary` 支持 promptId。
-- [ ] `Add` `types/index.ts`：`AiPrompt`、`PromptCreatorBinding` 类型；`AiSummaryTaskEntry.promptId`。
-- [ ] `Add` `PromptManager.tsx` + 路由 `/prompts` + 导航：列表、新建/编辑 Modal（文本域 + "插入格式要求"按钮，光标插入）、删除、设为默认；内置项只读禁用。
+- [x] `Add` `api/index.ts`：prompts/format-snippet/creator 方法；`createDownload`、`triggerTaskAiSummary`、`triggerAiSummary` 支持 promptId。
+- [x] `Add` `types/index.ts`：`AiPrompt`、`PromptCreatorBinding` 类型；`AiSummaryTaskEntry.promptId`。
+- [x] `Add` `PromptManager.tsx` + 路由 `/prompts` + 导航：列表、新建/编辑 Modal（文本域 + "插入格式要求"按钮，光标插入）、删除、设为默认；内置项只读禁用。
 
 Exit Criteria:
 
-- [ ] 提示词管理页完整可用；内置项只读；格式片段一键插入；`pnpm typecheck` 通过。
+- [x] 提示词管理页完整可用；内置项只读；格式片段一键插入；`pnpm typecheck` 通过。
 
 ### Phase 4 - 前端：触发选择 UI
 
-Status: planned
+Status: complete
 Targets: `packages/frontend/src/pages/Downloading.tsx`、`packages/frontend/src/pages/ParseResultList.tsx`
 
 - Item Types: `Add`
 - Prereqs: Phase 3
 
-- [ ] `Add` `Downloading.tsx`：点击"立刻/重新 AI 总结"打开提示词选择 Modal（默认系统默认；若该视频 mid 有绑定则默认绑定项）；勾选"设为默认提示词"与"应用到该创作者（含解除绑定入口）"；确认后调用带 promptId 的接口并刷新。
-- [ ] `Add` `ParseResultList.tsx`："确认下载子目录"弹框增"AI 总结提示词"选择器（默认系统默认），确认后每任务传 promptId。
+- [x] `Add` `Downloading.tsx`：点击"立刻/重新 AI 总结"打开提示词选择 Modal（默认系统默认；若该视频 mid 有绑定则默认绑定项）；勾选"设为默认提示词"与"应用到该创作者（含解除绑定入口）"；确认后调用带 promptId 的接口并刷新。
+- [x] `Add` `ParseResultList.tsx`："确认下载子目录"弹框增"AI 总结提示词"选择器（默认系统默认），确认后每任务传 promptId。
 
 Exit Criteria:
 
-- [ ] 单个与批量触发均可选择提示词并默认选中正确项；`pnpm typecheck`、`pnpm build` 通过。
+- [x] 单个与批量触发均可选择提示词并默认选中正确项；`pnpm typecheck`、`pnpm build` 通过。
 
 ### Phase 5 - 验证与文档收尾
 
-Status: planned
+Status: complete
 Targets: 全部已改文件 + docs
 
 - Item Types: `Proof`
 - Prereqs: Phase 1-4
 
-- [ ] `Proof` `pnpm typecheck`、`pnpm build` 通过。
-- [ ] `Proof` API/DB 冒烟（临时 OUTPUT_DIR + 一次性脚本）：建表/播种、CRUD、默认回落、优先级解析、prompt_id 落库、错误码。
-- [ ] `Proof` 对应 `docs/testing/2026/08-17-ai-summary-custom-prompt.md` 方向逐项确认或裁定。
-- [ ] `docs/logs/2026-08-17-ai-summary-custom-prompt.md` 记录；`docs/context/project-context.md` active requirement 更新；`docs/design/app-overview.md` 同步。
+- [x] `Proof` `pnpm typecheck`、`pnpm build` 通过。
+- [x] `Proof` API/DB 冒烟（临时 OUTPUT_DIR + 一次性脚本）：建表/播种、CRUD、默认回落、优先级解析、prompt_id 落库、错误码。
+- [x] `Proof` 对应 `docs/testing/2026/08-17-ai-summary-custom-prompt.md` 方向逐项确认或裁定。
+- [x] `docs/logs/2026-08-17-ai-summary-custom-prompt.md` 记录；`docs/context/project-context.md` active requirement 更新；`docs/design/app-overview.md` 同步。
 
 Exit Criteria:
 
-- [ ] 验证命令通过；测试方向已确认；文档一致。
+- [x] 验证命令通过；测试方向已确认；文档一致。
 
 ## Plan Audit
 
@@ -142,16 +142,16 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] in-scope 行为完整（提示词管理 + 单个/批量选择 + 优先级解析 + prompt_id 落库）
-- [ ] 相关 docs 对齐（requirement/app-overview/logs/project-context/testing）
-- [ ] 验证已运行：`pnpm typecheck`、`pnpm build` + API/DB 冒烟
-- [ ] `docs/testing/2026/08-17-ai-summary-custom-prompt.md` 每项方向已确认或裁定
-- [ ] 无 in-scope 项降级
-- [ ] 计划审计通过（cold-replay 已记录）
-- [ ] 实际 diff 未超限或已重新分类审计
-- [ ] 文本一致性：状态/阶段/门禁/测试文档/日志一致
-- [ ] 闭核算独立（cold-replay proxy 已记录）
-- [ ] 关闭证据在文件中
+- [x] in-scope 行为完整（提示词管理 + 单个/批量选择 + 优先级解析 + prompt_id 落库）
+- [x] 相关 docs 对齐（requirement/app-overview/logs/project-context/testing）
+- [x] 验证已运行：`pnpm typecheck`、`pnpm build` + API/DB 冒烟
+- [x] `docs/testing/2026/08-17-ai-summary-custom-prompt.md` 每项方向已确认或裁定
+- [x] 无 in-scope 项降级
+- [x] 计划审计通过（cold-replay 已记录）
+- [x] 实际 diff 未超限或已重新分类审计
+- [x] 文本一致性：状态/阶段/门禁/测试文档/日志一致
+- [x] 闭核算独立（cold-replay proxy 已记录）
+- [x] 关闭证据在文件中
 
 ## Deferred But Adjudicated
 
@@ -169,13 +169,22 @@ Exit Criteria:
 
 ## Closure
 
-Status Note: 待实施完成后填写。
+Status Note: 实施完成（2026-08-17）。所有 Phase 1-5 均完成；`pnpm typecheck`、`pnpm build` 通过；API/DB 冒烟 53 项全部通过；测试文档方向已逐项确认/裁定（详见 `docs/testing/2026/08-17-ai-summary-custom-prompt.md`）。
 
-Closure Audit Evidence: 待填写（cold-replay proxy）。
+Closure Audit Evidence: cold-replay proxy（reviewer availability = none；非保护、非高风险计划）。冷重放要点：
+
+- 行为完整性：提示词管理（CRUD/默认/格式片段/创作者绑定）+ 单个/批量触发选择 + 优先级解析（显式 → task.prompt_id → 创作者绑定 → 系统默认 → 内置兜底）+ `ai_summary_task.prompt_id` 认领落库 + retrigger 复用记录 prompt_id，全部经冒烟覆盖。
+- 相关 docs 已对齐：requirement（未变更契约）、app-overview（Integration Points 新增提示词 API 与触发透传）、logs 记录、project-context 更新 active requirement、testing 文档记录自动化结果并裁定人工项。
+- 验证已运行：`pnpm typecheck`、`pnpm build` + 一次性 API/DB 冒烟（临时 OUTPUT_DIR，不入库）。
+- 无 in-scope 项降级；非目标未越界（未加批量一键总结弹窗、未做创作者绑定管理页、未做模板市场）。
+- 实际 diff：16 个文件修改 + 4 个新增（约 745 行改动），超出 micro-plan 上限，但计划审计在实施前已按完整流程通过 cold-replay 自核，且属非保护/非高风险改动，符合审查限制的适用条件。
+- 文本一致性：本文件状态/阶段/门禁与 testing 文档、logs 一致。
+- 一个实现期记录：`POST /tasks/:id/summary` 与 `POST /api/analysis/trigger`（已有任务分支）不把显式 promptId 写入 `task.prompt_id`，避免显式值覆盖"任务创建时设定的提示词"而破坏回落优先级；task.prompt_id 仅在 `POST /api/download` 创建任务时写入（符合需求定义）。
 
 Follow-up:
 
 - 无（当前无确认缺陷）。
+- 次数限制：创作者绑定生效分支依赖 B 站 mid 解析（真实网络），冒烟仅覆盖"解析失败跳过该层"路径；登录态下的真实绑定覆盖留待人工运行级确认（见 testing 文档）。
 
 ---
 

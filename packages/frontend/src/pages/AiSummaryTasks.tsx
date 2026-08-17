@@ -443,20 +443,6 @@ export function Component() {
           }
           className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800"
         />
-
-        <div className="ml-auto flex items-center gap-2 text-sm text-zinc-500">
-          <span>每页</span>
-          <Select
-            value={pageSize}
-            options={pageSizeOptions}
-            onChange={(v) => {
-              setPageSize(v);
-              setPage(1);
-            }}
-            style={{ width: 80 }}
-          />
-          <span>条，共 {total} 条</span>
-        </div>
       </div>
 
       {error && (

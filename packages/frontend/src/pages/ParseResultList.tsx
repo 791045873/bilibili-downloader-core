@@ -5,7 +5,7 @@ import { Button, Checkbox, Input, Modal, Pagination, Select } from "antd";
 import * as api from "../api";
 import { useSettingsStore } from "../stores/settings";
 import { useDownloadQueueStore } from "../stores/downloadQueue";
-import type { VideoPage, VideoSummary } from "../types";
+import type { AiPrompt, VideoPage, VideoSummary } from "../types";
 
 type ListType = "user-videos" | "ugc-season" | "favorites" | "video";
 
@@ -213,6 +213,8 @@ export function Component() {
   const [actionError, setActionError] = useState("");
   const [dirOpen, setDirOpen] = useState(false);
   const [dirValue, setDirValue] = useState("");
+  const [queuePromptList, setQueuePromptList] = useState<AiPrompt[]>([]);
+  const [queuePromptId, setQueuePromptId] = useState<number>();
   const [downloadFilter, setDownloadFilter] = useState<DownloadStatus[]>([]);
   const [analysisFilter, setAnalysisFilter] = useState<AnalysisStatus[]>([]);
 
@@ -419,7 +421,19 @@ export function Component() {
 
   function openDirDialog() {
     setDirValue("");
+    setQueuePromptId(undefined);
     setDirOpen(true);
+    void api
+      .getPrompts()
+      .then((result) => {
+        setQueuePromptList(result.items);
+        const defaultPrompt =
+          result.items.find((p) => p.isDefault === 1) ?? result.items[0];
+        setQueuePromptId(defaultPrompt?.id);
+      })
+      .catch(() => {
+        setQueuePromptList([]);
+      });
   }
 
   async function doAddToQueue(outputPath: string) {
@@ -439,6 +453,7 @@ export function Component() {
             fileNameTemplate: settings.defaultFileNameTemplate,
             outputPath,
             autoSummary: item.autoSummaryEnabled,
+            promptId: queuePromptId,
           })
           .catch(() => ({ id: -1, message: "" })),
       );
@@ -751,6 +766,22 @@ export function Component() {
           {!dirValue.trim() && (
             <p className="text-xs text-red-600">目录不能为空</p>
           )}
+          <label className="text-sm text-zinc-600">
+            AI 总结提示词（写入选中的下载任务，AI 总结开启时生效）
+          </label>
+          <Select
+            value={queuePromptId}
+            onChange={(v) => setQueuePromptId(v)}
+            options={queuePromptList.map((p) => ({
+              label:
+                p.name +
+                (p.isDefault === 1 ? "（默认）" : "") +
+                (p.isSystem === 1 ? "（内置）" : ""),
+              value: p.id,
+            }))}
+            placeholder="加载提示词..."
+            style={{ width: "100%" }}
+          />
         </div>
       </Modal>
     </div>

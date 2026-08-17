@@ -15,6 +15,8 @@ export class DownloadDto {
   subtitleLang?: string;
   /** 下载完成后自动触发 AI 总结 */
   autoSummary?: boolean;
+  /** 下载任务显式选中的提示词（下载完成后自动总结时使用） */
+  promptId?: number;
 }
 
 /** 独立单视频下载请求（流已选好） */

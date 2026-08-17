@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Progress, Select, Pagination } from "antd";
+import { Button, Checkbox, Modal, Progress, Select, Pagination } from "antd";
 import * as api from "../api";
-import type { TaskEntry, TaskStatusGroup } from "../types";
+import type {
+  AiPrompt,
+  PromptCreatorBinding,
+  TaskEntry,
+  TaskStatusGroup,
+} from "../types";
 
 const statusGroupOptions = [
   { label: "全部任务", value: "all" },
@@ -235,6 +240,25 @@ export function Component() {
   const [actionError, setActionError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryTask, setSummaryTask] = useState<TaskEntry | null>(null);
+  const [summaryPrompts, setSummaryPrompts] = useState<AiPrompt[]>([]);
+  const [summaryPromptId, setSummaryPromptId] = useState<number>();
+  const [summarySetDefault, setSummarySetDefault] = useState(false);
+  const [summaryApplyCreator, setSummaryApplyCreator] = useState(false);
+  const [summaryUnbind, setSummaryUnbind] = useState(false);
+  const [summaryMid, setSummaryMid] = useState<number>();
+  const [summaryUpperName, setSummaryUpperName] = useState<string>();
+  const [summaryBinding, setSummaryBinding] =
+    useState<PromptCreatorBinding | null>(null);
+  const [summaryModalLoading, setSummaryModalLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
+
+  const promptsQuery = useQuery({
+    queryKey: ["prompts"],
+    queryFn: () => api.getPrompts(),
+  });
+
   const listQuery = useQuery({
     queryKey: ["tasks", page, pageSize, statusGroup],
     queryFn: () => api.getTasks({ page, pageSize, statusGroup }),
@@ -295,18 +319,105 @@ export function Component() {
     }
   }
 
+  async function openSummaryModal(task: TaskEntry) {
+    setSummaryTask(task);
+    setSummaryPromptId(undefined);
+    setSummarySetDefault(false);
+    setSummaryApplyCreator(false);
+    setSummaryUnbind(false);
+    setSummaryMid(undefined);
+    setSummaryUpperName(undefined);
+    setSummaryBinding(null);
+    setSummaryError("");
+    setSummaryOpen(true);
+    setSummaryModalLoading(true);
+    try {
+      let promptList = promptsQuery.data?.items ?? [];
+      if (promptList.length === 0) {
+        try {
+          promptList = (await api.getPrompts()).items;
+        } catch {
+          // 提示词列表不可用时不阻断弹窗打开
+        }
+      }
+      setSummaryPrompts(promptList);
+
+      let mid: number | undefined;
+      let upperName: string | undefined;
+      if (task.bvid) {
+        try {
+          const info = await api.getVideoInfo(task.bvid);
+          mid = info.videoInfo?.upperMid;
+          upperName = info.videoInfo?.upperName;
+        } catch {
+          // 创作者信息解析失败仅影响默认选中与绑定入口
+        }
+      }
+      setSummaryMid(mid);
+      setSummaryUpperName(upperName);
+
+      let binding: PromptCreatorBinding | null = null;
+      if (typeof mid === "number") {
+        try {
+          binding = await api.getCreatorPromptBinding(mid);
+        } catch {
+          // 绑定查询失败仅影响默认选中
+        }
+      }
+      setSummaryBinding(binding);
+
+      const defaultPrompt =
+        promptList.find((p) => p.isDefault === 1) ?? promptList[0];
+      setSummaryPromptId(binding?.promptId ?? defaultPrompt?.id);
+    } finally {
+      setSummaryModalLoading(false);
+    }
+  }
+
   async function handleTriggerAiSummary(id: number) {
     setActionError("");
     const existing = tasks.find((t) => t.id === id);
-    if (!existing || !(existing.status === "success" && !isSummaryRunning(existing.summaryStatus))) {
+    if (
+      !existing ||
+      !(existing.status === "success" &&
+        !isSummaryRunning(existing.summaryStatus))
+    ) {
       return;
     }
+    await openSummaryModal(existing);
+  }
+
+  async function handleSummaryConfirm() {
+    if (!summaryTask || summaryPromptId === undefined) return;
+    setSummaryError("");
+    setSummaryModalLoading(true);
     try {
-      await api.triggerTaskAiSummary(id);
-      await refreshTask(id);
+      if (summarySetDefault) {
+        await api.setDefaultPrompt(summaryPromptId);
+      }
+      if (summaryMid !== undefined && summaryApplyCreator) {
+        await api.setCreatorPromptBinding(summaryMid, summaryPromptId);
+      }
+      if (summaryMid !== undefined && summaryUnbind) {
+        await api.deleteCreatorPromptBinding(summaryMid);
+      }
+      await api.triggerTaskAiSummary(summaryTask.id, summaryPromptId);
+      setSummaryOpen(false);
+      await refreshTask(summaryTask.id);
+      await queryClient.invalidateQueries({ queryKey: ["prompts"] });
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : "触发 AI 总结失败");
+      setSummaryError(e instanceof Error ? e.message : "触发 AI 总结失败");
+    } finally {
+      setSummaryModalLoading(false);
     }
+  }
+
+  function boundPromptName(): string {
+    if (!summaryBinding) return "";
+    const name = summaryPrompts.find(
+      (p) => p.id === summaryBinding!.promptId,
+    )?.name;
+    return name || `#${summaryBinding.promptId}`;
   }
 
   return (
@@ -408,6 +519,74 @@ export function Component() {
           </div>
         </div>
       )}
+
+      <Modal
+        open={summaryOpen}
+        title="选择 AI 总结提示词"
+        width={520}
+        okText="确认"
+        cancelText="取消"
+        confirmLoading={summaryModalLoading}
+        onOk={() => void handleSummaryConfirm()}
+        onCancel={() => setSummaryOpen(false)}
+      >
+        {summaryModalLoading ? (
+          <div className="py-6 text-center text-sm text-zinc-500">加载中...</div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {summaryError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                {summaryError}
+              </div>
+            )}
+            <label className="text-sm text-zinc-600">提示词</label>
+            <Select
+              value={summaryPromptId}
+              onChange={(v) => setSummaryPromptId(v)}
+              options={summaryPrompts.map((p) => ({
+                label:
+                  p.name + (p.isDefault === 1 ? "（默认）" : "") +
+                  (p.isSystem === 1 ? "（内置）" : ""),
+                value: p.id,
+              }))}
+              style={{ width: "100%" }}
+            />
+            <Checkbox
+              checked={summarySetDefault}
+              onChange={(e) => setSummarySetDefault(e.target.checked)}
+            >
+              设为默认提示词
+            </Checkbox>
+            <Checkbox
+              checked={summaryApplyCreator}
+              disabled={summaryMid === undefined}
+              onChange={(e) => setSummaryApplyCreator(e.target.checked)}
+            >
+              应用到该创作者
+              {summaryUpperName
+                ? `（${summaryUpperName}）`
+                : summaryMid !== undefined
+                  ? `（mid ${summaryMid}）`
+                  : ""}
+            </Checkbox>
+            {summaryBinding && (
+              <div className="flex items-center justify-between gap-2 rounded-md border border-zinc-200 px-3 py-2">
+                <span className="text-xs text-zinc-600">
+                  该创作者当前绑定提示词：{boundPromptName()}
+                </span>
+                <Button
+                  size="small"
+                  color="red"
+                  variant="outlined"
+                  onClick={() => setSummaryUnbind((prev) => !prev)}
+                >
+                  {summaryUnbind ? "已选择解除" : "解除绑定"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

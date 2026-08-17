@@ -377,6 +377,7 @@ export class DownloadService implements OnModuleInit {
       outputPath: dto.outputPath,
       subtitleLang: dto.subtitleLang,
       autoSummary: dto.autoSummary ? 1 : 0,
+      promptId: dto.promptId,
       status: TaskStatus.Created,
       createdAt: now,
     });
@@ -395,8 +396,9 @@ export class DownloadService implements OnModuleInit {
         cid: dto.cid,
         quality: dto.quality,
         codec: dto.codec,
-        autoSummary: dto.autoSummary,
-        outputPath: dto.outputPath,
+autoSummary: dto.autoSummary,
+      promptId: dto.promptId,
+      outputPath: dto.outputPath,
       }),
     );
 

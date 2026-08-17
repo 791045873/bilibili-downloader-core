@@ -41,6 +41,9 @@ export default function App() {
             <NavLink to="/summary-tasks" className={navLinkClass}>
               AI 总结任务
             </NavLink>
+            <NavLink to="/prompts" className={navLinkClass}>
+              AI 提示词
+            </NavLink>
             <NavLink to="/settings" className={navLinkClass}>
               设置
             </NavLink>

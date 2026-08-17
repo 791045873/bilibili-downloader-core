@@ -3,6 +3,11 @@ import Database from "better-sqlite3";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { createLogMessage } from "../logging/server-log.util.js";
+import {
+  BUILTIN_AI_PROMPT_CONTENT,
+  BUILTIN_AI_PROMPT_NAME,
+} from "../analysis/prompt-template.js";
+
 /**
  * 任务记录（对应 task 表）
  */
@@ -19,6 +24,8 @@ export interface TaskRecord {
   autoSummary?: number;
   summaryStatus?: string;
   summaryOutput?: string;
+  /** 下载任务显式选中的提示词（下载完成后自动总结时使用） */
+  promptId?: number;
   status: string;
   progress?: number;
   speed?: string;
@@ -30,6 +37,17 @@ export interface TaskRecord {
   createdAt?: string;
   updatedAt?: string;
   completedAt?: string;
+}
+
+/** 提示词记录（对应 ai_prompt 表） */
+export interface AiPromptRecord {
+  id?: number;
+  name: string;
+  content: string;
+  isSystem?: number;
+  isDefault?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AnalysisSubTaskRecord {
@@ -51,6 +69,8 @@ export interface AiSummaryTaskRecord {
   cid: number;
   title?: string;
   sourceTaskId?: number;
+  /** 本次执行实际使用的提示词（认领时解析写入） */
+  promptId?: number;
   status: string;
   summaryOutput?: string;
   errorMessage?: string;
@@ -207,6 +227,62 @@ export class DatabaseService {
       )
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_prompt (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        content TEXT NOT NULL,
+        is_system INTEGER DEFAULT 0,
+        is_default INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_prompt_creator (
+        mid INTEGER PRIMARY KEY,
+        prompt_id INTEGER NOT NULL
+      )
+    `);
+
+    // 空表播种内置提示词（幂等：仅空表执行）
+    const promptCount = (this.db
+      .prepare(`SELECT COUNT(*) AS count FROM ai_prompt`)
+      .get() as { count: number }).count;
+    if (promptCount === 0) {
+      const now = new Date().toISOString();
+      this.db
+        .prepare(
+          `INSERT INTO ai_prompt (name, content, is_system, is_default, created_at, updated_at)
+           VALUES (@name, @content, 1, 1, @now, @now)`,
+        )
+        .run({
+          name: BUILTIN_AI_PROMPT_NAME,
+          content: BUILTIN_AI_PROMPT_CONTENT,
+          now,
+        });
+      this.logger.log(
+        createLogMessage("Seeded builtin AI summary prompt", {
+          isSystem: true,
+          isDefault: true,
+        }),
+      );
+    }
+
+    // 已有数据库升级: task 补充提示词列
+    try {
+      this.db.exec(`ALTER TABLE task ADD COLUMN prompt_id INTEGER`);
+    } catch {
+      // 列已存在的忽略
+    }
+
+    // 已有数据库升级: ai_summary_task 补充提示词列
+    try {
+      this.db.exec(`ALTER TABLE ai_summary_task ADD COLUMN prompt_id INTEGER`);
+    } catch {
+      // 列已存在的忽略
+    }
+
     // 已有数据库升级: ai_summary_task 补充执行耗时列
     try {
       this.db.exec(`ALTER TABLE ai_summary_task ADD COLUMN execution_timing TEXT`);
@@ -323,6 +399,7 @@ export class DatabaseService {
       t.outputPath,
       t.subtitle_lang AS subtitleLang,
       t.auto_summary AS autoSummary,
+      t.prompt_id AS promptId,
       ast.status AS summaryStatus,
       ast.summary_output AS summaryOutput,
       t.status,
@@ -348,6 +425,7 @@ export class DatabaseService {
       cid,
       title,
       source_task_id AS sourceTaskId,
+      prompt_id AS promptId,
       status,
       summary_output AS summaryOutput,
       error_message AS errorMessage,
@@ -366,11 +444,11 @@ export class DatabaseService {
     const now = new Date().toISOString();
     const stmt = this.db.prepare(`
       INSERT INTO task (bvid, cid, title, quality, codec, fileNameTemplate, outputPath, subtitle_lang, status, progress, speed,
-            auto_summary, summary_status, summary_output,
+            auto_summary, summary_status, summary_output, prompt_id,
                         outputFile, fileSize, errorCode, errorMessage, durationMs,
                         createdAt, updatedAt, completedAt)
       VALUES (@bvid, @cid, @title, @quality, @codec, @fileNameTemplate, @outputPath, @subtitleLang, @status, @progress, @speed,
-              @autoSummary, @summaryStatus, @summaryOutput,
+              @autoSummary, @summaryStatus, @summaryOutput, @promptId,
               @outputFile, @fileSize, @errorCode, @errorMessage, @durationMs,
               @createdAt, @updatedAt, @completedAt)
     `);
@@ -389,6 +467,7 @@ export class DatabaseService {
       autoSummary: record.autoSummary ?? 0,
       summaryStatus: record.summaryStatus ?? "none",
       summaryOutput: record.summaryOutput ?? null,
+      promptId: record.promptId ?? null,
       outputFile: record.outputFile ?? null,
       fileSize: record.fileSize ?? null,
       errorCode: record.errorCode ?? null,
@@ -408,6 +487,7 @@ export class DatabaseService {
         quality: record.quality,
         codec: record.codec,
         autoSummary: record.autoSummary,
+        promptId: record.promptId,
         outputPath: record.outputPath,
       }),
     );
@@ -436,12 +516,15 @@ export class DatabaseService {
     }
   }
 
-  /** 更新任务状态（完成/失败时）。AI 总结状态由 ai_summary_task 单一来源，不在此写入。 */
+  /**
+   * 更新任务状态（完成/失败时）。AI 总结状态由 ai_summary_task 单一来源，不在此写入。
+   */
   updateTaskStatus(
     id: number,
     fields: {
       status: string;
       autoSummary?: number;
+      promptId?: number;
       outputFile?: string;
       fileSize?: number;
       errorCode?: string;
@@ -455,6 +538,7 @@ export class DatabaseService {
     const setClauses: string[] = ["status = @status", "updatedAt = @updatedAt"];
     if (fields.autoSummary !== undefined)
       setClauses.push("auto_summary = @autoSummary");
+    if (fields.promptId !== undefined) setClauses.push("prompt_id = @promptId");
     if (fields.outputFile !== undefined)
       setClauses.push("outputFile = @outputFile");
     if (fields.fileSize !== undefined) setClauses.push("fileSize = @fileSize");
@@ -474,6 +558,7 @@ export class DatabaseService {
         id,
         status: fields.status,
         autoSummary: fields.autoSummary ?? null,
+        promptId: fields.promptId ?? null,
         outputFile: fields.outputFile ?? null,
         fileSize: fields.fileSize ?? null,
         errorCode: fields.errorCode ?? null,
@@ -493,6 +578,7 @@ export class DatabaseService {
       fields.errorMessage !== undefined ||
       fields.outputFile !== undefined ||
       fields.autoSummary !== undefined ||
+      fields.promptId !== undefined ||
       fields.durationMs !== undefined;
 
     if (shouldLog) {
@@ -504,6 +590,7 @@ export class DatabaseService {
         toStatus: fields.status,
         status: fields.status,
         autoSummary: fields.autoSummary,
+        promptId: fields.promptId,
         outputFile: fields.outputFile,
         error: fields.errorMessage,
         durationMs: fields.durationMs,
@@ -990,22 +1077,24 @@ export class DatabaseService {
     cid: number;
     title?: string;
     sourceTaskId?: number;
+    promptId?: number;
   }): { claimed: boolean; record: AiSummaryTaskRecord | undefined } {
     const now = new Date().toISOString();
     const res = this.db
       .prepare(
         `
         INSERT INTO ai_summary_task (
-          bvid, cid, title, source_task_id, status, summary_output, error_message,
+          bvid, cid, title, source_task_id, prompt_id, status, summary_output, error_message,
           created_at, updated_at, last_triggered_at, last_completed_at
         )
         VALUES (
-          @bvid, @cid, @title, @sourceTaskId, 'pending', NULL, NULL,
+          @bvid, @cid, @title, @sourceTaskId, @promptId, 'pending', NULL, NULL,
           @now, @now, @now, NULL
         )
         ON CONFLICT(bvid, cid) DO UPDATE SET
           title = excluded.title,
           source_task_id = excluded.source_task_id,
+          prompt_id = excluded.prompt_id,
           status = 'pending',
           execution_timing = NULL,
           raw_response = NULL,
@@ -1020,6 +1109,7 @@ export class DatabaseService {
         cid: record.cid,
         title: record.title ?? null,
         sourceTaskId: record.sourceTaskId ?? null,
+        promptId: record.promptId ?? null,
         now,
       });
 
@@ -1064,6 +1154,11 @@ export class DatabaseService {
     const now = new Date().toISOString();
     const existing = this.getAiSummaryTaskByResource(record.bvid, record.cid);
     const createdAt = existing?.createdAt ?? record.createdAt ?? now;
+    // promptId 未提供时保留既有值（认领时写入本次解析结果，终态更新/普通状态更新不覆盖）
+    const promptId =
+      record.promptId !== undefined
+        ? record.promptId
+        : (existing?.promptId ?? null);
     // executionTiming 未提供时保留既有值（避免普通状态更新清空最近成功耗时）
     const executionTiming =
       record.executionTiming !== undefined
@@ -1087,6 +1182,7 @@ export class DatabaseService {
           cid,
           title,
           source_task_id,
+          prompt_id,
           status,
           summary_output,
           error_message,
@@ -1103,6 +1199,7 @@ export class DatabaseService {
           @cid,
           @title,
           @sourceTaskId,
+          @promptId,
           @status,
           @summaryOutput,
           @errorMessage,
@@ -1117,6 +1214,7 @@ export class DatabaseService {
         ON CONFLICT(bvid, cid) DO UPDATE SET
           title = excluded.title,
           source_task_id = excluded.source_task_id,
+          prompt_id = excluded.prompt_id,
           status = excluded.status,
           summary_output = excluded.summary_output,
           error_message = excluded.error_message,
@@ -1133,6 +1231,7 @@ export class DatabaseService {
         cid: record.cid,
         title: record.title ?? null,
         sourceTaskId: record.sourceTaskId ?? null,
+        promptId,
         status: record.status,
         summaryOutput: record.summaryOutput ?? null,
         errorMessage: record.errorMessage ?? null,
@@ -1161,6 +1260,145 @@ export class DatabaseService {
     );
 
     return persisted;
+  }
+
+  // ==================== AI 总结提示词（ai_prompt / ai_prompt_creator） ====================
+
+  private readonly aiPromptSelectSql = `
+    SELECT
+      id,
+      name,
+      content,
+      is_system AS isSystem,
+      is_default AS isDefault,
+      created_at AS createdAt,
+      updated_at AS updatedAt
+    FROM ai_prompt
+  `;
+
+  /** 提示词列表：内置排前，其余按创建时间升序 */
+  listAiPrompts(): AiPromptRecord[] {
+    return this.db
+      .prepare(
+        `${this.aiPromptSelectSql} ORDER BY is_system DESC, created_at ASC`,
+      )
+      .all() as AiPromptRecord[];
+  }
+
+  getAiPromptById(id: number): AiPromptRecord | undefined {
+    return this.db
+      .prepare(`${this.aiPromptSelectSql} WHERE id = ? LIMIT 1`)
+      .get(id) as AiPromptRecord | undefined;
+  }
+
+  insertAiPrompt(record: {
+    name: string;
+    content: string;
+    isSystem?: number;
+    isDefault?: number;
+  }): AiPromptRecord {
+    const now = new Date().toISOString();
+    const result = this.db
+      .prepare(
+        `INSERT INTO ai_prompt (name, content, is_system, is_default, created_at, updated_at)
+         VALUES (@name, @content, @isSystem, @isDefault, @now, @now)`,
+      )
+      .run({
+        name: record.name,
+        content: record.content,
+        isSystem: record.isSystem ?? 0,
+        isDefault: record.isDefault ?? 0,
+        now,
+      });
+    const id = Number(result.lastInsertRowid);
+    this.logger.log(
+      createLogMessage("Persisted AI summary prompt", {
+        promptId: id,
+        isDefault: record.isDefault ?? 0,
+        isSystem: record.isSystem ?? 0,
+      }),
+    );
+    const persisted = this.getAiPromptById(id);
+    if (!persisted) {
+      throw new Error("AI prompt insert failed");
+    }
+    return persisted;
+  }
+
+  updateAiPrompt(
+    id: number,
+    fields: { name?: string; content?: string },
+  ): AiPromptRecord | undefined {
+    const setClauses: string[] = ["updated_at = @now"];
+    if (fields.name !== undefined) setClauses.push("name = @name");
+    if (fields.content !== undefined) setClauses.push("content = @content");
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `UPDATE ai_prompt SET ${setClauses.join(", ")} WHERE id = @id`,
+      )
+      .run({ id, now, name: fields.name ?? null, content: fields.content ?? null });
+    return this.getAiPromptById(id);
+  }
+
+  deleteAiPrompt(id: number): void {
+    this.db.prepare("DELETE FROM ai_prompt WHERE id = ?").run(id);
+    this.logger.log(
+      createLogMessage("Deleted AI summary prompt", {
+        promptId: id,
+      }),
+    );
+  }
+
+  clearAiPromptDefault(): void {
+    this.db.prepare(`UPDATE ai_prompt SET is_default = 0`).run();
+  }
+
+  setAiPromptDefault(id: number): void {
+    this.db
+      .prepare(
+        `UPDATE ai_prompt SET is_default = 1, updated_at = @now WHERE id = @id`,
+      )
+      .run({ id, now: new Date().toISOString() });
+  }
+
+  getDefaultAiPromptId(): number | undefined {
+    const row = this.db
+      .prepare(`SELECT id FROM ai_prompt WHERE is_default = 1 LIMIT 1`)
+      .get() as { id: number } | undefined;
+    return row?.id;
+  }
+
+  getCreatorBindingByMid(mid: number): { mid: number; promptId: number } | undefined {
+    return this.db
+      .prepare(
+        `SELECT mid, prompt_id AS promptId FROM ai_prompt_creator WHERE mid = ? LIMIT 1`,
+      )
+      .get(mid) as { mid: number; promptId: number } | undefined;
+  }
+
+  upsertCreatorBinding(mid: number, promptId: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO ai_prompt_creator (mid, prompt_id) VALUES (@mid, @promptId)
+         ON CONFLICT(mid) DO UPDATE SET prompt_id = excluded.prompt_id`,
+      )
+      .run({ mid, promptId });
+    this.logger.log(
+      createLogMessage("Persisted AI prompt creator binding", {
+        mid,
+        promptId,
+      }),
+    );
+  }
+
+  deleteCreatorBinding(mid: number): void {
+    this.db.prepare(`DELETE FROM ai_prompt_creator WHERE mid = ?`).run(mid);
+    this.logger.log(
+      createLogMessage("Deleted AI prompt creator binding", {
+        mid,
+      }),
+    );
   }
 }
 

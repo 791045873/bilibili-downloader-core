@@ -12,6 +12,7 @@ export const router = createBrowserRouter([
       { path: "video", lazy: () => import("./pages/VideoDetail") },
       { path: "downloading", lazy: () => import("./pages/Downloading") },
       { path: "summary-tasks", lazy: () => import("./pages/AiSummaryTasks") },
+      { path: "prompts", lazy: () => import("./pages/PromptManager") },
       { path: "settings", lazy: () => import("./pages/Settings") },
       { path: "login", lazy: () => import("./pages/Login") },
     ],

@@ -1,10 +1,12 @@
 import type {
+  AiPrompt,
   AiSummaryTaskStatus,
   DownloadConfig,
   ParseLinkResult,
   PaginatedAiSummaryTasks,
   PaginatedTasks,
   PaginatedVideos,
+  PromptCreatorBinding,
   TaskStatusGroup,
   VideoInfo,
   ParseResultItem,
@@ -107,6 +109,7 @@ export async function createDownload(req: {
   fileNameTemplate?: string;
   subtitleLang?: string;
   autoSummary?: boolean;
+  promptId?: number;
 }): Promise<{ id: number; message: string }> {
   return request("/download", {
     method: "POST",
@@ -171,6 +174,7 @@ export async function checkTasks(
 export async function triggerAiSummary(req: {
   bvid: string;
   cid: number;
+  promptId?: number;
 }): Promise<{ message: string }> {
   return request("/analysis/trigger", {
     method: "POST",
@@ -190,9 +194,11 @@ export async function setAutoSummary(
 
 export async function triggerTaskAiSummary(
   taskId: number,
+  promptId?: number,
 ): Promise<{ message: string }> {
   return request(`/tasks/${taskId}/summary`, {
     method: "POST",
+    body: JSON.stringify(promptId !== undefined ? { promptId } : {}),
   });
 }
 
@@ -278,6 +284,68 @@ export async function testAnalysisConfig(patch: {
   return request("/analysis/config/test", {
     method: "POST",
     body: JSON.stringify(patch),
+  });
+}
+
+// ==================== AI 总结提示词 ====================
+
+export async function getPrompts(): Promise<{ items: AiPrompt[] }> {
+  return request("/analysis/prompts");
+}
+
+export async function createPrompt(req: {
+  name: string;
+  content: string;
+}): Promise<AiPrompt> {
+  return request("/analysis/prompts", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function updatePrompt(
+  id: number,
+  req: { name?: string; content?: string },
+): Promise<AiPrompt> {
+  return request(`/analysis/prompts/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function deletePrompt(id: number): Promise<void> {
+  await request(`/analysis/prompts/${id}`, { method: "DELETE" });
+}
+
+export async function setDefaultPrompt(id: number): Promise<AiPrompt> {
+  return request(`/analysis/prompts/${id}/default`, { method: "PUT" });
+}
+
+export async function getPromptFormatSnippet(): Promise<{ snippet: string }> {
+  return request("/analysis/prompts/format-snippet");
+}
+
+export async function getCreatorPromptBinding(
+  mid: number,
+): Promise<PromptCreatorBinding | null> {
+  return request(`/analysis/prompts/creator?mid=${mid}`);
+}
+
+export async function setCreatorPromptBinding(
+  mid: number,
+  promptId: number,
+): Promise<{ message: string }> {
+  return request("/analysis/prompts/creator", {
+    method: "PUT",
+    body: JSON.stringify({ mid, promptId }),
+  });
+}
+
+export async function deleteCreatorPromptBinding(
+  mid: number,
+): Promise<{ message: string }> {
+  return request(`/analysis/prompts/creator?mid=${mid}`, {
+    method: "DELETE",
   });
 }
 

@@ -7,10 +7,32 @@
 
 项目无单元测试设施，采用 typecheck/build + API/DB 冒烟验证（临时 OUTPUT_DIR + 一次性脚本，不入库）+ 人工运行级确认。冒烟沿用既有模式（`$TEMP/opencode/*/smoke.cjs` 一次性脚本）。
 
-## 自动化验证结果（待填）
+## 自动化验证结果（已填 2026-08-17）
 
-- `pnpm typecheck`：通过。
-- `pnpm build`：通过。
+- `pnpm typecheck`：通过（全 workspace）。
+- `pnpm build`：通过（全 workspace）。
+- API/DB 冒烟：一次性脚本（`$TEMP/opencode/prompt-smoke/smoke-prompt.cjs`，临时 OUTPUT_DIR 隔离，不入库）53 项全部通过。
+
+### 冒烟逐项结果
+
+| # | 方向 | 结果 |
+| --- | --- | --- |
+| 1 | 建表与播种 | PASS：空库启动后 `ai_prompt` 恰含 1 条内置（is_system=1, is_default=1, 内容与硬编码逐字一致）；`ai_prompt_creator` 空表存在。 |
+| 2 | 迁移幂等 | PASS：同 DB 重启不重复播种、不报错。 |
+| 3 | 提示词列表 | PASS：`GET /api/analysis/prompts` 返回内置（isSystem=true, isDefault=true）。 |
+| 4 | 创建 | PASS：创建成功 201；name 空 → 400。 |
+| 5 | 编辑 | PASS：自定义成功；内置 → 409；非法 id → 400；不存在 → 404。 |
+| 6 | 删除 | PASS：自定义成功；内置 → 409；不存在 → 404。 |
+| 7 | 设默认 | PASS：设为默认后该记录 isDefault=1、其他 false。 |
+| 8 | 默认回落 | PASS：删除默认自定义后默认自动回到内置。 |
+| 9 | 格式片段 | PASS：返回非空 snippet 且与服务端字符串一致。 |
+| 10 | 创作者绑定 | PASS：绑定、查询、解绑、非法 mid 400、重复绑定覆盖、重复解绑幂等。 |
+| 11 | task.prompt_id | PASS：`POST /api/download` 带 promptId 成功 201，task 表 prompt_id 写入。 |
+| 12 | summary-task prompt_id | PASS：触发带 promptId → `ai_summary_task.prompt_id` 写入。 |
+| 13 | 优先级 | PASS：显式生效；显式指向已删除 → 回落 task.prompt_id；task.prompt_id → 生效；task.prompt_id 已删除 → 系统默认；删除系统默认 → 默认回落内置。创作者绑定层（需 B 站 mid 解析）仅验证"解析失败跳过该层"路径，绑定命中路径依赖真实网络，属人工运行级确认。 |
+| 14 | retrigger 复用 | PASS：按记录 prompt_id 复用（认领后 prompt_id 保持）。 |
+| 15 | 错误码 | PASS：各端点非法 id 400 / 不存在 404 / 系统内置 409 均符合契约。 |
+| 16 | `/analysis/run` 默认解析 | PASS：未传 promptId 时日志断言 systemPrompt 使用系统默认提示词内容（解析出的 promptId 与非空内容均记录）。 |
 
 ## API/DB 冒烟方向（临时 OUTPUT_DIR，隔离真实数据）
 
