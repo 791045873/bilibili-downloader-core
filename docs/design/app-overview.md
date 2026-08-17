@@ -9,7 +9,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | Surface | Description | Runtime |
 | --- | --- | --- |
 | Web Frontend | 视频链接输入、Section 选择器、视频解析、下载列表查看、AI 总结任务列表、设置管理 | React 19 SPA（浏览器） |
-| Docker | 容器化部署，Server + Frontend + Python 视觉代理打包为单镜像，通过挂载 volume 管理下载文件与日志；外部仅暴露 `PORT=3000`，Python 代理仅在容器内 `127.0.0.1:8765` 提供服务；`OUTPUT_DIR=/download`、`LOG_DIR=/download/logs`，日志按天轮转保留最近 7 天 | Docker 容器 |
+| Docker | 容器化部署，docker compose 双容器：`server`（Node + 前端静态 + FFmpeg）与 `vision-proxy`（Python 视觉薄代理）各自独立容器并 `restart: unless-stopped`，任一崩溃由 Docker 自动单独重启；外部仅暴露 `PORT=3000`，代理经 compose 网络服务名 `vision-proxy:8765` 供 server 调用、监听 `0.0.0.0` 但不发布宿主机端口；两容器共享同一宿主机 volume（`/download`），`OUTPUT_DIR=/download`、`LOG_DIR=/download/logs`，日志按天轮转保留最近 7 天 | Docker 容器 |
 
 ## Primary Navigation Model
 

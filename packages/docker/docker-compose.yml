@@ -1,0 +1,44 @@
+name: bilibili-downloader
+
+services:
+  vision-proxy:
+    build:
+      context: ../..
+      dockerfile: packages/docker/Dockerfile
+      target: vision-proxy
+    image: bilibili-downloader:vision-proxy
+    restart: unless-stopped
+    environment:
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASH_SCOPE_API_KEY: ${DASH_SCOPE_API_KEY:-}
+      DASHSCOPE_BASE_HTTP_API_URL: ${DASHSCOPE_BASE_HTTP_API_URL:-}
+      QWEN_VISION_PROXY_MAX_BODY_BYTES: ${QWEN_VISION_PROXY_MAX_BODY_BYTES:-16777216}
+      QWEN_VISION_PROXY_MAX_CONCURRENCY: ${QWEN_VISION_PROXY_MAX_CONCURRENCY:-8}
+      QWEN_VISION_PROXY_SOCKET_TIMEOUT: ${QWEN_VISION_PROXY_SOCKET_TIMEOUT:-120}
+      LOG_DIR: /download/logs
+      LOG_MAX_FILES: ${LOG_MAX_FILES:-7}
+    volumes:
+      - "${DOWNLOAD_HOST_PATH:-${HOME:-$USERPROFILE}/Downloads/bilibili_download}:/download"
+
+  server:
+    depends_on:
+      vision-proxy:
+        condition: service_healthy
+    build:
+      context: ../..
+      dockerfile: packages/docker/Dockerfile
+      target: server
+    image: bilibili-downloader
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      OUTPUT_DIR: /download
+      LOG_DIR: /download/logs
+      LOG_MAX_FILES: ${LOG_MAX_FILES:-7}
+      MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-10}
+      QWEN_VISION_PROXY_URL: ${QWEN_VISION_PROXY_URL:-http://vision-proxy:8765/v1/chat/completions}
+      QWEN_VISION_PROXY_TIMEOUT_MS: ${QWEN_VISION_PROXY_TIMEOUT_MS:-}
+    volumes:
+      - "${DOWNLOAD_HOST_PATH:-${HOME:-$USERPROFILE}/Downloads/bilibili_download}:/download"

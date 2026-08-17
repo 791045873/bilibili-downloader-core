@@ -53,14 +53,14 @@ packages/
 - pnpm workspace（monorepo 管理）
 - Vite（Frontend 打包）
 - tsc（Core/Adapters/Server 编译）
-- Docker（`node:24.16.0-bookworm-slim` 多阶段构建；Server + Frontend 静态资源 +
-  Python venv 视觉代理打包为单容器，runtime 内置 FFmpeg 与 tini）
+- Docker（`node:24.16.0-bookworm-slim` 多阶段多 target 构建：`server` 镜像 = Node 服务 + 前端静态资源 + FFmpeg + tini；`vision-proxy` 镜像 = Python venv 视觉代理 + tini；经 `packages/docker/docker-compose.yml` 编排为两个独立容器）
 
 ## Deployment Shape
 
-- Docker 单容器部署（Server 运行 NestJS + 静态文件服务托管 Frontend 构建产物 + 容器内回环地址运行 Python 视觉薄代理；对外仅暴露 Node/Frontend 端口）
-- NAS 用户通过挂载 volume 将容器内下载目录映射到宿主机
-- 默认下载目录：容器内 `/download`，建议挂载到宿主机对应目录；日志默认写入 `/download/logs`
+- Docker compose 双容器部署：`server`（NestJS + 静态文件托管前端构建产物 + FFmpeg）与 `vision-proxy`（Python 视觉薄代理）各自独立容器，均配置 `restart: unless-stopped`，任一容器主进程崩溃由 Docker 单独自动重启，不影响健康容器；对外仅暴露 `server` 的 3000 端口。
+- server 经 compose 默认网络的服务名 `vision-proxy:8765` 调用代理（`QWEN_VISION_PROXY_URL=http://vision-proxy:8765/v1/chat/completions`）；vision-proxy 容器内监听 `0.0.0.0:8765` 实现跨容器可达，但不向宿主机发布端口。
+- 两容器共享同一宿主机目录挂载到 `/download`（默认 `${HOME:-$USERPROFILE}/Downloads/bilibili_download`，可用 `DOWNLOAD_HOST_PATH` 覆盖，Windows 宿主经 `USERPROFILE` 回退）；日志默认写入 `/download/logs`
+- NAS 用户通过挂载 volume 将容器内下载目录映射到宿主机；`DASHSCOPE_API_KEY` 等密钥经 compose 环境变量传入 vision-proxy 容器，不写入镜像
 
 ## External Platforms
 

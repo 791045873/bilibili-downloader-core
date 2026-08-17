@@ -107,8 +107,8 @@ RUN --mount=type=cache,id=bilibili-pip-cache,target=/root/.cache/pip \
     /opt/vision-venv/bin/python -m pip uninstall -y pip setuptools wheel; \
     rm -f /opt/vision-venv/bin/pip /opt/vision-venv/bin/pip3 /opt/vision-venv/bin/pip3.*
 
-# ---- Stage 3: Runtime ----
-FROM node:24.16.0-bookworm-slim AS runtime
+# ---- Stage 3: Server runtime (Node + frontend + FFmpeg) ----
+FROM node:24.16.0-bookworm-slim AS server
 
 ARG APT_MIRROR
 
@@ -129,35 +129,76 @@ RUN --mount=type=cache,id=bilibili-apt-archives,target=/var/cache/apt,sharing=lo
         /etc/apt/sources.list.d/debian.sources; \
     fi; \
     apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates ffmpeg python3 tini; \
+    apt-get install -y --no-install-recommends ca-certificates ffmpeg tini; \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY --from=builder /app/runtime ./
-COPY --from=python-builder /opt/vision-venv /opt/vision-venv
-COPY packages/server/python/qwen_vision_proxy.py /app/python/qwen_vision_proxy.py
 COPY --from=builder /app/packages/frontend/dist ./public
-COPY packages/docker/entrypoint.sh /app/entrypoint.sh
 
-RUN chmod +x /app/entrypoint.sh && \
+RUN rm -rf /app/python && \
     mkdir -p /download /download/logs && \
-    /opt/vision-venv/bin/python -c "import dashscope, dotenv" && \
     cd /app && node --input-type=module -e \
       "import Database from 'better-sqlite3'; const db = new Database(':memory:'); db.exec('select 1'); db.close()"
 
 EXPOSE 3000
-ENV PATH=/opt/vision-venv/bin:$PATH \
-    PORT=3000 \
+ENV PORT=3000 \
     OUTPUT_DIR=/download \
     LOG_DIR=/download/logs \
     MAX_CONCURRENT_DOWNLOADS=10 \
-    QWEN_VISION_PROXY_URL=http://127.0.0.1:8765/v1/chat/completions \
-    QWEN_VISION_PROXY_HOST=127.0.0.1 \
-    QWEN_VISION_PROXY_PORT=8765
+    QWEN_VISION_PROXY_URL=http://vision-proxy:8765/v1/chat/completions
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD node -e "Promise.all([fetch('http://127.0.0.1:' + process.env.PORT), fetch('http://127.0.0.1:8765/healthz')]).then(([app, proxy]) => process.exit(app.ok && proxy.ok ? 0 : 1)).catch(() => process.exit(1))"
+    CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || '3000') + '/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/app/entrypoint.sh"]
+CMD ["node", "/app/dist/main.js"]
+
+# ---- Stage 4: Vision proxy runtime (venv Python + proxy) ----
+FROM node:24.16.0-bookworm-slim AS vision-proxy
+
+ARG APT_MIRROR
+
+RUN --mount=type=cache,id=bilibili-apt-archives,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=bilibili-apt-lists,target=/var/lib/apt/lists,sharing=locked \
+    set -eux; \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    if [ -n "$APT_MIRROR" ]; then \
+      case "$APT_MIRROR" in http://*|https://*) ;; *) exit 1 ;; esac; \
+      mirror_host="${APT_MIRROR#http://}"; \
+      mirror_host="${mirror_host#https://}"; \
+      case "$mirror_host" in ""|*/*|*@*|*[[:space:]]*) exit 1 ;; esac; \
+      sed -i \
+        -e "s#http://deb.debian.org#${APT_MIRROR%/}#g" \
+        -e "s#https://deb.debian.org#${APT_MIRROR%/}#g" \
+        -e "s#http://security.debian.org#${APT_MIRROR%/}#g" \
+        -e "s#https://security.debian.org#${APT_MIRROR%/}#g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates python3 tini; \
+    rm -rf /var/lib/apt/lists/*
+
+RUN rm -f /usr/local/bin/node /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm && \
+    rm -rf /usr/local/lib/node_modules && \
+    rm -rf /opt/yarn-*
+
+COPY --from=python-builder /opt/vision-venv /opt/vision-venv
+COPY packages/server/python/qwen_vision_proxy.py /app/python/qwen_vision_proxy.py
+
+WORKDIR /app
+
+RUN mkdir -p /download /download/logs && \
+    /opt/vision-venv/bin/python -c "import dashscope, dotenv"
+
+EXPOSE 8765
+ENV QWEN_VISION_PROXY_HOST=0.0.0.0 \
+    QWEN_VISION_PROXY_PORT=8765 \
+    LOG_DIR=/download/logs
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/opt/vision-venv/bin/python", "-c", "import urllib.request, os, sys; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('QWEN_VISION_PROXY_PORT', '8765') + '/healthz', timeout=5); sys.exit(0)"]
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/opt/vision-venv/bin/python", "/app/python/qwen_vision_proxy.py"]

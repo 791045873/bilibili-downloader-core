@@ -18,8 +18,8 @@ Update it in place. Do not create dated copies.
 
 - Active requirement: `docs/requirements/2026-08-17-ai-summary-view-markdown.md`
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-08-17-ai-summary-view-markdown-plan.md`（已实施完成并关闭）
-- Active backlog item: 无（最近完成项：AI 总结列表查看总结文档 Markdown 预览）
+- Active plan: `docs/plans/2026-08-18-docker-split-vision-proxy-plan.md`（已实施完成并关闭）
+- Active backlog item: 无（最近完成项：Docker 拆分 Python 视觉代理为独立容器；此前：AI 总结列表查看总结文档 Markdown 预览）
 - AI autonomy: `plan-first`（2026-08-04 已切换到方案 B，更新后的计划需重新审计后再实施）
 - Current blocker: `none`
 

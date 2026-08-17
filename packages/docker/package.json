@@ -2,9 +2,11 @@
   "name": "@bilibili-downloader/docker",
   "version": "0.0.1",
   "private": true,
-  "description": "Docker 镜像打包 — 将 server 和 frontend 打包为 Docker 镜像",
+  "description": "Docker 镜像打包 — 将 server（Node+前端）与 vision-proxy（Python 视觉代理）打包为两个镜像，经 docker compose 编排",
   "scripts": {
-    "docker:build": "docker build -f ./Dockerfile -t bilibili-downloader ../..",
-    "docker:run": "cross-var docker run -d -p 3000:3000 -v \"$HOME/Downloads/bilibili_download:/download\" bilibili-downloader"
+    "docker:build": "docker compose build",
+    "docker:run": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f --no-log-prefix"
   }
 }

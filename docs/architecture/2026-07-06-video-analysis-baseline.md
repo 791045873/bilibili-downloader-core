@@ -93,7 +93,7 @@ Python 层是系统架构中的本地文件传输适配层，目的仅是复用 
 - Python 代理接收 OpenAI-style `MultimodalRequest`，将其中 `image_url.url` 的本地路径转换为 DashScope SDK 支持的 `file://...` 输入，调用 `MultiModalConversation.call()` 后返回 OpenAI-style `choices[0].message.content`。
 - Python 代理只允许非 Base64 图片输入；发现 `data:` 或 `;base64,` 应拒绝。
 - 该代理要求与 Node server 运行在同一台机器或共享同一文件系统，否则 Python 无法读取 Node 生成的本地截图。
-- 健壮性不变量（2026-08-12 起）：`/v1/chat/completions` 的 POST 行为与返回体保持稳定；请求 body 有大小上限（413）、socket 有读写超时、并发有上限（503）、单次异常只影响当次请求不拖垮服务；`GET /healthz` 提供探活；宿主 `start-vision-proxy` 自动重启自愈。Docker 单容器通过入口脚本启动同容器代理并在退出时清理子进程；容器重启策略由部署平台负责。Node 侧代理路径对瞬时网络错误与代理 5xx 自动重试 1 次（固定 2s 间隔；超时与 4xx 不重试，2026-08-13 起）。
+- 健壮性不变量（2026-08-12 起）：`/v1/chat/completions` 的 POST 行为与返回体保持稳定；请求 body 有大小上限（413）、socket 有读写超时、并发有上限（503）、单次异常只影响当次请求不拖垮服务；`GET /healthz` 提供探活；宿主 `start-vision-proxy` 自动重启自愈。Docker 部署（2026-08-18 起）：`server` 与 `vision-proxy` 为 compose 编排的两个独立容器（均 `restart: unless-stopped`），任一容器主进程崩溃由 Docker 单独自动重启；代理容器内监听 `0.0.0.0:8765` 供 compose 网络内 server 经服务名访问、不对宿主机发布端口；两容器共享 `/download` 文件系统以保证本地媒体可读。Node 侧代理路径对瞬时网络错误与代理 5xx 自动重试 1 次（固定 2s 间隔；超时与 4xx 不重试，2026-08-13 起）。
 
 运行形态：
 
@@ -224,6 +224,11 @@ DASHSCOPE_API_KEY=sk-your-key-here
 DASHSCOPE_BASE_HTTP_API_URL=
 QWEN_VISION_PROXY_HOST=127.0.0.1
 QWEN_VISION_PROXY_PORT=8765
+# 注：上述代理地址/监听为宿主机开发模式（start-vision-proxy）语义。Docker 容器模式
+# （docker compose，2026-08-18 起）下：vision-proxy 容器内监听 0.0.0.0:8765（跨容器
+# 可达且不发布宿主机端口）；server 容器经 compose 服务名访问，默认
+# QWEN_VISION_PROXY_URL=http://vision-proxy:8765/v1/chat/completions，由
+# docker-compose.yml 覆盖。
 
 # 可选：Python 薄代理健壮性参数（均有默认值，可不配置）。
 # QWEN_VISION_PROXY_MAX_BODY_BYTES：代理 HTTP body 上限（默认 16777216=16MB），超出返回 413；视频文件由 SDK 本机读取，不经过 body。
