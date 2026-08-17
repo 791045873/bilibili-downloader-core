@@ -13,9 +13,14 @@ import {
   Query,
   Body,
 } from "@nestjs/common";
+import { readFile } from "node:fs/promises";
 import { DatabaseService } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
+import {
+  extractSummaryMeta,
+  rewriteMarkdownImageUrls,
+} from "./summary-dir.js";
 
 @Controller("api")
 export class AnalysisTaskController {
@@ -115,6 +120,48 @@ export class AnalysisTaskController {
     }
 
     return { rawResponse: record.rawResponse ?? null };
+  }
+
+  @Get("/summary-tasks/:id/markdown")
+  async getAiSummaryTaskMarkdown(@Param("id") id: string) {
+    const summaryTaskId = Number.parseInt(id, 10);
+    if (Number.isNaN(summaryTaskId)) {
+      this.logger.warn(
+        `Get ai summary task markdown rejected due to invalid id: ${id}`,
+      );
+      throw new BadRequestException("无效的任务 ID");
+    }
+
+    const record = this.databaseService.getAiSummaryTaskById(summaryTaskId);
+    if (!record) {
+      this.logger.warn(
+        `Get ai summary task markdown rejected due to not-found: ${summaryTaskId}`,
+      );
+      throw new NotFoundException("AI 总结任务不存在");
+    }
+    if (record.status !== "completed") {
+      throw new ConflictException("仅已完成的 AI 总结可查看总结文档");
+    }
+    if (!record.summaryOutput) {
+      throw new ConflictException("该总结无输出文档");
+    }
+
+    let content: string;
+    try {
+      content = await readFile(record.summaryOutput, "utf-8");
+    } catch (err) {
+      this.logger.warn(
+        `Get ai summary task markdown rejected because file is missing: ${summaryTaskId} ${record.summaryOutput}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+      throw new NotFoundException("总结文档不存在或已被删除");
+    }
+
+    const { meta, body } = extractSummaryMeta(content);
+    return {
+      content: rewriteMarkdownImageUrls(body, record.summaryOutput),
+      meta,
+    };
   }
 
   @Delete("/summary-tasks/:id")

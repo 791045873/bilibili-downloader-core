@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
 import {
   Button,
+  Image,
   Input,
   Modal,
   Pagination,
@@ -61,6 +65,16 @@ function formatTime(value?: string): string {
     second: "2-digit",
     hour12: false,
   });
+}
+
+function formatMetaTime(value?: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(
+    date.getDate(),
+  )} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function summaryTime(task: AiSummaryTaskEntry): string {
@@ -150,6 +164,14 @@ export function Component() {
   const [rawTask, setRawTask] = useState<AiSummaryTaskEntry | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildMessage, setRebuildMessage] = useState("");
+
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryTitle, setSummaryTitle] = useState("");
+  const [summaryContent, setSummaryContent] = useState("");
+  const [summaryError, setSummaryError] = useState("");
+  const [summaryFullscreen, setSummaryFullscreen] = useState(false);
+  const [summaryMeta, setSummaryMeta] = useState<api.SummaryMarkdownMeta>({});
 
   const query = useQuery({
     queryKey: ["summary-tasks", filters, page, pageSize],
@@ -241,6 +263,25 @@ export function Component() {
       setRawError(e instanceof Error ? e.message : "获取原始返回失败");
     } finally {
       setRawLoading(false);
+    }
+  }
+
+  async function openSummary(task: AiSummaryTaskEntry) {
+    setSummaryTitle((task.title || `${task.bvid}-${task.cid}`) + " - 总结");
+    setSummaryContent("");
+    setSummaryError("");
+    setSummaryFullscreen(false);
+    setSummaryMeta({});
+    setSummaryOpen(true);
+    setSummaryLoading(true);
+    try {
+      const result = await api.getAiSummaryTaskMarkdown(task.id);
+      setSummaryContent(result.content);
+      setSummaryMeta(result.meta ?? {});
+    } catch (e: unknown) {
+      setSummaryError(e instanceof Error ? e.message : "获取总结文档失败");
+    } finally {
+      setSummaryLoading(false);
     }
   }
 
@@ -341,9 +382,16 @@ export function Component() {
     },
     {
       title: "操作",
-      width: 220,
+      width: 300,
       render: (_, task) => (
         <div className="flex items-center gap-2">
+          <Button
+            size="small"
+            disabled={task.status !== "completed"}
+            onClick={() => void openSummary(task)}
+          >
+            查看总结
+          </Button>
           <Button size="small" onClick={() => void openRawResponse(task)}>
             查看原始
           </Button>
@@ -543,6 +591,104 @@ export function Component() {
           <div className="py-6 text-center text-sm text-zinc-400">
             无原始返回（历史记录或本次未成功返回模型内容）
           </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={summaryOpen}
+        title={
+          <div className="flex items-center justify-between gap-3">
+            <span className="truncate">{summaryTitle}</span>
+            <Button
+              type="text"
+              size="small"
+              icon={
+                summaryFullscreen ? (
+                  <FullscreenExitOutlined />
+                ) : (
+                  <FullscreenOutlined />
+                )
+              }
+              onClick={() => setSummaryFullscreen((v) => !v)}
+            >
+              {summaryFullscreen ? "退出全屏" : "全屏"}
+            </Button>
+          </div>
+        }
+        width={summaryFullscreen ? "96vw" : 820}
+        footer={null}
+        onCancel={() => {
+          setSummaryFullscreen(false);
+          setSummaryOpen(false);
+        }}
+      >
+        {summaryLoading && (
+          <div className="py-6 text-center text-sm text-zinc-500">
+            加载中...
+          </div>
+        )}
+        {!summaryLoading && summaryError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {summaryError}
+          </div>
+        )}
+        {!summaryLoading && !summaryError && summaryContent && (
+          <>
+            {(summaryMeta.videoUrl ||
+              summaryMeta.model ||
+              summaryMeta.createdAt) && (
+              <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 text-xs text-zinc-600">
+                {summaryMeta.videoUrl && (
+                  <a
+                    href={summaryMeta.videoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                  >
+                    B站原视频
+                  </a>
+                )}
+                {summaryMeta.model && (
+                  <span className="inline-flex items-center gap-1">
+                    模型：{summaryMeta.model}
+                  </span>
+                )}
+                {summaryMeta.createdAt && (
+                  <span className="inline-flex items-center gap-1">
+                    生成于 {formatMetaTime(summaryMeta.createdAt)}
+                  </span>
+                )}
+              </div>
+            )}
+            <div
+              className={`md-preview overflow-auto rounded-lg border border-zinc-200 bg-white p-5 text-sm leading-relaxed text-zinc-800 ${
+                summaryFullscreen
+                  ? "max-h-[calc(100vh-150px)]"
+                  : "max-h-[70vh]"
+              }`}
+            >
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  img: ({ node: _node, ...rest }) => (
+                    <Image
+                      src={rest.src}
+                      alt={rest.alt}
+                      className="my-3 rounded-lg border border-zinc-200"
+                      style={{
+                        maxHeight: 256,
+                        maxWidth: "100%",
+                        objectFit: "contain",
+                      }}
+                      preview={{ mask: "点击查看大图" }}
+                    />
+                  ),
+                }}
+              >
+                {summaryContent}
+              </ReactMarkdown>
+            </div>
+          </>
         )}
       </Modal>
     </div>

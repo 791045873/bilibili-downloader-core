@@ -19,6 +19,7 @@ import { NotificationService } from "../notification/notification.service.js";
 import { sanitizeFileName } from "../download/file-naming.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 import { PromptService } from "./prompt.service.js";
+import { SUMMARY_BASE_DIR } from "./summary-dir.js";
 
 /** AI 总结任务执行耗时明细 */
 export interface AiSummaryExecutionTiming {
@@ -600,7 +601,7 @@ export class AnalysisTriggerService implements OnModuleInit {
   }
 
   private resolveSummaryDir(task: TaskRecord): string {
-    const base = resolve(process.cwd(), "summaryDir");
+    const base = SUMMARY_BASE_DIR;
     const bvid = task.bvid;
     const cid = task.cid;
     if (!bvid || typeof cid !== "number") {

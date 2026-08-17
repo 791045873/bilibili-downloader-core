@@ -227,6 +227,19 @@ export async function getAiSummaryTaskRawResponse(
   return request(`/summary-tasks/${id}/raw-response`);
 }
 
+export interface SummaryMarkdownMeta {
+  title?: string;
+  videoUrl?: string;
+  model?: string;
+  createdAt?: string;
+}
+
+export async function getAiSummaryTaskMarkdown(
+  id: number,
+): Promise<{ content: string; meta: SummaryMarkdownMeta }> {
+  return request(`/summary-tasks/${id}/markdown`);
+}
+
 export async function deleteAiSummaryTask(id: number): Promise<void> {
   await request(`/summary-tasks/${id}`, { method: "DELETE" });
 }

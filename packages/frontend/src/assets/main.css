@@ -1,1 +1,47 @@
 @import "tailwindcss";
+
+@layer components {
+  .md-preview h1 {
+    @apply mb-2 mt-4 text-xl font-semibold text-zinc-900;
+  }
+  .md-preview h2 {
+    @apply mb-2 mt-5 text-lg font-semibold text-zinc-900;
+  }
+  .md-preview h3 {
+    @apply mb-1 mt-4 text-base font-medium text-zinc-900;
+  }
+  .md-preview p {
+    @apply my-2;
+  }
+  .md-preview blockquote {
+    @apply my-2 border-l-2 border-zinc-300 pl-3 text-zinc-500;
+  }
+  .md-preview ul {
+    @apply my-2 list-disc pl-5;
+  }
+  .md-preview ol {
+    @apply my-2 list-decimal pl-5;
+  }
+  .md-preview img {
+    @apply my-3 block max-w-full rounded-lg border border-zinc-200;
+  }
+  .md-preview code {
+    @apply rounded bg-zinc-100 px-1 py-0.5 text-xs;
+  }
+  .md-preview pre {
+    @apply my-3 overflow-auto rounded-lg bg-zinc-900 p-3 text-xs text-zinc-100;
+  }
+  .md-preview pre code {
+    @apply bg-transparent p-0 text-zinc-100;
+  }
+  .md-preview a {
+    @apply text-blue-600 underline;
+  }
+  .md-preview table {
+    @apply my-3 w-full border-collapse;
+  }
+  .md-preview th,
+  .md-preview td {
+    @apply border border-zinc-200 px-2 py-1;
+  }
+}

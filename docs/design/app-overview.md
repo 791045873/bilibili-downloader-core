@@ -31,7 +31,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 6. 下载任务在队列中依次执行：下载音频流 + 视频流 → FFmpeg 合并 → 输出到服务端下载根目录下的相对子目录
 7. 输出文件名可在设置页配置全局模板（占位符 `{title}` `{bvid}` `{cid}` `{quality}` `{codec}`，留空用默认模板）；默认模板 `{title}-{bvid}-{cid}-q{quality}` 保证同名视频互不冲突，同一视频重复入队命中"文件已存在即跳过"
 8. 用户可在下载列表中按服务端分页查看下载任务，使用状态过滤缩小当前结果集，查看进度、结果和完成任务的实际输出文件路径，并可对已完成任务直接触发 AI 总结（弹窗中可选择提示词、设为默认或绑定到该创作者）
-9. 用户可进入 AI 总结任务列表页，手动刷新查看各资源的 AI 总结状态、本次使用的模型，支持按状态筛选、按视频标题搜索、按更新时间筛选并分页浏览，并可对失败/已完成的总结记录直接"重新总结"（复用该记录上次使用提示词）
+9. 用户可进入 AI 总结任务列表页，手动刷新查看各资源的 AI 总结状态、本次使用的模型，支持按状态筛选、按视频标题搜索、按更新时间筛选并分页浏览；对 `completed` 记录可点击"查看总结"在弹窗中预览渲染后的 Markdown 总结文档（弹窗顶部展示元数据条：B站原视频链接/模型/生成时间；正文含文字 + 截图插图，插图经 `/summary-files` 静态前缀加载、点击可查看大图，弹窗支持全屏切换），并可对失败/已完成的总结记录直接"重新总结"（复用该记录上次使用提示词）、"查看原始"查看模型原始返回
 10. 用户可在提示词管理页（AI 提示词）创建/编辑/删除/设为默认 AI 总结提示词，编辑时可一键插入 JSON 格式要求片段；系统内置提示词只读
 11. 用户可在下载任务列表页删除下载任务记录，在 AI 总结任务列表页删除 AI 总结记录；删除仅作用于数据库记录，不删除磁盘内容，两条删除路径相互独立
 
@@ -67,12 +67,14 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | GET /api/summary-tasks/:id/raw-response | 按 id 返回该记录本次模型交互记录 `{ rawResponse: string \| null }`（成功=模型返回 content 原文；失败=错误信息）；非法 id 返回 400，不存在返回 404 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | POST /api/summary-tasks/:id/retrigger | 对 AI 总结记录按资源重新触发总结（全管线重跑，重新调用 LLM，复用该记录 `prompt_id` 作为显式提示词）；非法 id 返回 400，不存在返回 404，`pending`/`analyzing` 返回 409，无对应成功下载任务返回 409；复用 `AnalysisTriggerService.trigger` 链路 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | POST /api/summary-tasks/:id/rebuild | 对已完成的 AI 总结记录用已存储的大模型返回内容（`raw_response`）重建总结报告与截图，**不调用 LLM**；仅 `completed` 且 `raw_response` 非空可触发，非法 id 返回 400，不存在返回 404，非 completed 返回 409，raw 为空返回 409，并发重建返回 409；异步执行，失败不改写记录状态 | `packages/server/src/analysis/analysis-task.controller.ts` |
+| GET /api/summary-tasks/:id/markdown | 按 id 读取该记录 `summary_output` 指向的 Markdown 总结文档并返回 `{ content, meta }`：`content` 为剥离 YAML frontmatter 后的正文，相对图片链接已统一重写为 `/summary-files/…` 同源静态路径（绝对链接/根相对/锚点原样保留，`../` 越界不重写，HTML `<img>` 不处理）；`meta` 含 `title/videoUrl/model/createdAt`（frontmatter 缺失或畸形时为空对象，正文原样透传）；非法 id 返回 400，不存在返回 404，非 `completed` 或 `summary_output` 为空返回 409，文件缺失返回 404 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | DELETE /api/summary-tasks/:id | 删除 AI 总结任务记录（仅删数据库、不动磁盘）；非法 id 返回 400，不存在返回 404，`pending`/`analyzing` 返回 409 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | POST /api/analysis/run | 视频内容分析正式接口，接收 `AnalysisRequest`（videoPath、subtitlePath?、videoTitle、metadata、screenshotVideoPath?、promptId?），按 metadata.type 校验，调用 AnalysisEngine 生成总结文档；未传 promptId 时按系统默认提示词解析 | `packages/server/src/analysis/analysis.controller.ts` |
 | GET/POST/PUT/DELETE /api/analysis/prompts | AI 总结提示词管理：列表（内置排首）、创建、编辑、删除；系统内置不可编辑/删除（409），删除默认（非内置）后默认自动回落内置；`PUT /:id/default` 设为系统默认 | `packages/server/src/analysis/prompt.controller.ts` |
 | GET /api/analysis/prompts/format-snippet | 返回 JSON 格式要求片段 `{ snippet }`（服务端单一来源，前端编辑提示词时"一键插入"） | `packages/server/src/analysis/prompt.controller.ts` |
 | GET/PUT/DELETE /api/analysis/prompts/creator | 创作者绑定：GET ?mid 查询 `{ mid, promptId } | null`；PUT body `{ mid, promptId }` upsert（后写覆盖）；DELETE ?mid 解绑（幂等） | `packages/server/src/analysis/prompt.controller.ts` |
 | POST /api/analysis/trigger | 对 bvid/cid 触发 AI 总结，body 可带 `promptId?`：无任务时创建下载任务并写入 `task.prompt_id`（下载完成后自动总结使用），有任务时透传触发 | `packages/server/src/analysis/analysis.controller.ts` |
+| GET /summary-files/* | 摘要文档根目录（`cwd/summaryDir`）静态挂载，供前端预览 md 内相对插图；本地 dev 由 Vite 代理 `/summary-files` 转发，容器内与前端同源 | `packages/server/src/main.ts` |
 | POST /api/download | 创建下载任务，body 可带 `promptId?` 写入 `task.prompt_id`；必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts` |
 
 ## Rule
