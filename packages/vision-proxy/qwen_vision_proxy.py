@@ -67,8 +67,13 @@ try:
 except ModuleNotFoundError as err:
     missing_dependency_exit("python-dotenv", err.name or "dotenv")
 
-SERVER_DIR = Path(__file__).resolve().parents[1]
-load_dotenv(SERVER_DIR / ".env")
+PROXY_DIR = Path(__file__).resolve().parent
+load_dotenv(PROXY_DIR / ".env")
+
+# DashScope SDK 原生 API 基址（写死为私有工作区端点，暂不支持外部配置）。
+# Node 侧「测试连接」与代理同用此基址（见 analysis.controller.ts: DASHSCOPE_NATIVE_API_URL）。
+DASHSCOPE_BASE_URL = "https://llm-oixf9mmfxlkakjoy.cn-beijing.maas.aliyuncs.com/api/v1"
+dashscope.base_http_api_url = DASHSCOPE_BASE_URL
 
 HOST = os.getenv("QWEN_VISION_PROXY_HOST", "127.0.0.1")
 PORT = int(os.getenv("QWEN_VISION_PROXY_PORT", "8765"))
@@ -183,6 +188,17 @@ def build_call_options(payload: dict[str, Any]) -> dict[str, Any]:
     return options
 
 
+def _extract_api_key(headers) -> str:
+    auth = headers.get("Authorization", "").strip()
+    if auth.startswith("Bearer "):
+        key = auth[len("Bearer "):].strip()
+    else:
+        key = auth
+    if not key:
+        raise ValueError("missing Authorization header with Bearer DashScope API key")
+    return key
+
+
 class VisionProxyHandler(BaseHTTPRequestHandler):
     timeout = SOCKET_TIMEOUT
 
@@ -235,13 +251,7 @@ class VisionProxyHandler(BaseHTTPRequestHandler):
                 return
 
             payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
-            api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("DASH_SCOPE_API_KEY")
-            if not api_key:
-                raise ValueError("missing environment variable DASHSCOPE_API_KEY or DASH_SCOPE_API_KEY")
-
-            base_http_api_url = os.getenv("DASHSCOPE_BASE_HTTP_API_URL")
-            if base_http_api_url:
-                dashscope.base_http_api_url = base_http_api_url
+            api_key = _extract_api_key(self.headers)
 
             response = MultiModalConversation.call(
                 api_key=api_key,

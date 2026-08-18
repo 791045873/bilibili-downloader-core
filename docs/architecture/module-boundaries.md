@@ -35,6 +35,15 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 - Owner docs: `docs/design/app-overview.md`
 - Logging ownership: server 负责 adapter 失败的高语义日志表达，包括请求、任务状态、编排分支、降级决策和对外错误语义。
 
+### `packages/vision-proxy/`
+
+- Responsibility: 可选 Python 视觉薄代理，仅将 Node 指定的本地媒体路径/URL 转换为 DashScope 多模态请求并返回 OpenAI 风格响应；不加入任何业务语义（无编排、无任务管理、无数据库）。
+- Allowed dependencies: 仅 Python 第三方库（`dashscope`、`python-dotenv`，经 `pyproject.toml` 锁定）；不依赖任何 pnpm workspace 包。
+- Forbidden dependencies: 不依赖 `packages/core/`、`packages/server/`、`packages/adapters/` 等 Node 包；不通过代码导入 Node 侧实现。
+- Owner docs: `docs/architecture/2026-07-06-video-analysis-baseline.md`
+- 运行边界: 独立容器 `vision-proxy`（compose 网络内 `0.0.0.0:8765`，不发布宿主机端口）；宿主开发模式由 `scripts/start-vision-proxy.mjs` 经 `packages/vision-proxy/.venv` 拉起；开发模式密钥读 `packages/vision-proxy/.env`，容器模式密钥经 compose 注入。
+- 通信边界: 与 server 之间仅经 HTTP 契约（`/v1/chat/completions`、`/healthz`），共享 `/download` 文件系统保证本地媒体可读。
+
 ### `packages/frontend/`
 
 - Responsibility: Vue 3 Web 前端，视频输入界面、下载列表、设置页
@@ -44,8 +53,8 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 
 ### `packages/docker/`
 
-- Responsibility: Dockerfile 和构建脚本，将 Server + Frontend 打包为 Docker 镜像
-- Allowed dependencies: `packages/server/`, `packages/frontend/`（仅通过构建流程，不通过代码导入）
+- Responsibility: Dockerfile 和构建脚本，将 Server + Frontend + Vision Proxy（Python）打包为两个 Docker 镜像（`server` / `vision-proxy`），并编排 compose 双容器
+- Allowed dependencies: `packages/server/`, `packages/frontend/`, `packages/vision-proxy/`（仅通过构建流程，不通过代码导入）
 - Forbidden dependencies: 不包含业务代码
 - Owner docs: `docs/architecture/system-baseline.md`
 
@@ -53,7 +62,8 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 
 ```
 frontend ──(HTTP)──→ server ──→ adapters ──→ core
-docker ──(build)──→ server + frontend
+server   ──(HTTP)──→ vision-proxy
+docker   ──(build)──→ server + frontend + vision-proxy
 ```
 
 - Core 是最内层，不依赖任何其他包

@@ -46,12 +46,10 @@ export function Component() {
 
   const [llmForm, setLlmForm] = useState({
     modelName: "",
-    baseUrl: "",
     apiKey: "",
   });
   const [llmDirty, setLlmDirty] = useState({
     modelName: false,
-    baseUrl: false,
     apiKey: false,
   });
   const [llmSaved, setLlmSaved] = useState(false);
@@ -67,10 +65,9 @@ export function Component() {
     if (!llmConfig) return;
     setLlmForm((prev) => ({
       modelName: prev.modelName || llmConfig.modelName,
-      baseUrl: prev.baseUrl || llmConfig.baseUrl,
       apiKey: "",
     }));
-    setLlmDirty({ modelName: false, baseUrl: false, apiKey: false });
+    setLlmDirty({ modelName: false, apiKey: false });
   }, [llmConfig]);
 
   function setLlmField<K extends keyof typeof llmForm>(
@@ -85,11 +82,9 @@ export function Component() {
     setLlmError("");
     const patch: Partial<{
       apiKey: string;
-      baseUrl: string;
       modelName: string;
     }> = {};
     if (llmDirty.modelName) patch.modelName = llmForm.modelName.trim();
-    if (llmDirty.baseUrl) patch.baseUrl = llmForm.baseUrl.trim();
     if (llmDirty.apiKey) patch.apiKey = llmForm.apiKey.trim();
     if (Object.keys(patch).length === 0) return;
 
@@ -97,10 +92,9 @@ export function Component() {
       const updated = await api.updateAnalysisConfig(patch);
       setLlmForm((prev) => ({
         modelName: updated.modelName,
-        baseUrl: updated.baseUrl,
         apiKey: "",
       }));
-      setLlmDirty({ modelName: false, baseUrl: false, apiKey: false });
+      setLlmDirty({ modelName: false, apiKey: false });
       setLlmSaved(true);
       window.setTimeout(() => setLlmSaved(false), 2000);
       void refetchLlmConfig();
@@ -112,8 +106,7 @@ export function Component() {
   async function handleTestLlmConfig() {
     setLlmTestResult(null);
     setLlmTesting(true);
-    const patch: { apiKey?: string; baseUrl: string; modelName: string } = {
-      baseUrl: llmForm.baseUrl.trim(),
+    const patch: { apiKey?: string; modelName: string } = {
       modelName: llmForm.modelName.trim(),
     };
     const apiKey = llmForm.apiKey.trim();
@@ -317,15 +310,6 @@ export function Component() {
                 value={llmForm.modelName}
                 placeholder="例如 qwen3-flash"
                 onChange={(e) => setLlmField("modelName", e.target.value)}
-                style={{ width: 320 }}
-              />
-            </div>
-            <div className="flex items-center justify-between py-2 gap-4">
-              <span className="text-sm text-zinc-700 shrink-0">API 地址</span>
-              <Input
-                value={llmForm.baseUrl}
-                placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
-                onChange={(e) => setLlmField("baseUrl", e.target.value)}
                 style={{ width: 320 }}
               />
             </div>

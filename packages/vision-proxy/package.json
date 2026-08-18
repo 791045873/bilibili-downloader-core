@@ -1,0 +1,10 @@
+{
+  "name": "@bilibili-downloader/vision-proxy",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Qwen 视觉薄代理（Python）：本地媒体路径转 DashScope 多模态请求；作为独立容器 vision-proxy 与宿主开发模式代理",
+  "scripts": {
+    "setup": "node ../../scripts/setup-vision-proxy.mjs",
+    "start": "node ../../scripts/start-vision-proxy.mjs"
+  }
+}

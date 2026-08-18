@@ -656,24 +656,21 @@ export class AnalysisTriggerService implements OnModuleInit {
   private getLlmConfig(): LlmConfig {
     const stored = this.db.getSettings([
       "llm.apiKey",
-      "llm.baseUrl",
       "llm.modelName",
     ]);
     const apiKey = stored["llm.apiKey"];
-    const baseUrl = stored["llm.baseUrl"];
     const modelName = stored["llm.modelName"];
     const visionProxyUrl = process.env.QWEN_VISION_PROXY_URL;
     const visionProxyTimeoutMs = parseVisionProxyTimeoutMs(
       process.env.QWEN_VISION_PROXY_TIMEOUT_MS,
     );
 
-    if (!apiKey || !baseUrl || !modelName) {
-      throw new Error("缺少 LLM 配置：请在设置页配置 API Key/API 地址/模型");
+    if (!apiKey || !modelName) {
+      throw new Error("缺少 LLM 配置：请在设置页配置 API Key/模型");
     }
 
     return {
       apiKey,
-      baseUrl,
       modelName,
       visionProxyUrl,
       visionProxyTimeoutMs,

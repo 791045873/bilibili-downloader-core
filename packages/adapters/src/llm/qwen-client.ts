@@ -1,8 +1,7 @@
 /**
- * 千问 LLM API 客户端
+ * 千问 LLM 客户端
  *
- * 封装千问 3.6 Flash 的 HTTP API 调用（OpenAI 兼容格式）
- * 支持纯文本（强制 JSON 输出）和多模态（文本 + 图片/视频 URL/本地路径）调用
+ * 封装经 Python 视觉代理的多模态调用（本地媒体文件由代理机器上的 DashScope SDK 读取）。
  */
 
 import { summarizeResponseBody, summarizeUrl } from "../safe-error-context.js";
@@ -21,17 +20,9 @@ function delay(ms: number): Promise<void> {
 
 export interface LlmConfig {
   apiKey: string;
-  baseUrl: string;
   modelName: string;
   visionProxyUrl?: string;
   visionProxyTimeoutMs?: number;
-}
-
-/** 纯文本聊天请求 */
-export interface ChatCompletionRequest {
-  model: string;
-  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
-  response_format?: { type: "json_object" };
 }
 
 /** 多模态消息内容块（文本、图片或视频） */
@@ -99,132 +90,84 @@ export class QwenClient {
   }
 
   /**
-   * 纯文本调用，强制 JSON 输出格式
-   */
-  async chatCompletion(params: ChatCompletionRequest): Promise<object> {
-    const url = `${this.config.baseUrl}/chat/completions`;
-    const safeEndpoint = summarizeUrl(url);
-    const response = await this.httpClient(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.config.apiKey}`,
-      },
-      body: JSON.stringify({
-        ...params,
-        model: params.model || this.config.modelName,
-        response_format: params.response_format ?? { type: "json_object" },
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.text().catch(() => response.statusText);
-      throw new Error(
-        `LLM API 调用失败 (status=${response.status}, endpoint=${safeEndpoint}): ${summarizeResponseBody(err || response.statusText)}`,
-      );
-    }
-
-    return JSON.parse(
-      extractRawContent(await response.json(), "LLM 返回空响应"),
-    ) as object;
-  }
-
-  /**
    * 多模态调用（文本 + 图片/视频 URL/本地路径）
+   *
+   * 仅支持经 Python 视觉代理调用：本地媒体路径需由代理所在机器读取。
    */
   async multimodalChat(
     params: MultimodalRequest,
   ): Promise<MultimodalChatResult> {
     assertNoBase64MediaUrls(params);
 
+    if (!this.config.visionProxyUrl) {
+      throw new Error(
+        "LLM 多模态调用需要配置 QWEN_VISION_PROXY_URL（当前仅支持经 Python 视觉代理调用）",
+      );
+    }
+
     const requestBody = {
       ...params,
       model: this.config.modelName,
     };
 
-    if (this.config.visionProxyUrl) {
-      const safeProxyEndpoint = summarizeUrl(this.config.visionProxyUrl);
-      const timeoutMs =
-        this.config.visionProxyTimeoutMs ?? VISION_PROXY_DEFAULT_TIMEOUT_MS;
+    const safeProxyEndpoint = summarizeUrl(this.config.visionProxyUrl);
+    const timeoutMs =
+      this.config.visionProxyTimeoutMs ?? VISION_PROXY_DEFAULT_TIMEOUT_MS;
 
-      for (let attempt = 1; ; attempt++) {
-        let response: Response;
-        try {
-          response = await fetchWithTimeout(
-            this.httpClient,
-            this.config.visionProxyUrl,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(requestBody),
+    for (let attempt = 1; ; attempt++) {
+      let response: Response;
+      try {
+        response = await fetchWithTimeout(
+          this.httpClient,
+          this.config.visionProxyUrl,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.config.apiKey}`,
             },
-            timeoutMs,
-          );
-        } catch (err) {
-          if (err instanceof Error && err.name === "AbortError") {
-            throw new Error(
-              `LLM 多模态代理调用超时 (${timeoutMs}ms, endpoint=${safeProxyEndpoint})`,
-            );
-          }
-          if (attempt < VISION_PROXY_MAX_ATTEMPTS) {
-            await delay(VISION_PROXY_RETRY_DELAY_MS);
-            continue;
-          }
-          throw err;
-        }
-
-        if (!response.ok) {
-          const err = await response.text().catch(() => response.statusText);
-          if (
-            isRetryableProxyStatus(response.status) &&
-            attempt < VISION_PROXY_MAX_ATTEMPTS
-          ) {
-            await delay(VISION_PROXY_RETRY_DELAY_MS);
-            continue;
-          }
-          throw new Error(
-            `LLM 多模态代理调用失败 (status=${response.status}, endpoint=${safeProxyEndpoint}): ${summarizeResponseBody(err || response.statusText)}`,
-          );
-        }
-
-        const rawBody = await response.json();
-        const rawContent = extractRawContent(
-          rawBody,
-          "LLM 多模态代理返回空响应",
+            body: JSON.stringify(requestBody),
+          },
+          timeoutMs,
         );
-        return {
-          data: JSON.parse(rawContent) as object,
-          rawContent,
-          model: requestBody.model,
-        };
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          throw new Error(
+            `LLM 多模态代理调用超时 (${timeoutMs}ms, endpoint=${safeProxyEndpoint})`,
+          );
+        }
+        if (attempt < VISION_PROXY_MAX_ATTEMPTS) {
+          await delay(VISION_PROXY_RETRY_DELAY_MS);
+          continue;
+        }
+        throw err;
       }
-    }
 
-    const url = `${this.config.baseUrl}/chat/completions`;
-    const safeEndpoint = summarizeUrl(url);
-    const response = await this.httpClient(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.config.apiKey}`,
-      },
-      body: JSON.stringify(requestBody),
-    });
+      if (!response.ok) {
+        const err = await response.text().catch(() => response.statusText);
+        if (
+          isRetryableProxyStatus(response.status) &&
+          attempt < VISION_PROXY_MAX_ATTEMPTS
+        ) {
+          await delay(VISION_PROXY_RETRY_DELAY_MS);
+          continue;
+        }
+        throw new Error(
+          `LLM 多模态代理调用失败 (status=${response.status}, endpoint=${safeProxyEndpoint}): ${summarizeResponseBody(err || response.statusText)}`,
+        );
+      }
 
-    if (!response.ok) {
-      const err = await response.text().catch(() => response.statusText);
-      throw new Error(
-        `LLM 多模态调用失败 (status=${response.status}, endpoint=${safeEndpoint}): ${summarizeResponseBody(err || response.statusText)}`,
+      const rawBody = await response.json();
+      const rawContent = extractRawContent(
+        rawBody,
+        "LLM 多模态代理返回空响应",
       );
+      return {
+        data: JSON.parse(rawContent) as object,
+        rawContent,
+        model: requestBody.model,
+      };
     }
-
-    const rawBody = await response.json();
-    const rawContent = extractRawContent(rawBody, "LLM 多模态返回空响应");
-    return {
-      data: JSON.parse(rawContent) as object,
-      rawContent,
-      model: requestBody.model,
-    };
   }
 }
 

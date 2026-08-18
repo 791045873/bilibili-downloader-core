@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(__dirname);
-const pythonDir = join(repoRoot, "packages", "server", "python");
+const pythonDir = join(repoRoot, "packages", "vision-proxy");
 const proxyScript = join(pythonDir, "qwen_vision_proxy.py");
 const venvPython =
   process.platform === "win32"

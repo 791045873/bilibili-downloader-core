@@ -261,7 +261,6 @@ export async function rebuildAiSummaryTask(
 export interface AnalysisLlmConfig {
   apiKeyConfigured: boolean;
   apiKeyMasked: string;
-  baseUrl: string;
   modelName: string;
 }
 
@@ -272,7 +271,6 @@ export async function getAnalysisConfig(): Promise<AnalysisLlmConfig> {
 export async function updateAnalysisConfig(
   patch: Partial<{
     apiKey: string;
-    baseUrl: string;
     modelName: string;
   }>,
 ): Promise<AnalysisLlmConfig> {
@@ -291,7 +289,6 @@ export interface AnalysisConfigTestResult {
 
 export async function testAnalysisConfig(patch: {
   apiKey?: string;
-  baseUrl?: string;
   modelName?: string;
 }): Promise<AnalysisConfigTestResult> {
   return request("/analysis/config/test", {

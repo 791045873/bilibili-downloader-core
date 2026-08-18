@@ -39,6 +39,7 @@ COPY packages/adapters/package.json packages/adapters/tsconfig.json packages/ada
 COPY packages/server/package.json packages/server/tsconfig.json packages/server/
 COPY packages/frontend/package.json packages/frontend/tsconfig.json packages/frontend/vite.config.ts packages/frontend/
 COPY packages/docker/package.json packages/docker/
+COPY packages/vision-proxy/package.json packages/vision-proxy/
 COPY scripts/check-ffmpeg.mjs scripts/setup-vision-proxy.mjs scripts/
 
 RUN --mount=type=cache,id=bilibili-pnpm-store,target=/pnpm/store \
@@ -94,7 +95,7 @@ RUN --mount=type=cache,id=bilibili-apt-archives,target=/var/cache/apt,sharing=lo
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates python3 python3-venv
 
-COPY packages/server/python/pyproject.toml /tmp/vision-proxy/pyproject.toml
+COPY packages/vision-proxy/pyproject.toml /tmp/vision-proxy/pyproject.toml
 RUN python3 -m venv --copies /opt/vision-venv
 RUN --mount=type=cache,id=bilibili-pip-cache,target=/root/.cache/pip \
     set -eux; \
@@ -137,8 +138,7 @@ WORKDIR /app
 COPY --from=builder /app/runtime ./
 COPY --from=builder /app/packages/frontend/dist ./public
 
-RUN rm -rf /app/python && \
-    mkdir -p /download /download/logs && \
+RUN mkdir -p /download /download/logs && \
     cd /app && node --input-type=module -e \
       "import Database from 'better-sqlite3'; const db = new Database(':memory:'); db.exec('select 1'); db.close()"
 
@@ -185,7 +185,7 @@ RUN rm -f /usr/local/bin/node /usr/local/bin/npm /usr/local/bin/npx /usr/local/b
     rm -rf /opt/yarn-*
 
 COPY --from=python-builder /opt/vision-venv /opt/vision-venv
-COPY packages/server/python/qwen_vision_proxy.py /app/python/qwen_vision_proxy.py
+COPY packages/vision-proxy/qwen_vision_proxy.py /app/python/qwen_vision_proxy.py
 
 WORKDIR /app
 

@@ -60,14 +60,13 @@ packages/
 - Docker compose 双容器部署：`server`（NestJS + 静态文件托管前端构建产物 + FFmpeg）与 `vision-proxy`（Python 视觉薄代理）各自独立容器，均配置 `restart: unless-stopped`，任一容器主进程崩溃由 Docker 单独自动重启，不影响健康容器；对外仅暴露 `server` 的 3000 端口。
 - server 经 compose 默认网络的服务名 `vision-proxy:8765` 调用代理（`QWEN_VISION_PROXY_URL=http://vision-proxy:8765/v1/chat/completions`）；vision-proxy 容器内监听 `0.0.0.0:8765` 实现跨容器可达，但不向宿主机发布端口。
 - 两容器共享同一宿主机目录挂载到 `/download`（默认 `${HOME:-$USERPROFILE}/Downloads/bilibili_download`，可用 `DOWNLOAD_HOST_PATH` 覆盖，Windows 宿主经 `USERPROFILE` 回退）；日志默认写入 `/download/logs`
-- NAS 用户通过挂载 volume 将容器内下载目录映射到宿主机；`DASHSCOPE_API_KEY` 等密钥经 compose 环境变量传入 vision-proxy 容器，不写入镜像
+- NAS 用户通过挂载 volume 将容器内下载目录映射到宿主机；大模型密钥由前端设置页存 DB，Node 经 `Authorization` 头传给 vision-proxy 容器，不写入镜像、不经 compose env
 
 ## External Platforms
 
 - Bilibili API：无需登录即可获取视频基本信息、播放流地址
 - FFmpeg / ffprobe：音视频合并与视频截图（作为外部依赖，需系统预装或容器内置）
 - 阿里云百炼 / DashScope：视频分析总结功能使用 Qwen 文本与视觉理解模型；视觉本地文件输入通过可选 Python 薄代理接入 DashScope Python SDK
-- 腾讯云 COS：未启用 Python 薄代理时，可作为多模态图片公网 URL 的备用临时存储路径
 
 ## Stable Rules
 

@@ -108,7 +108,7 @@ export class AnalysisEngine {
   private ensureLlmClient(): QwenClient {
     if (!this.llmClient) {
       if (!this.llmConfig) {
-        throw new Error("缺少 LLM 配置：请先在设置页配置 API Key/API 地址/模型");
+        throw new Error("缺少 LLM 配置：请先在设置页配置 API Key/模型");
       }
       this.llmClient = new QwenClient(this.llmConfig, this.httpClient);
     }
@@ -294,7 +294,7 @@ export class AnalysisEngine {
 
     const processedSegments: DocumentInput["segments"] = [];
 
-    // 按 LLM 返回的精确时间戳直接截图，不再做二次多模态选图
+    // 按 LLM 返回的精确时间戳直接截图，仅一次多模态调用，无二次图像选择
     const screenshotStartMs = Date.now();
     for (let si = 0; si < summaryItems.length; si++) {
       const item = summaryItems[si];

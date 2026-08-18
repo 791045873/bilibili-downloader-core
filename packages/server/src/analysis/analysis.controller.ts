@@ -42,6 +42,11 @@ interface AnalysisRequest {
   screenshotVideoPath?: string;
 }
 
+// 与 Python 视觉代理写死基址（qwen_vision_proxy.py: DASHSCOPE_BASE_URL）保持一致的原生 API 端点，
+// 用于 LLM 连通性测试（测试连接与代理使用同一端点）。
+const DASHSCOPE_NATIVE_API_URL =
+  "https://llm-oixf9mmfxlkakjoy.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+
 @Controller("api/analysis")
 export class AnalysisController {
   private readonly logger = new Logger(AnalysisController.name);
@@ -190,7 +195,6 @@ export class AnalysisController {
 
   private readonly llmConfigKeys = [
     "llm.apiKey",
-    "llm.baseUrl",
     "llm.modelName",
   ] as const;
 
@@ -198,7 +202,6 @@ export class AnalysisController {
     const stored = this.databaseService.getSettings([...this.llmConfigKeys]);
     return {
       "llm.apiKey": stored["llm.apiKey"] ?? "",
-      "llm.baseUrl": stored["llm.baseUrl"] ?? "",
       "llm.modelName": stored["llm.modelName"] ?? "",
     };
   }
@@ -207,7 +210,6 @@ export class AnalysisController {
   getLlmConfigStatus() {
     const settings = this.resolveLlmSettings();
     const apiKey = settings["llm.apiKey"];
-    const baseUrl = settings["llm.baseUrl"];
     const modelName = settings["llm.modelName"];
     const apiKeyMasked =
       apiKey.length >= 4
@@ -219,7 +221,6 @@ export class AnalysisController {
     return {
       apiKeyConfigured: apiKey.length > 0,
       apiKeyMasked,
-      baseUrl,
       modelName,
     };
   }
@@ -229,13 +230,11 @@ export class AnalysisController {
     @Body()
     body: {
       apiKey?: string;
-      baseUrl?: string;
       modelName?: string;
     },
   ) {
     const patch: Record<string, string> = {};
     if (body.apiKey !== undefined) patch["llm.apiKey"] = String(body.apiKey).trim();
-    if (body.baseUrl !== undefined) patch["llm.baseUrl"] = String(body.baseUrl).trim();
     if (body.modelName !== undefined) patch["llm.modelName"] = String(body.modelName).trim();
 
     this.databaseService.setSettings(patch);
@@ -255,7 +254,6 @@ export class AnalysisController {
     @Body()
     body: {
       apiKey?: string;
-      baseUrl?: string;
       modelName?: string;
     },
   ): Promise<{ ok: boolean; model?: string; message?: string; error?: string }> {
@@ -264,20 +262,15 @@ export class AnalysisController {
       body?.apiKey !== undefined
         ? String(body.apiKey).trim()
         : settings["llm.apiKey"];
-    const baseUrl =
-      body?.baseUrl !== undefined
-        ? String(body.baseUrl).trim()
-        : settings["llm.baseUrl"];
     const modelName =
       body?.modelName !== undefined
         ? String(body.modelName).trim()
         : settings["llm.modelName"];
 
     if (!apiKey) return { ok: false, error: "缺少 API Key" };
-    if (!baseUrl) return { ok: false, error: "缺少 API 地址" };
     if (!modelName) return { ok: false, error: "缺少模型" };
 
-    const url = `${baseUrl}/chat/completions`;
+    const url = DASHSCOPE_NATIVE_API_URL;
     this.logger.log(
       createLogMessage("LLM config connectivity test started", {
         modelName,
@@ -295,8 +288,19 @@ export class AnalysisController {
         },
         body: JSON.stringify({
           model: modelName,
-          messages: [{ role: "user", content: "ping" }],
-          max_tokens: 8,
+          input: {
+            messages: [
+              {
+                role: "system",
+                content: [{ text: "You are a helpful assistant." }],
+              },
+              {
+                role: "user",
+                content: [{ text: "ping" }],
+              },
+            ],
+          },
+          parameters: { result_format: "message" },
         }),
       });
 
@@ -306,14 +310,14 @@ export class AnalysisController {
       }
 
       const rawBody = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
+        output?: { choices?: Array<{ message?: { content?: unknown } }> };
         error?: { message?: string };
       };
       if (rawBody.error) {
         return { ok: false, error: `服务返回错误: ${rawBody.error.message || JSON.stringify(rawBody.error)}` };
       }
-      const content = rawBody.choices?.[0]?.message?.content;
-      if (typeof content !== "string" || content.trim().length === 0) {
+      const content = rawBody.output?.choices?.[0]?.message?.content;
+      if (content === undefined || content === null || String(content).trim().length === 0) {
         return { ok: false, error: "调用返回为空，请检查模型名称是否正确" };
       }
 
@@ -470,7 +474,6 @@ export class AnalysisController {
   private getLlmConfig(): LlmConfig {
     const settings = this.resolveLlmSettings();
     const apiKey = settings["llm.apiKey"];
-    const baseUrl = settings["llm.baseUrl"];
     const modelName = settings["llm.modelName"];
     const visionProxyUrl = process.env.QWEN_VISION_PROXY_URL;
     const visionProxyTimeoutMs = parseVisionProxyTimeoutMs(
@@ -480,16 +483,12 @@ export class AnalysisController {
     if (!apiKey) {
       throw new BadRequestException("缺少 LLM 配置：API Key 未设置");
     }
-    if (!baseUrl) {
-      throw new BadRequestException("缺少 LLM 配置：API 地址未设置");
-    }
     if (!modelName) {
       throw new BadRequestException("缺少 LLM 配置：模型未设置");
     }
 
     return {
       apiKey,
-      baseUrl,
       modelName,
       visionProxyUrl,
       visionProxyTimeoutMs,

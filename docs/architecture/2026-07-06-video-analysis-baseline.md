@@ -11,9 +11,6 @@ packages/adapters/src/
 ├── llm/              ← 新增
 │   ├── index.ts
 │   └── qwen-client.ts   ← 千问 API 调用封装；多模态可透传到 Python 薄代理
-├── cos/              ← 新增
-│   ├── index.ts
-│   └── tencent-cos-temp-image-store.ts ← COS 临时图片上传与清理（云端 URL 备用路径）
 ├── ffmpeg/
 │   ├── index.ts
 │   ├── ffmpeg-merger.ts ← 已有
@@ -21,7 +18,7 @@ packages/adapters/src/
 
 packages/server/src/
 ├── analysis/         ← 新增
-│   ├── analysis-engine.ts      ← 核心编排：字幕分析 → 截图 → 多模态筛选 → 文档生成
+│   ├── analysis-engine.ts      ← 核心编排：视频+字幕多模态分析 → 截图 → 文档生成
 │   ├── analysis.controller.ts  ← 临时调试 API
 │   ├── analysis.module.ts      ← NestJS 模块装配
 │   ├── analysis-trigger.service.ts ← 下载完成后自动触发分析（原子认领 + 低清等待 + runAnalysis）
@@ -29,18 +26,18 @@ packages/server/src/
 │   ├── document-generator.ts   ← Markdown 文档组装
 │   └── index.ts
 
-packages/server/python/
+packages/vision-proxy/
 ├── qwen_vision_proxy.py        ← Python 薄代理：本地文件路径 → DashScope SDK
-└── pyproject.toml              ← Python 依赖（锁定版本，安装进 .venv）
+└── pyproject.toml              ← Python 依赖（锁定版本，安装进包目录下 .venv）
 ```
 
 ## 架构原则
 
 1. **分析 vs 下载分离**：分析引擎不依赖下载链路，下载完成后通过 server 层触发
 2. **Adapter 关注通用性**：`llm/qwen-client` 封装为通用 OpenAI 兼容格式，不包含分析业务逻辑
-3. **Orchestration 在 server 层**：分析编排（先分析字幕 → 再截图 → 再选图 → 生成文档）在 `analysis-engine.ts` 中，不在 adapter 层
-4. **Python 层保持极薄**：Python 只作为 DashScope SDK 本地文件路径能力的代理，不理解字幕、段落、选图或文档生成等业务语义
-5. **禁止 Base64 图片路径**：多模态输入不得使用 Base64；本地调试优先使用 Python 薄代理读取本地截图，云端部署可回退 COS/公网 URL
+3. **Orchestration 在 server 层**：分析编排（视频+字幕多模态分析 → 截图 → 文档生成）在 `analysis-engine.ts` 中，不在 adapter 层
+4. **Python 层保持极薄**：Python 只作为 DashScope SDK 本地文件路径能力的代理，不理解字幕、段落、截图或文档生成等业务语义
+5. **禁止 Base64 图片路径**：多模态输入不得使用 Base64；本地媒体经 Python 视觉代理由 DashScope SDK 本机读取，所有部署形态均需配置 `QWEN_VISION_PROXY_URL`，无公网 URL 直连路径
 
 ## 模块边界
 
@@ -49,13 +46,6 @@ packages/server/python/
 通用 LLM API 调用封装，不包含分析业务逻辑。
 
 ```typescript
-// 纯文本请求
-interface ChatCompletionRequest {
-  model: string;
-  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
-  response_format?: { type: "json_object" };  // 强制 JSON 输出
-}
-
 // 多模态请求（文本 + 图片）
 interface MultimodalRequest {
   model: string;
@@ -70,21 +60,19 @@ interface MultimodalRequest {
 
 // 配置
 interface LlmConfig {
-  apiKey: string;          // 从环境变量读取
-  baseUrl: string;         // 千问 API 端点
+  apiKey: string;          // 从 DB 读取（前端设置页配置）
   modelName: string;       // 如 "qwen-3.6-flash"
   visionProxyUrl?: string; // Python 薄代理地址；存在时多模态调用透传给 Python
-  visionModelName?: string;// 多模态模型名，可与文本模型拆分
 }
 ```
 
-`chatCompletion()` 继续由 Node.js 直接调用 OpenAI 兼容接口。`multimodalChat()` 在配置 `visionProxyUrl` 时不再要求公网图片 URL，而是将完整 OpenAI-style 多模态请求透传给 Python 薄代理；未配置代理时保留原有公网 URL/COS 路径。
+`multimodalChat()` 将完整 OpenAI-style 多模态请求透传给 Python 薄代理（本地视频/图片由 DashScope SDK 读取）；多模态调用必须配置 `QWEN_VISION_PROXY_URL`，未配置将报错，无直连回退。
 
 依赖方向：`server → llm/adapter`（无反向依赖）
 
-### Python 视觉薄代理 (`packages/server/python/`)
+### Python 视觉薄代理 (`packages/vision-proxy/`)
 
-Python 层是系统架构中的本地文件传输适配层，目的仅是复用 DashScope Python SDK 对本地文件路径的支持，避免在本地调试和个人使用场景中为截图上传 COS/OSS。
+Python 层是系统架构中的本地文件传输适配层，目的仅是复用 DashScope Python SDK 对本地文件路径的支持，避免在本地调试和个人使用场景中为截图做云端托管。
 
 边界规则：
 
@@ -99,12 +87,10 @@ Python 层是系统架构中的本地文件传输适配层，目的仅是复用 
 
 ```text
 Node AnalysisEngine
-  ├─ 构造字幕分析请求 → QwenClient.chatCompletion() → OpenAI-compatible HTTP
-  ├─ ffmpeg 生成本地截图
-  ├─ 构造多模态选图请求 → QwenClient.multimodalChat()
-  │    ├─ 有 QWEN_VISION_PROXY_URL: POST 给 Python 薄代理，本地路径由 DashScope SDK 上传/读取
-  │    └─ 无 QWEN_VISION_PROXY_URL: 使用 COS/公网 URL 路径
-  └─ 解析选图结果并生成 Markdown
+  ├─ 构造视频+字幕多模态分析请求 → QwenClient.multimodalChat()
+  │    └─ 必须经 Python 视觉代理（QWEN_VISION_PROXY_URL，未配置报错）；本地路径由 DashScope SDK 读取
+  ├─ 按返回时间戳 ffmpeg 截图
+  └─ 生成 Markdown
 ```
 
 ### ffmpeg 截图 (`packages/adapters/src/ffmpeg/`)
@@ -185,7 +171,7 @@ function generateMarkdown(input: DocumentInput): string;
 server/src/analysis/ ‐‐‐→ adapters/src/llm/    (LLM 调用)
 server/src/analysis/ ‐‐‐→ adapters/src/ffmpeg/ (截图)
 server/src/analysis/ ‐‐‐→ adapters/src/parser/ (SRT 解析)
-server/src/analysis/ ‐‐‐→ server/python/        (可选：多模态本地文件代理)
+server/src/analysis/ ‐‐‐→ vision-proxy/          (可选：多模态本地文件代理)
 server/src/analysis/ ‐‐‐→ core (SubtitleInfo 等类型，如需要)
 server/src/analysis/analysis-video-resolver.ts
   ‐‐‐→ download.service (fileExists / resolveBestVideoStream / createTask / executeTask)
@@ -195,7 +181,7 @@ server/src/analysis/analysis-video-resolver.ts
 adapters/src/llm/     ‐‐‐→ 外部 HTTP API (千问文本 / 备用多模态)
 adapters/src/llm/     ‐‐‐→ Python 薄代理 HTTP API (可选多模态)
 adapters/src/ffmpeg/  ‐‐‐→ 系统 ffmpeg / ffprobe 二进制
-server/python/        ‐‐‐→ DashScope Python SDK
+vision-proxy/          ‐‐‐→ DashScope Python SDK
 ```
 
 ## 2026-08-11 基线更新
@@ -207,7 +193,7 @@ server/python/        ‐‐‐→ DashScope Python SDK
 
 ## 2026-08-15 基线更新
 
-- LLM 配置（API Key / API 地址 / 模型）改为前端设置页配置，存储于 `app_settings` 表（`llm.apiKey` / `llm.baseUrl` / `llm.modelName`）；`getLlmConfig()`（`analysis-trigger.service.ts` 与 `analysis.controller.ts`）仅读 DB，不再回退环境变量 `QWEN_API_KEY` / `QWEN_API_BASE` / `QWEN_MODEL`。
+- LLM 配置（API Key / API 地址 / 模型）改为前端设置页配置，存储于 `app_settings` 表（`llm.apiKey` / `llm.baseUrl` / `llm.modelName`）；`getLlmConfig()`（`analysis-trigger.service.ts` 与 `analysis.controller.ts`）仅读 DB，不再回退任何 LLM 环境变量。
 - 视觉模型不再单独配置，多模态调用复用主模型（`modelName`）。
 - 新增端点：`GET/PUT /api/analysis/config`（key 掩码返回、部分更新、空串清除）、`POST /api/analysis/config/test`（连接测试，完整错误返回）。
 
@@ -217,11 +203,12 @@ server/python/        ‐‐‐→ DashScope Python SDK
 
 ```
 # .env
-# 可选：本地多模态 Python 薄代理。配置后，多模态选图使用本地截图路径，不上传 COS/OSS。
+# 可选：本地多模态 Python 薄代理。配置后，多模态调用使用本地视频/截图路径，由代理本机读取。
+# 宿主开发模式 env 归属：server 读 packages/server/.env（回退仓库根 .env）；
+# vision-proxy 读 packages/vision-proxy/.env（2026-08-18 起，与 server 解耦）。
+# 代理密钥：由前端设置页配置进数据库（llm.apiKey），Node 经 Authorization 头传给代理，不落 env；
+# SDK 原生 API 基址在代理代码中写死（私有工作区端点，暂不支持外部配置）。
 QWEN_VISION_PROXY_URL=http://127.0.0.1:8765/v1/chat/completions
-QWEN_VISION_MODEL=qwen3.7-plus
-DASHSCOPE_API_KEY=sk-your-key-here
-DASHSCOPE_BASE_HTTP_API_URL=
 QWEN_VISION_PROXY_HOST=127.0.0.1
 QWEN_VISION_PROXY_PORT=8765
 # 注：上述代理地址/监听为宿主机开发模式（start-vision-proxy）语义。Docker 容器模式
@@ -241,22 +228,13 @@ QWEN_VISION_PROXY_PORT=8765
 # 可选：生产环境文件日志。设置 LOG_DIR 后，Node 服务与 Python 薄代理除终端外同时写文件日志。
 # LOG_DIR：日志目录（Node 写 server-YYYY-MM-DD.log；Python 写 vision-proxy.log，按天轮转出 vision-proxy.log.YYYY-MM-DD）。
 # LOG_MAX_FILES：保留最近 N 天（默认 7）。未设置 LOG_DIR 时行为不变（仅终端）。
-
-# 可选：未启用 Python 薄代理时的云端 URL 备用路径。
-TENCENT_COS_SECRET_ID=AKID...
-TENCENT_COS_SECRET_KEY=...
-TENCENT_COS_BUCKET=examplebucket-1250000000
-TENCENT_COS_REGION=ap-guangzhou
-TENCENT_COS_TEMP_PREFIX=bilibili-downloader-temp/analysis
-TENCENT_COS_SIGNED_URL_EXPIRES_SECONDS=3600
 ```
 
 - 读取位置：`packages/server/src/` 的配置模块（NestJS ConfigModule 或 process.env）
-- API Key / API 地址 / 模型由前端设置页配置并存入 `app_settings` 表，运行时仅读 DB（`getLlmConfig()` 每次分析时读取，修改即时生效）
-- `QWEN_VISION_PROXY_URL`, `QWEN_VISION_MODEL` 透传到 `LlmConfig`，控制多模态调用是否走 Python 薄代理
+- API Key / 模型由前端设置页配置并存入 `app_settings` 表，运行时仅读 DB（`getLlmConfig()` 每次分析时读取，修改即时生效）；`POST /api/analysis/config/test` 连接测试与代理同用写死的原生 DashScope 端点
+- `QWEN_VISION_PROXY_URL` 透传到 `LlmConfig`，控制多模态调用是否走 Python 薄代理
 - `QWEN_VISION_PROXY_TIMEOUT_MS` 透传到 `LlmConfig.visionProxyTimeoutMs`（默认值由客户端内部兜底，覆盖 AI 总结与手动分析两个调用面）
-- `DASHSCOPE_*`, `QWEN_VISION_PROXY_HOST`, `QWEN_VISION_PROXY_PORT`, `QWEN_VISION_PROXY_MAX_BODY_BYTES`, `QWEN_VISION_PROXY_MAX_CONCURRENCY`, `QWEN_VISION_PROXY_SOCKET_TIMEOUT` 由 Python 薄代理读取
-- `TENCENT_COS_*` 是未启用 Python 薄代理时的备用路径；截图上传后以签名 URL 提供给多模态模型，模型调用结束后删除临时对象
+- `QWEN_VISION_PROXY_HOST`, `QWEN_VISION_PROXY_PORT`, `QWEN_VISION_PROXY_MAX_BODY_BYTES`, `QWEN_VISION_PROXY_MAX_CONCURRENCY`, `QWEN_VISION_PROXY_SOCKET_TIMEOUT` 由 Python 薄代理读取；代理密钥经请求 `Authorization` 头由 Node 透传（DB 来源），SDK 基址在代理代码写死
 
 ## 已有能力复用
 
