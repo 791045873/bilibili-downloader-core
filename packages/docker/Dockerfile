@@ -71,11 +71,12 @@ RUN pnpm --filter @bilibili-downloader/server build
 RUN pnpm --filter @bilibili-downloader/frontend build
 RUN --mount=type=cache,id=bilibili-pnpm-store,target=/pnpm/store \
     pnpm --filter @bilibili-downloader/server deploy --prod --legacy --ignore-scripts /app/runtime
-# 复用 workspace 已构建的 better-sqlite3 产物，避免 deploy 后二次 node-gyp 编译
-RUN src=$(echo /app/node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3) && \
-    dst=$(echo /app/runtime/node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3) && \
-    mkdir -p "$dst/build/Release" && \
-    cp "$src/build/Release/better_sqlite3.node" "$dst/build/Release/"
+# 直接下载 npmmirror 预编译产物并解压进 runtime（npm/pnpm 在 deploy 布局下无法运行 prebuild-install）
+RUN dst=$(echo /app/runtime/node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3) && \
+    ver=${dst#*/better-sqlite3@} && ver=${ver%%/*} && \
+    VER="$ver" node -e "const v=process.env.VER,a='v'+process.versions.modules;fetch('https://registry.npmmirror.com/-/binary/better-sqlite3/v'+v+'/better-sqlite3-v'+v+'-node-'+a+'-linux-x64.tar.gz').then(r=>{if(!r.ok)process.exit(1);return r.arrayBuffer()}).then(b=>require('fs').writeFileSync('/tmp/bs3.tar.gz',Buffer.from(b)))" && \
+    tar -xzf /tmp/bs3.tar.gz -C "$dst" && \
+    rm /tmp/bs3.tar.gz
 RUN cd /app/runtime && node --input-type=module -e \
     "import Database from 'better-sqlite3'; const db = new Database(':memory:'); db.exec('create table smoke (id integer)'); db.prepare('insert into smoke values (?)').run(1); if (db.prepare('select id from smoke').get().id !== 1) process.exit(1); db.close()"
 
