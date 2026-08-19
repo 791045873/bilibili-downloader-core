@@ -29,7 +29,10 @@ RUN --mount=type=cache,id=bilibili-apt-archives,target=/var/cache/apt,sharing=lo
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates python3 make g++
 
-RUN corepack enable
+# corepack 下载 pnpm 走 npmmirror，避免访问 registry.npmjs.org 卡住
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+RUN --mount=type=cache,id=bilibili-corepack,target=/root/.cache/node/corepack \
+    corepack enable
 WORKDIR /app
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json tsconfig.base.json ./
