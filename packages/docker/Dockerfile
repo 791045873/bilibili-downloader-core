@@ -32,6 +32,9 @@ RUN --mount=type=cache,id=bilibili-apt-archives,target=/var/cache/apt,sharing=lo
 RUN corepack enable
 WORKDIR /app
 
+# better-sqlite3 prebuild 改从 npmmirror 下载，避免 GitHub 下载失败回退到 node-gyp 本地编译
+ENV npm_config_better_sqlite3_binary_host_mirror=https://registry.npmmirror.com/-/binary
+
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json tsconfig.base.json ./
 COPY packages/bilibili-api-sdk/package.json packages/bilibili-api-sdk/tsconfig.json packages/bilibili-api-sdk/
 COPY packages/core/package.json packages/core/tsconfig.json packages/core/
