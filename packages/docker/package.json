@@ -5,6 +5,7 @@
   "description": "Docker 镜像打包 — 将 server（Node+前端）与 vision-proxy（Python 视觉代理）打包为两个镜像，经 docker compose 编排",
   "scripts": {
     "docker:build": "docker compose build",
+    "docker:save": "pwsh -NoProfile -ExecutionPolicy Bypass -File ./build-and-save.ps1",
     "docker:run": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f --no-log-prefix"

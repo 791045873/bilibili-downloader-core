@@ -15,6 +15,7 @@
     "test:screenshot:no-cookie": "pnpm build:deps && node scripts/test-screenshot-no-cookie.mjs",
     "docker:build": "pnpm --filter @bilibili-downloader/docker docker:build",
     "docker:run": "pnpm --filter @bilibili-downloader/docker docker:run",
+    "docker:save": "pnpm --filter @bilibili-downloader/docker docker:save",
     "frontend:dev": "pnpm --filter @bilibili-downloader/frontend dev",
     "frontend:build": "pnpm --filter @bilibili-downloader/frontend build",
     "build:deps": "pnpm --filter bilibili-api-sdk --filter @bilibili-downloader/core --filter @bilibili-downloader/adapters build",
