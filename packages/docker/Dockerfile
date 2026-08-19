@@ -71,8 +71,11 @@ RUN pnpm --filter @bilibili-downloader/server build
 RUN pnpm --filter @bilibili-downloader/frontend build
 RUN --mount=type=cache,id=bilibili-pnpm-store,target=/pnpm/store \
     pnpm --filter @bilibili-downloader/server deploy --prod --legacy --ignore-scripts /app/runtime
-RUN --mount=type=cache,id=bilibili-node-gyp,target=/root/.cache/node-gyp \
-    npm --prefix /app/runtime/node_modules/better-sqlite3 run install
+# 复用 workspace 已构建的 better-sqlite3 产物，避免 deploy 后二次 node-gyp 编译
+RUN src=$(echo /app/node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3) && \
+    dst=$(echo /app/runtime/node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3) && \
+    mkdir -p "$dst/build/Release" && \
+    cp "$src/build/Release/better_sqlite3.node" "$dst/build/Release/"
 RUN cd /app/runtime && node --input-type=module -e \
     "import Database from 'better-sqlite3'; const db = new Database(':memory:'); db.exec('create table smoke (id integer)'); db.prepare('insert into smoke values (?)').run(1); if (db.prepare('select id from smoke').get().id !== 1) process.exit(1); db.close()"
 
