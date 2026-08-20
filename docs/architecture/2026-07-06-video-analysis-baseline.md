@@ -212,10 +212,9 @@ QWEN_VISION_PROXY_URL=http://127.0.0.1:8765/v1/chat/completions
 QWEN_VISION_PROXY_HOST=127.0.0.1
 QWEN_VISION_PROXY_PORT=8765
 # 注：上述代理地址/监听为宿主机开发模式（start-vision-proxy）语义。Docker 容器模式
-# （docker compose，2026-08-18 起）下：vision-proxy 容器内监听 0.0.0.0:8765（跨容器
-# 可达且不发布宿主机端口）；server 容器经 compose 服务名访问，默认
-# QWEN_VISION_PROXY_URL=http://vision-proxy:8765/v1/chat/completions，由
-# docker-compose.yml 覆盖。
+# （docker compose）下：vision-proxy 容器内监听 0.0.0.0:8765（跨容器可达且不发布宿主机
+# 端口）；server 容器经 compose 服务名访问，默认 QWEN_VISION_PROXY_URL=http://vision-proxy:8765/v1/chat/completions
+# 由 docker-compose.yml 插值注入（server 镜像内不再硬编码该默认，URL 可完全自定义）。
 
 # 可选：Python 薄代理健壮性参数（均有默认值，可不配置）。
 # QWEN_VISION_PROXY_MAX_BODY_BYTES：代理 HTTP body 上限（默认 16777216=16MB），超出返回 413；视频文件由 SDK 本机读取，不经过 body。

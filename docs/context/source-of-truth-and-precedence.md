@@ -83,7 +83,8 @@ Rule:
 
 Primary source:
 
-- `packages/docker/Dockerfile`
+- `packages/docker/Dockerfile.server`
+- `packages/docker/Dockerfile.vision-proxy`
 - `pnpm-workspace.yaml`
 - `package.json` scripts
 

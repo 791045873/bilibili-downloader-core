@@ -15,7 +15,7 @@ packages/
 ├── cli/        — 命令行入口（当前不可用，待修复）
 ├── server/     — NestJS 后端 API
 ├── frontend/   — React 19 前端
-└── docker/     — Dockerfile 与构建脚本
+└── docker/     — 两个独立 Dockerfile 与构建脚本（server / vision-proxy）
 ```
 
 依赖方向：`frontend/cli/docker/server → adapters → core`（不可反向）
@@ -53,12 +53,12 @@ packages/
 - pnpm workspace（monorepo 管理）
 - Vite（Frontend 打包）
 - tsc（Core/Adapters/Server 编译）
-- Docker（`node:24.16.0-bookworm-slim` 多阶段多 target 构建：`server` 镜像 = Node 服务 + 前端静态资源 + FFmpeg + tini；`vision-proxy` 镜像 = Python venv 视觉代理 + tini；经 `packages/docker/docker-compose.yml` 编排为两个独立容器）
+- Docker（两个独立 Dockerfile：`packages/docker/Dockerfile.server` 构建 `bilibili-downloader-server` = Node 服务 + 前端静态资源 + FFmpeg + tini；`packages/docker/Dockerfile.vision-proxy` 构建 `bilibili-downloader-vision-proxy` = Python venv 视觉代理 + tini；两镜像相互独立、无共享构建阶段，经 `packages/docker/docker-compose.yml` 编排为两个独立容器）
 
 ## Deployment Shape
 
 - Docker compose 双容器部署：`server`（NestJS + 静态文件托管前端构建产物 + FFmpeg）与 `vision-proxy`（Python 视觉薄代理）各自独立容器，均配置 `restart: unless-stopped`，任一容器主进程崩溃由 Docker 单独自动重启，不影响健康容器；对外仅暴露 `server` 的 3000 端口。
-- server 经 compose 默认网络的服务名 `vision-proxy:8765` 调用代理（`QWEN_VISION_PROXY_URL=http://vision-proxy:8765/v1/chat/completions`）；vision-proxy 容器内监听 `0.0.0.0:8765` 实现跨容器可达，但不向宿主机发布端口。
+- server 经 compose 默认网络的服务名 `vision-proxy:8765` 调用代理（`QWEN_VISION_PROXY_URL` 默认 `http://vision-proxy:8765/v1/chat/completions`，由 compose 注入，运行期可完全自定义）；vision-proxy 容器内监听 `0.0.0.0:8765` 实现跨容器可达，但不向宿主机发布端口。
 - 两容器共享同一宿主机目录挂载到 `/download`（默认 `${HOME:-$USERPROFILE}/Downloads/bilibili_download`，可用 `DOWNLOAD_HOST_PATH` 覆盖，Windows 宿主经 `USERPROFILE` 回退）；日志默认写入 `/download/logs`
 - NAS 用户通过挂载 volume 将容器内下载目录映射到宿主机；大模型密钥由前端设置页存 DB，Node 经 `Authorization` 头传给 vision-proxy 容器，不写入镜像、不经 compose env
 

@@ -4,9 +4,8 @@ services:
   vision-proxy:
     build:
       context: ../..
-      dockerfile: packages/docker/Dockerfile
-      target: vision-proxy
-    image: bilibili-downloader:vision-proxy
+      dockerfile: packages/docker/Dockerfile.vision-proxy
+    image: bilibili-downloader-vision-proxy
     restart: unless-stopped
     environment:
       QWEN_VISION_PROXY_MAX_BODY_BYTES: ${QWEN_VISION_PROXY_MAX_BODY_BYTES:-16777216}
@@ -23,9 +22,8 @@ services:
         condition: service_healthy
     build:
       context: ../..
-      dockerfile: packages/docker/Dockerfile
-      target: server
-    image: bilibili-downloader
+      dockerfile: packages/docker/Dockerfile.server
+    image: bilibili-downloader-server
     restart: unless-stopped
     ports:
       - "3000:3000"

@@ -15,6 +15,8 @@
     "test:screenshot:no-cookie": "pnpm build:deps && node scripts/test-screenshot-no-cookie.mjs",
     "docker:build": "pnpm --filter @bilibili-downloader/docker docker:build",
     "docker:run": "pnpm --filter @bilibili-downloader/docker docker:run",
+    "docker:save server": "docker save bilibili-downloader-server -o dist\/docker\/bilibili-downloader-server_linux-amd64.tar",
+    "docker:save vision-proxy": "docker save bilibili-downloader-vision-proxy -o dist\/docker\/bilibili-downloader-vision-proxy_linux-amd64.tar",
     "frontend:dev": "pnpm --filter @bilibili-downloader/frontend dev",
     "frontend:build": "pnpm --filter @bilibili-downloader/frontend build",
     "build:deps": "pnpm --filter bilibili-api-sdk --filter @bilibili-downloader/core --filter @bilibili-downloader/adapters build",
