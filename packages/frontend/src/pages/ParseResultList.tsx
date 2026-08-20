@@ -436,16 +436,26 @@ export function Component() {
       });
   }
 
+  async function resolveCid(item: ListItem): Promise<number> {
+    if (item.cid) return item.cid;
+    const info = await api.getVideoInfo(item.bvid);
+    const cid = info.cid ?? info.pages?.[0]?.cid ?? 0;
+    if (!cid) throw new Error(`无法解析 ${item.bvid} 的分P信息`);
+    return cid;
+  }
+
   async function doAddToQueue(outputPath: string) {
     const selected = items.filter((i) => i.selected);
     if (selected.length === 0) return;
 
+    setActionError("");
     try {
-      const requests = selected.map((item) =>
-        api
-          .createDownload({
+      const requests = selected.map(async (item) => {
+        try {
+          const cid = await resolveCid(item);
+          return await api.createDownload({
             bvid: item.bvid,
-            cid: item.cid,
+            cid,
             title: item.displayTitle,
             quality: settings.defaultQuality,
             codec: settings.defaultCodec,
@@ -454,14 +464,26 @@ export function Component() {
             outputPath,
             autoSummary: item.autoSummaryEnabled,
             promptId: queuePromptId,
-          })
-          .catch(() => ({ id: -1, message: "" })),
-      );
+          });
+        } catch (e: unknown) {
+          return {
+            id: -1,
+            message: e instanceof Error ? e.message : "加入队列失败",
+          };
+        }
+      });
       const responses = await Promise.all(requests);
       const successIds = responses
         .filter((r) => r.id !== -1)
         .map((r) => r.id);
       addTaskIds(successIds);
+
+      const failed = responses.filter((r) => r.id === -1 && r.message);
+      if (failed.length > 0) {
+        setActionError(
+          `部分任务加入失败：${failed.map((f) => f.message).join("；")}`,
+        );
+      }
 
       const selectedKeys = new Set(selected.map((i) => i.key));
       setItems((prev) =>
