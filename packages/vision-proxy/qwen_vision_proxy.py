@@ -78,7 +78,7 @@ dashscope.base_http_api_url = DASHSCOPE_BASE_URL
 HOST = os.getenv("QWEN_VISION_PROXY_HOST", "127.0.0.1")
 PORT = int(os.getenv("QWEN_VISION_PROXY_PORT", "8765"))
 MAX_BODY_BYTES = int(os.getenv("QWEN_VISION_PROXY_MAX_BODY_BYTES", str(16 * 1024 * 1024)))
-MAX_CONCURRENCY = int(os.getenv("QWEN_VISION_PROXY_MAX_CONCURRENCY", "8"))
+MAX_CONCURRENCY = int(os.getenv("QWEN_VISION_PROXY_MAX_CONCURRENCY", "2"))
 SOCKET_TIMEOUT = float(os.getenv("QWEN_VISION_PROXY_SOCKET_TIMEOUT", "120"))
 
 _request_slots = threading.BoundedSemaphore(max(1, MAX_CONCURRENCY))
@@ -210,15 +210,11 @@ class VisionProxyHandler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self) -> None:
-        if not self._acquire_slot():
+        if self.path != "/healthz":
+            self.safe_send_json(404, {"error": "not found"})
             return
-        try:
-            if self.path != "/healthz":
-                self.safe_send_json(404, {"error": "not found"})
-                return
-            self.safe_send_json(200, {"status": "ok"})
-        finally:
-            _request_slots.release()
+        # 探活不占用 LLM 并发槽位，避免并发满载时健康检查被 503 误判。
+        self.safe_send_json(200, {"status": "ok"})
 
     def do_POST(self) -> None:
         if not self._acquire_slot():
