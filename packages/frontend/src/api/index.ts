@@ -128,14 +128,14 @@ export async function resumeTask(id: number): Promise<{ message: string }> {
 export async function getTasks(params?: {
   page?: number;
   pageSize?: number;
-  statusGroup?: TaskStatusGroup;
+  statusGroup?: TaskStatusGroup[];
 }): Promise<PaginatedTasks> {
-  const page = params?.page ?? 1;
-  const pageSize = params?.pageSize ?? 20;
-  const statusGroup = params?.statusGroup ?? "all";
-  return request(
-    `/tasks?page=${page}&pageSize=${pageSize}&statusGroup=${statusGroup}`,
-  );
+  const q = new URLSearchParams({
+    page: String(params?.page ?? 1),
+    pageSize: String(params?.pageSize ?? 20),
+    statusGroup: (params?.statusGroup ?? []).join(","),
+  });
+  return request(`/tasks?${q.toString()}`);
 }
 
 export async function getTaskById(id: number): Promise<TaskEntry> {
@@ -205,7 +205,7 @@ export async function triggerTaskAiSummary(
 export async function getAiSummaryTasks(params?: {
   page?: number;
   pageSize?: number;
-  status?: AiSummaryTaskStatus;
+  status?: AiSummaryTaskStatus[];
   search?: string;
   updatedFrom?: string;
   updatedTo?: string;
@@ -213,7 +213,7 @@ export async function getAiSummaryTasks(params?: {
   const q = new URLSearchParams({
     page: String(params?.page ?? 1),
     pageSize: String(params?.pageSize ?? 20),
-    status: params?.status ?? "all",
+    status: (params?.status ?? []).join(","),
   });
   if (params?.search) q.set("search", params.search);
   if (params?.updatedFrom) q.set("updatedFrom", params.updatedFrom);

@@ -668,7 +668,7 @@ autoSummary: dto.autoSummary,
   getTasksPaginated(params: {
     page: number;
     pageSize: number;
-    statusGroup: TaskStatusGroup;
+    statusGroup: TaskStatusGroup[];
   }): PaginatedTaskResult {
     return this.db.listTasksPaginated(params);
   }
