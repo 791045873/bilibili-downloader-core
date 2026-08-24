@@ -14,6 +14,7 @@
     "setup:vision-proxy": "node scripts/setup-vision-proxy.mjs",
     "test:screenshot:no-cookie": "pnpm build:deps && node scripts/test-screenshot-no-cookie.mjs",
     "docker:build": "pnpm --filter @bilibili-downloader/docker docker:build",
+    "docker:save": "pnpm --filter @bilibili-downloader/docker docker:save",
     "docker:run": "pnpm --filter @bilibili-downloader/docker docker:run",
     "docker:save server": "docker save bilibili-downloader-server -o dist\/docker\/bilibili-downloader-server_linux-amd64.tar",
     "docker:save vision-proxy": "docker save bilibili-downloader-vision-proxy -o dist\/docker\/bilibili-downloader-vision-proxy_linux-amd64.tar",

@@ -5,8 +5,7 @@
   "description": "Docker 镜像打包 — 用两个独立 Dockerfile（Dockerfile.server / Dockerfile.vision-proxy）分别构建 server（Node+前端）与 vision-proxy（Python 视觉代理）两个相互独立的镜像，经 docker compose 编排",
   "scripts": {
     "docker:build": "docker compose build",
-    "docker:build:server": "docker build -f Dockerfile.server -t bilibili-downloader-server ../..",
-    "docker:build:vision-proxy": "docker build -f Dockerfile.vision-proxy -t bilibili-downloader-vision-proxy ../..",
+    "docker:save": "docker save -o ../../dist/bilibili-downloader-images.tar bilibili-downloader:latest bilibili-downloader:vision-proxy",
     "docker:run": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f --no-log-prefix"
