@@ -24,7 +24,7 @@ import {
 } from "@bilibili-downloader/adapters/llm";
 import { generateMarkdown, type DocumentInput } from "./document-generator.js";
 import type { ScreenshotSourceResolver } from "./analysis-video-resolver.js";
-import { transTimestampToSeconds } from "./timestamp.js";
+import { parseTimestampCandidates, pickTimestampSeconds } from "./timestamp.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 import { sanitizeFileName } from "../download/file-naming.js";
 import { BUILTIN_AI_PROMPT_CONTENT } from "./prompt-template.js";
@@ -292,22 +292,45 @@ export class AnalysisEngine {
       }),
     );
 
+    // 探测一次截图源时长，用于在多个候选时间戳解读中择优；失败时退化为默认解读
+    let sourceDuration: number | undefined;
+    try {
+      sourceDuration = await this.screenshotter.getVideoDuration(
+        resolvedSource.source,
+        resolvedSource.sourceType === "remote" ? resolvedSource.headers : undefined,
+      );
+    } catch {
+      sourceDuration = undefined;
+      this.logger.warn(
+        createLogMessage(
+          "Screenshot source duration probe failed, timestamp will use primary interpretation",
+          {
+            bvid: input.metadata.bvid,
+            cid: input.metadata.cid,
+          },
+        ),
+      );
+    }
+
     const processedSegments: DocumentInput["segments"] = [];
 
     // 按 LLM 返回的精确时间戳直接截图，仅一次多模态调用，无二次图像选择
     const screenshotStartMs = Date.now();
     for (let si = 0; si < summaryItems.length; si++) {
       const item = summaryItems[si];
-      const seconds = transTimestampToSeconds(item.timestamp);
+      const candidates = parseTimestampCandidates(item.timestamp);
+      const seconds = pickTimestampSeconds(candidates, sourceDuration);
 
       if (seconds === undefined) {
         this.logger.warn(
           createLogMessage(
-            `Skipping screenshot for summary segment ${si} due to invalid timestamp`,
+            `Skipping screenshot for summary segment ${si} due to unresolvable timestamp`,
             {
               bvid: input.metadata.bvid,
               cid: input.metadata.cid,
               reason: item.timestamp,
+              candidates: candidates.join(", "),
+              sourceDuration,
             },
           ),
         );

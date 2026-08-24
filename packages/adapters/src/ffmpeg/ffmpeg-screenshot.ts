@@ -194,7 +194,7 @@ export class FfmpegScreenshot {
     });
   }
 
-  private async getVideoDuration(
+  async getVideoDuration(
     videoPath: string,
     headers?: Record<string, string>,
   ): Promise<number> {

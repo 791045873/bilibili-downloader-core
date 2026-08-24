@@ -18,7 +18,7 @@ Update it in place. Do not create dated copies.
 
 - Active requirement: `docs/requirements/2026-08-17-ai-summary-view-markdown.md`
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-08-20-split-dockerfile-server-vision-proxy-plan.md`（已实施完成并关闭；此前：`2026-08-18-remove-baseurl-config-plan.md`、`2026-08-18-proxy-auth-from-db-plan.md`、`2026-08-18-remove-llm-dead-paths-plan.md`、`2026-08-18-env-var-cleanup-plan.md`、`2026-08-18-extract-vision-proxy-package-plan.md`、`2026-08-18-docker-split-vision-proxy-plan.md` 均已关闭）
+- Active plan: `docs/plans/2026-08-21-timestamp-parse-compat-plan.md`（实施中；此前：`2026-08-20-split-dockerfile-server-vision-proxy-plan.md` 已关闭、`2026-08-18-remove-baseurl-config-plan.md`、`2026-08-18-proxy-auth-from-db-plan.md`、`2026-08-18-remove-llm-dead-paths-plan.md`、`2026-08-18-env-var-cleanup-plan.md`、`2026-08-18-extract-vision-proxy-package-plan.md`、`2026-08-18-docker-split-vision-proxy-plan.md` 均已关闭）
 - Active backlog item: 无（最近完成项：移除前端 BaseURL 配置、测试连接改用原生端点；此前：视觉代理密钥改为 DB 来源 + 请求透传、移除多模态直连分支与 chatCompletion 死代码、环境变量清理、提取 Python 视觉代理为独立子包、Docker 拆分视觉代理为独立容器）
 - AI autonomy: `plan-first`（2026-08-04 已切换到方案 B，更新后的计划需重新审计后再实施）
 - Current blocker: `none`

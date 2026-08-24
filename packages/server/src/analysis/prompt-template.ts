@@ -11,7 +11,7 @@ export const BUILTIN_AI_PROMPT_NAME = "穿搭分析（系统内置）";
 export const AI_PROMPT_FORMAT_SNIPPET = [
   "请严格按照 JSON 格式输出，格式如下：",
   "{summary: Array<{title: string, content: string, timestamp: string, frameDescription: string}>}",
-  "summary中的title是总结的穿搭技巧或思路的标题, content是穿搭技巧或思路的具体内容, timestamp是对应的展示案例的时间戳(格式为hh:mm:ss,例如00:02:30代表2分20秒), frameDescription是该时间戳画面的文本描述",
+  "summary中的title是总结的穿搭技巧或思路的标题, content是穿搭技巧或思路的具体内容, timestamp是对应的展示案例的时间戳(格式为hh:mm:ss或mm:ss,分钟和秒需小于60,例如00:02:30代表2分30秒), frameDescription是该时间戳画面的文本描述",
   "有可能某一个穿搭技巧、思路的实际展示持续了较长时间，请你从其中选择最能展现该穿搭技巧、思路的时刻记录为时间戳。",
   "请特别注意，这个时间戳所对应的视频帧应当是清晰的。该视频帧中的人物向观众展示自己的穿搭思路，人物应当是直面观众，眼神注视观众，且展示内容无遮挡、无扭曲、无模糊。",
 ].join("\n");
