@@ -680,7 +680,7 @@ export class AnalysisTriggerService implements OnModuleInit {
   getAiSummaryTasksPaginated(params: {
     page: number;
     pageSize: number;
-    status?: string;
+    status?: string[];
     search?: string;
     updatedFrom?: string;
     updatedTo?: string;

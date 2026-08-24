@@ -18,7 +18,6 @@ import * as api from "../api";
 import type { AiSummaryTaskEntry, AiSummaryTaskStatus } from "../types";
 
 const statusOptions = [
-  { label: "全部", value: "all" },
   { label: "待处理", value: "pending" },
   { label: "处理中", value: "analyzing" },
   { label: "完成", value: "completed" },
@@ -134,14 +133,14 @@ function isInProgress(task: AiSummaryTaskEntry): boolean {
 }
 
 interface Filters {
-  status: AiSummaryTaskStatus;
+  status: AiSummaryTaskStatus[];
   search: string;
   updatedFrom: string;
   updatedTo: string;
 }
 
 const emptyFilters: Filters = {
-  status: "all",
+  status: [],
   search: "",
   updatedFrom: "",
   updatedTo: "",
@@ -195,7 +194,7 @@ export function Component() {
 
   const hasActiveFilter = useMemo(
     () =>
-      filters.status !== "all" ||
+      filters.status.length > 0 ||
       filters.search.trim() !== "" ||
       filters.updatedFrom !== "" ||
       filters.updatedTo !== "",
@@ -441,10 +440,13 @@ export function Component() {
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3">
         <span className="text-sm text-zinc-500">状态</span>
         <Select
+          mode="multiple"
           value={filters.status}
           options={statusOptions}
           onChange={(v) => applyFilters({ ...filters, status: v })}
-          style={{ width: 110 }}
+          placeholder="全部状态"
+          style={{ width: 200 }}
+          maxTagCount="responsive"
         />
 
         <span className="ml-2 text-sm text-zinc-500">标题</span>

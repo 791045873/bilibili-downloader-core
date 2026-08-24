@@ -11,7 +11,6 @@ import type {
 } from "../types";
 
 const statusGroupOptions = [
-  { label: "全部任务", value: "all" },
   { label: "进行中", value: "active" },
   { label: "排队中", value: "created" },
   { label: "下载中", value: "downloading" },
@@ -236,7 +235,7 @@ export function Component() {
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [statusGroup, setStatusGroup] = useState<TaskStatusGroup>("all");
+  const [statusGroup, setStatusGroup] = useState<TaskStatusGroup[]>([]);
   const [actionError, setActionError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -447,13 +446,16 @@ export function Component() {
 
       <div className="flex flex-wrap items-center gap-2">
         <Select
+          mode="multiple"
           value={statusGroup}
           options={statusGroupOptions}
           onChange={(v) => {
             setStatusGroup(v);
             setPage(1);
           }}
-          style={{ width: 140 }}
+          placeholder="全部任务"
+          style={{ width: 220 }}
+          maxTagCount="responsive"
         />
         <Button
           loading={refreshing}

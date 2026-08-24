@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Link, NavLink, Outlet } from "react-router";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { Avatar, Space } from "antd";
 import { useAuthStore } from "./stores/auth";
 
@@ -16,9 +16,14 @@ function navLinkClass({ isActive }: { isActive: boolean }): string {
   }`;
 }
 
+/** 全宽页面：下载队列与 AI 总结的列表/表格占满整屏宽度，不受 max-w-5xl 限制 */
+const FULL_WIDTH_PATHS = new Set(["/downloading", "/summary-tasks"]);
+
 export default function App() {
   const user = useAuthStore((s) => s.user);
   const checkLogin = useAuthStore((s) => s.checkLogin);
+  const { pathname } = useLocation();
+  const isFullWidth = FULL_WIDTH_PATHS.has(pathname);
 
   useEffect(() => {
     void checkLogin();
@@ -65,7 +70,7 @@ export default function App() {
           </nav>
         </div>
       </header>
-      <main className="max-w-5xl mx-auto px-4 py-6">
+      <main className={`px-4 py-6 ${isFullWidth ? "" : "max-w-5xl mx-auto"}`}>
         <Outlet />
       </main>
     </div>

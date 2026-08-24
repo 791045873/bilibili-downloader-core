@@ -102,7 +102,7 @@ export interface PaginatedTaskResult {
 }
 
 export interface AiSummaryTaskListFilter {
-  status?: string;
+  status?: string[];
   search?: string;
   updatedFrom?: string;
   updatedTo?: string;
@@ -623,7 +623,7 @@ export class DatabaseService {
   listTasksPaginated(params: {
     page: number;
     pageSize: number;
-    statusGroup: TaskStatusGroup;
+    statusGroup: TaskStatusGroup[];
   }): PaginatedTaskResult {
     const { page, pageSize, statusGroup } = params;
     const offset = (page - 1) * pageSize;
@@ -1007,32 +1007,30 @@ export class DatabaseService {
     return false;
   }
 
-  private buildTaskStatusFilter(statusGroup: TaskStatusGroup): {
+  private buildTaskStatusFilter(statusGroups: TaskStatusGroup[]): {
     whereClause: string;
     queryParams: Array<string>;
   } {
-    switch (statusGroup) {
-      case "active":
-        return {
-          whereClause: "WHERE t.status IN (?, ?)",
-          queryParams: ["created", "downloading"],
-        };
-      case "created":
-      case "downloading":
-      case "success":
-      case "failed":
-      case "stopped":
-        return {
-          whereClause: "WHERE t.status = ?",
-          queryParams: [statusGroup],
-        };
-      case "all":
-      default:
-        return {
-          whereClause: "",
-          queryParams: [],
-        };
+    const expanded = new Set<string>();
+    for (const group of statusGroups) {
+      if (group === "all") {
+        continue;
+      }
+      if (group === "active") {
+        expanded.add("created");
+        expanded.add("downloading");
+      } else {
+        expanded.add(group);
+      }
     }
+    if (expanded.size === 0) {
+      return { whereClause: "", queryParams: [] };
+    }
+    const statuses = [...expanded];
+    return {
+      whereClause: `WHERE t.status IN (${statuses.map(() => "?").join(", ")})`,
+      queryParams: statuses,
+    };
   }
 
   private buildAiSummaryTaskFilter(filter?: AiSummaryTaskListFilter): {
@@ -1042,9 +1040,9 @@ export class DatabaseService {
     const clauses: string[] = [];
     const params: string[] = [];
 
-    if (filter?.status && filter.status !== "all") {
-      clauses.push("status = ?");
-      params.push(filter.status);
+    if (filter?.status && filter.status.length > 0) {
+      clauses.push(`status IN (${filter.status.map(() => "?").join(", ")})`);
+      params.push(...filter.status);
     }
     if (filter?.search) {
       clauses.push("COALESCE(title, '') LIKE ? ESCAPE '\\'");

@@ -202,7 +202,7 @@ function parsePagination(
   return { page, pageSize };
 }
 
-function parseTaskStatusGroup(value: string): TaskStatusGroup {
+function parseTaskStatusGroup(value: string): TaskStatusGroup[] {
   const allowed: TaskStatusGroup[] = [
     "all",
     "active",
@@ -212,10 +212,19 @@ function parseTaskStatusGroup(value: string): TaskStatusGroup {
     "failed",
     "stopped",
   ];
-  if (allowed.includes(value as TaskStatusGroup)) {
-    return value as TaskStatusGroup;
+  const items = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (items.length === 0 || items.includes("all")) {
+    return [];
   }
-  throw new BadRequestException(
-    `statusGroup 必须为 ${allowed.join(" / ")}`,
-  );
+  for (const item of items) {
+    if (!allowed.includes(item as TaskStatusGroup)) {
+      throw new BadRequestException(
+        `statusGroup 必须为 ${allowed.join(" / ")}`,
+      );
+    }
+  }
+  return items as TaskStatusGroup[];
 }

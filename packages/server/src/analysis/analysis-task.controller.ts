@@ -326,13 +326,22 @@ function parsePagination(
   };
 }
 
-function parseAiSummaryStatus(value: string): AiSummaryStatus {
-  if ((AI_SUMMARY_STATUSES as readonly string[]).includes(value)) {
-    return value as AiSummaryStatus;
+function parseAiSummaryStatus(value: string): AiSummaryStatus[] {
+  const items = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (items.length === 0 || items.includes("all")) {
+    return [];
   }
-  throw new BadRequestException(
-    `status 必须为 ${AI_SUMMARY_STATUSES.join(" / ")}`,
-  );
+  for (const item of items) {
+    if (!(AI_SUMMARY_STATUSES as readonly string[]).includes(item)) {
+      throw new BadRequestException(
+        `status 必须为 ${AI_SUMMARY_STATUSES.join(" / ")}`,
+      );
+    }
+  }
+  return items as AiSummaryStatus[];
 }
 
 function parseOptionalIso(value: string, name: string): string | undefined {

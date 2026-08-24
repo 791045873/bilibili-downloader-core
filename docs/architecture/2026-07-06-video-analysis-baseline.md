@@ -218,9 +218,10 @@ QWEN_VISION_PROXY_PORT=8765
 
 # 可选：Python 薄代理健壮性参数（均有默认值，可不配置）。
 # QWEN_VISION_PROXY_MAX_BODY_BYTES：代理 HTTP body 上限（默认 16777216=16MB），超出返回 413；视频文件由 SDK 本机读取，不经过 body。
-# QWEN_VISION_PROXY_MAX_CONCURRENCY：并发请求上限（默认 8），超出返回 503。
+# QWEN_VISION_PROXY_MAX_CONCURRENCY：代理兜底并发请求上限（默认 2），超出返回 503。
 # QWEN_VISION_PROXY_SOCKET_TIMEOUT：连接 socket 读/写超时秒数（默认 120）。
 # QWEN_VISION_PROXY_TIMEOUT_MS：Node 侧多模态代理调用超时毫秒数（默认 600000=10 分钟），客户端内部兜底。
+# MAX_CONCURRENT_LLM_CALLS：Node 侧同时最多执行的大模型调用数（默认 2），超出排队等待；进程内信号量，跨所有任务统一限流。
 # VISION_PROXY_NO_RESTART：置 1 时禁用 start-vision-proxy 自动重启（运维/脚本逃生门）。
 # 探活：GET http://127.0.0.1:8765/healthz 返回 200 {"status":"ok"}。
 
@@ -233,6 +234,7 @@ QWEN_VISION_PROXY_PORT=8765
 - API Key / 模型由前端设置页配置并存入 `app_settings` 表，运行时仅读 DB（`getLlmConfig()` 每次分析时读取，修改即时生效）；`POST /api/analysis/config/test` 连接测试与代理同用写死的原生 DashScope 端点
 - `QWEN_VISION_PROXY_URL` 透传到 `LlmConfig`，控制多模态调用是否走 Python 薄代理
 - `QWEN_VISION_PROXY_TIMEOUT_MS` 透传到 `LlmConfig.visionProxyTimeoutMs`（默认值由客户端内部兜底，覆盖 AI 总结与手动分析两个调用面）
+- `MAX_CONCURRENT_LLM_CALLS` 由 Node 侧 `qwen-client.ts` 模块级信号量读取（默认 2），限制同时最多的大模型调用在途数
 - `QWEN_VISION_PROXY_HOST`, `QWEN_VISION_PROXY_PORT`, `QWEN_VISION_PROXY_MAX_BODY_BYTES`, `QWEN_VISION_PROXY_MAX_CONCURRENCY`, `QWEN_VISION_PROXY_SOCKET_TIMEOUT` 由 Python 薄代理读取；代理密钥经请求 `Authorization` 头由 Node 透传（DB 来源），SDK 基址在代理代码写死
 
 ## 已有能力复用

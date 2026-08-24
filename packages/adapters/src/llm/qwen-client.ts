@@ -10,6 +10,61 @@ const VISION_PROXY_DEFAULT_TIMEOUT_MS = 600_000;
 const VISION_PROXY_MAX_ATTEMPTS = 2;
 const VISION_PROXY_RETRY_DELAY_MS = 2000;
 
+function parsePositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/** 同时最多执行的大模型调用数（模块级，跨所有 QwenClient 实例生效） */
+const MAX_CONCURRENT_LLM_CALLS = parsePositiveIntEnv(
+  "MAX_CONCURRENT_LLM_CALLS",
+  2,
+);
+
+/** 进程内并发信号量：最多 limit 个任务在途，超出排队等待（不拒绝） */
+class AsyncLimiter {
+  private active = 0;
+  private readonly queue: Array<() => void> = [];
+
+  constructor(private readonly limit: number) {}
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.release();
+    }
+  }
+
+  private acquire(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.active < this.limit) {
+        this.active += 1;
+        resolve();
+        return;
+      }
+      this.queue.push(() => {
+        this.active += 1;
+        resolve();
+      });
+    });
+  }
+
+  private release(): void {
+    const next = this.queue.shift();
+    if (next) {
+      next();
+    } else {
+      this.active -= 1;
+    }
+  }
+}
+
+const llmConcurrencyLimiter = new AsyncLimiter(MAX_CONCURRENT_LLM_CALLS);
+
 function isRetryableProxyStatus(status: number): boolean {
   return status === 500 || status === 502 || status === 503;
 }
@@ -110,64 +165,67 @@ export class QwenClient {
       model: this.config.modelName,
     };
 
-    const safeProxyEndpoint = summarizeUrl(this.config.visionProxyUrl);
+    const visionProxyUrl = this.config.visionProxyUrl;
+    const safeProxyEndpoint = summarizeUrl(visionProxyUrl);
     const timeoutMs =
       this.config.visionProxyTimeoutMs ?? VISION_PROXY_DEFAULT_TIMEOUT_MS;
 
-    for (let attempt = 1; ; attempt++) {
-      let response: Response;
-      try {
-        response = await fetchWithTimeout(
-          this.httpClient,
-          this.config.visionProxyUrl,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${this.config.apiKey}`,
+    return llmConcurrencyLimiter.run(async () => {
+      for (let attempt = 1; ; attempt++) {
+        let response: Response;
+        try {
+          response = await fetchWithTimeout(
+            this.httpClient,
+            visionProxyUrl,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${this.config.apiKey}`,
+              },
+              body: JSON.stringify(requestBody),
             },
-            body: JSON.stringify(requestBody),
-          },
-          timeoutMs,
-        );
-      } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") {
+            timeoutMs,
+          );
+        } catch (err) {
+          if (err instanceof Error && err.name === "AbortError") {
+            throw new Error(
+              `LLM 多模态代理调用超时 (${timeoutMs}ms, endpoint=${safeProxyEndpoint})`,
+            );
+          }
+          if (attempt < VISION_PROXY_MAX_ATTEMPTS) {
+            await delay(VISION_PROXY_RETRY_DELAY_MS);
+            continue;
+          }
+          throw err;
+        }
+
+        if (!response.ok) {
+          const err = await response.text().catch(() => response.statusText);
+          if (
+            isRetryableProxyStatus(response.status) &&
+            attempt < VISION_PROXY_MAX_ATTEMPTS
+          ) {
+            await delay(VISION_PROXY_RETRY_DELAY_MS);
+            continue;
+          }
           throw new Error(
-            `LLM 多模态代理调用超时 (${timeoutMs}ms, endpoint=${safeProxyEndpoint})`,
+            `LLM 多模态代理调用失败 (status=${response.status}, endpoint=${safeProxyEndpoint}): ${summarizeResponseBody(err || response.statusText)}`,
           );
         }
-        if (attempt < VISION_PROXY_MAX_ATTEMPTS) {
-          await delay(VISION_PROXY_RETRY_DELAY_MS);
-          continue;
-        }
-        throw err;
-      }
 
-      if (!response.ok) {
-        const err = await response.text().catch(() => response.statusText);
-        if (
-          isRetryableProxyStatus(response.status) &&
-          attempt < VISION_PROXY_MAX_ATTEMPTS
-        ) {
-          await delay(VISION_PROXY_RETRY_DELAY_MS);
-          continue;
-        }
-        throw new Error(
-          `LLM 多模态代理调用失败 (status=${response.status}, endpoint=${safeProxyEndpoint}): ${summarizeResponseBody(err || response.statusText)}`,
+        const rawBody = await response.json();
+        const rawContent = extractRawContent(
+          rawBody,
+          "LLM 多模态代理返回空响应",
         );
+        return {
+          data: JSON.parse(rawContent) as object,
+          rawContent,
+          model: requestBody.model,
+        };
       }
-
-      const rawBody = await response.json();
-      const rawContent = extractRawContent(
-        rawBody,
-        "LLM 多模态代理返回空响应",
-      );
-      return {
-        data: JSON.parse(rawContent) as object,
-        rawContent,
-        model: requestBody.model,
-      };
-    }
+    });
   }
 }
 
