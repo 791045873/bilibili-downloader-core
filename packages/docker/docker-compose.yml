@@ -5,7 +5,7 @@ services:
     build:
       context: ../..
       dockerfile: packages/docker/Dockerfile.vision-proxy
-    image: bilibili-downloader-vision-proxy
+    image: bilibili-downloader-vision-proxy:${VISION_PROXY_VERSION:?未设置 VISION_PROXY_VERSION：请先运行任意 pnpm docker:* 命令同步版本，或设置 VISION_PROXY_VERSION 环境变量}
     restart: unless-stopped
     environment:
       QWEN_VISION_PROXY_MAX_BODY_BYTES: ${QWEN_VISION_PROXY_MAX_BODY_BYTES:-16777216}
@@ -23,7 +23,7 @@ services:
     build:
       context: ../..
       dockerfile: packages/docker/Dockerfile.server
-    image: bilibili-downloader-server
+    image: bilibili-downloader-server:${SERVER_VERSION:?未设置 SERVER_VERSION：请先运行任意 pnpm docker:* 命令同步版本，或设置 SERVER_VERSION 环境变量}
     restart: unless-stopped
     ports:
       - "3000:3000"

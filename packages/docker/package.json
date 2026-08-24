@@ -2,12 +2,17 @@
   "name": "@bilibili-downloader/docker",
   "version": "0.0.1",
   "private": true,
-  "description": "Docker 镜像打包 — 用两个独立 Dockerfile（Dockerfile.server / Dockerfile.vision-proxy）分别构建 server（Node+前端）与 vision-proxy（Python 视觉代理）两个相互独立的镜像，经 docker compose 编排",
+  "description": "Docker 镜像打包 — 用两个独立 Dockerfile（Dockerfile.server / Dockerfile.vision-proxy）分别构建 server（Node+前端）与 vision-proxy（Python 视觉代理）两个相互独立的镜像，经 docker compose 编排；镜像 tag 取对应包 version（compose.mjs 自动推导，SERVER_VERSION / VISION_PROXY_VERSION 可覆盖）",
   "scripts": {
-    "docker:build": "docker compose build",
-    "docker:save": "docker save -o ../../dist/bilibili-downloader-images.tar bilibili-downloader:latest bilibili-downloader:vision-proxy",
-    "docker:run": "docker compose up -d",
-    "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f --no-log-prefix"
+    "docker:build": "node compose.mjs build",
+    "docker:build:server": "node compose.mjs build-server",
+    "docker:build:vision-proxy": "node compose.mjs build-vision-proxy",
+    "docker:save": "node compose.mjs save",
+    "docker:save:server": "node compose.mjs save-server",
+    "docker:save:vision-proxy": "node compose.mjs save-vision-proxy",
+    "docker:run": "node compose.mjs up -d",
+    "docker:down": "node compose.mjs down",
+    "docker:logs": "node compose.mjs logs -f --no-log-prefix",
+    "docker:config": "node compose.mjs config"
   }
 }

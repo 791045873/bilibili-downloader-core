@@ -25,7 +25,7 @@
 
 server 是下载器的后端代码，front 部分是下载器的前端代码。
 
-Docker 是将下载器打包为镜像的构建配置：两个独立 Dockerfile（`packages/docker/Dockerfile.server` 与 `packages/docker/Dockerfile.vision-proxy`）分别构建两个相互独立的镜像（`bilibili-downloader-server` 与 `bilibili-downloader-vision-proxy`）+ docker compose 编排（`packages/docker/docker-compose.yml`），`docker:build` / `docker:run` 命令内部已改用 compose。
+Docker 是将下载器打包为镜像的构建配置：两个独立 Dockerfile（`packages/docker/Dockerfile.server` 与 `packages/docker/Dockerfile.vision-proxy`）分别构建两个相互独立的镜像（`bilibili-downloader-server` 与 `bilibili-downloader-vision-proxy`）+ docker compose 编排（`packages/docker/docker-compose.yml`），`docker:build` / `docker:run` 命令内部已改用 compose。镜像 tag 取对应包 version（server 取 `packages/server/package.json`、vision-proxy 取 `packages/vision-proxy/pyproject.toml` 的 version），由 `packages/docker/compose.mjs` 自动推导，升包版本号即换镜像 tag，每次构建/启动都携带显式版本；如需临时覆盖（如发测试 tag）可设置 `SERVER_VERSION` / `VISION_PROXY_VERSION` 环境变量。
 
 如果想要通过源码进行本地调试，先执行 `pnpm install`，再运行 `pnpm dev:server`。该命令会先安装所有 Node 工作区依赖，并在检测到本机 Python 可用时自动创建 `packages/vision-proxy/.venv` 并安装 `packages/vision-proxy/pyproject.toml` 中锁定的视觉代理依赖；随后同时启动后端开发服务（3000）和前端开发服务（5173）。启动后直接访问 `http://localhost:5173` 即可。
 
@@ -35,7 +35,7 @@ Docker 是将下载器打包为镜像的构建配置：两个独立 Dockerfile�
 
 如果需要本地启动视觉代理来支持视频分析，可进入 `packages/server` 后运行 `pnpm start:vision-proxy`。当缺少 Python 依赖时，启动命令会直接给出修复提示，而不是抛出原始模块导入异常。宿主开发模式下视觉代理从 `packages/vision-proxy/.env` 读取监听 HOST/PORT；代理所用 API Key 由前端设置页配置进数据库，Node 经 `Authorization` 头随请求传给代理，不再需要任何 DashScope 密钥环境变量。
 
-如果想要在 NAS 中使用，在仓库根目录执行 `pnpm docker:build` 构建两个镜像，再执行 `pnpm docker:run` 通过 docker compose 启动 `server`（Node + 前端 + FFmpeg，对外暴露 3000 端口）与 `vision-proxy`（Python 视觉代理，仅供容器间调用）。两个容器均配置 `restart: unless-stopped`，任一崩溃会自动单独重启。两个镜像也可用 `pnpm --filter @bilibili-downloader/docker docker:build:server` / `docker:build:vision-proxy` 各自独立构建。
+如果想要在 NAS 中使用，在仓库根目录执行 `pnpm docker:build` 构建两个镜像（tag 为各自包 version，如 `bilibili-downloader-server:0.0.1`），再执行 `pnpm docker:run` 通过 docker compose 启动 `server`（Node + 前端 + FFmpeg，对外暴露 3000 端口）与 `vision-proxy`（Python 视觉代理，仅供容器间调用）。两个容器均配置 `restart: unless-stopped`，任一崩溃会自动单独重启。两个镜像也可用 `pnpm --filter @bilibili-downloader/docker docker:build:server` / `docker:build:vision-proxy` 各自独立构建。
 
 默认情况下，两个容器会把宿主机 `$HOME/Downloads/bilibili_download`（Windows 宿主为 `%USERPROFILE%\Downloads\bilibili_download`）挂载到容器内 `/download`，所有视频下载到该目录；可用环境变量 `DOWNLOAD_HOST_PATH` 覆盖挂载位置。
 

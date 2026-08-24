@@ -17,7 +17,7 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | Server Logging | `packages/server/src/logging/` | RequestLoggingInterceptor、safe log allowlist、请求体安全裁剪；`FileConsoleLogger`（`LOG_DIR` 开启终端+文件双写，`rotating-file-stream` 按天轮转，`LOG_MAX_FILES` 保留数） | 2026-08-13 | high |
 | Vision Proxy | `packages/vision-proxy/`     | 可选 Python 薄代理，仅负责 DashScope 本地视觉文件调用（pyproject.toml 锁定依赖 + .venv 于包目录下；body 上限/socket 超时/并发上限/healthz）。容器部署时作为独立 `vision-proxy` 容器运行；宿主开发模式经 `start-vision-proxy` 自动重启，开发模式读 `packages/vision-proxy/.env` 的 HOST/PORT；密钥经 `Authorization` 头由 Node 透传（DB 来源），SDK 基址代码写死 | 2026-08-20    | high     |
 | Frontend     | `packages/frontend/src/`      | React 19 SPA，视频输入、下载列表、AI 总结任务、设置（react-router 7 + Zustand + antd 6 + TanStack Query + Tailwind 4） | 2026-08-14    | high       |
-| Docker       | `packages/docker/`            | 两个独立 Dockerfile（`Dockerfile.server` / `Dockerfile.vision-proxy`）分别构建两个相互独立的镜像（`bilibili-downloader-server` / `bilibili-downloader-vision-proxy`）、docker-compose.yml 双容器编排、`.env.example` 与构建脚本（docker:build / docker:build:server / docker:build:vision-proxy / docker:run / docker:down / docker:logs） | 2026-08-20    | high       |
+| Docker       | `packages/docker/`            | 两个独立 Dockerfile（`Dockerfile.server` / `Dockerfile.vision-proxy`）分别构建两个相互独立的镜像（`bilibili-downloader-server` / `bilibili-downloader-vision-proxy`）、docker-compose.yml 双容器编排、`.env.example` 与构建脚本（compose.mjs 派发 docker:build / docker:build:server / docker:build:vision-proxy / docker:save* / docker:run / docker:down / docker:logs）；镜像 tag 取对应包 version（server ↔ `packages/server/package.json`，vision-proxy ↔ `packages/vision-proxy/pyproject.toml`），`SERVER_VERSION`/`VISION_PROXY_VERSION` 可覆盖 | 2026-08-24    | high       |
 | Config       | `tsconfig.base.json`, `pnpm-workspace.yaml`, `package.json` | 项目配置                          | 2026-06-02    | high       |
 | Tests        | 无统一测试目录                    | 当前无自动化测试                                  | 2026-06-02    | low        |
 
@@ -32,7 +32,7 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | 新增 UI 页面         | `packages/frontend/src/`      | `packages/server/src/` (API)              | `pnpm typecheck`                | 2026-06-02    | high       |
 | 修改下载器行为        | `packages/adapters/src/`      | `packages/core/src/` (ports)              | `pnpm typecheck`                | 2026-06-02    | high       |
 | 修改 B站 API 适配     | `packages/adapters/src/bilibili/` | `packages/bilibili-api-sdk/` (底层接口), `packages/core/src/` (domain models) | `pnpm typecheck`, `pnpm --filter bilibili-api-sdk test`, `pnpm --filter @bilibili-downloader/server typecheck` | 2026-08-12    | high       |
-| 修改部署配置          | `packages/docker/`            | `package.json` (scripts)                  | `pnpm docker:build`, `pnpm docker:build:server`, `pnpm docker:build:vision-proxy` | 2026-08-20    | high       |
+| 修改部署配置          | `packages/docker/`            | `package.json` (scripts)                  | `pnpm docker:build`, `pnpm docker:build:server`, `pnpm docker:build:vision-proxy`, `docker compose config`（经 `node compose.mjs config`） | 2026-08-24    | high       |
 
 ## Large Or Fragile Files
 
