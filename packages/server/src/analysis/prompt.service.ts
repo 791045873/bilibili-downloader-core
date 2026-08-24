@@ -22,15 +22,18 @@ import { AI_PROMPT_FORMAT_SNIPPET } from "./prompt-template.js";
 export class PromptService {
   constructor(private readonly db: DatabaseService) {}
 
-  list(): AiPromptRecord[] {
+  async list(): Promise<AiPromptRecord[]> {
     return this.db.listAiPrompts();
   }
 
-  get(id: number): AiPromptRecord | undefined {
+  async get(id: number): Promise<AiPromptRecord | undefined> {
     return this.db.getAiPromptById(id);
   }
 
-  create(input: { name: string; content: string }): AiPromptRecord {
+  async create(input: {
+    name: string;
+    content: string;
+  }): Promise<AiPromptRecord> {
     return this.db.insertAiPrompt({
       name: input.name,
       content: input.content,
@@ -39,12 +42,12 @@ export class PromptService {
     });
   }
 
-  update(
+  async update(
     id: number,
     input: { name?: string; content?: string },
-  ): AiPromptRecord {
-    this.assertNotSystem(id, "系统内置提示词不可编辑");
-    const updated = this.db.updateAiPrompt(id, {
+  ): Promise<AiPromptRecord> {
+    await this.assertNotSystem(id, "系统内置提示词不可编辑");
+    const updated = await this.db.updateAiPrompt(id, {
       name: input.name !== undefined ? input.name.trim() : undefined,
       content: input.content,
     });
@@ -54,65 +57,70 @@ export class PromptService {
     return updated;
   }
 
-  remove(id: number): void {
-    this.assertNotSystem(id, "系统内置提示词不可删除");
-    const removed = this.db.getAiPromptById(id);
+  async remove(id: number): Promise<void> {
+    await this.assertNotSystem(id, "系统内置提示词不可删除");
+    const removed = await this.db.getAiPromptById(id);
     if (!removed) {
       throw new NotFoundException("提示词不存在");
     }
     const wasDefault = removed.isDefault === 1;
-    this.db.deleteAiPrompt(id);
+    await this.db.deleteAiPrompt(id);
     if (wasDefault) {
-      this.fallbackDefaultToBuiltin();
+      await this.fallbackDefaultToBuiltin();
     }
   }
 
-  setDefault(id: number): void {
-    const prompt = this.db.getAiPromptById(id);
+  async setDefault(id: number): Promise<void> {
+    const prompt = await this.db.getAiPromptById(id);
     if (!prompt) {
       throw new NotFoundException("提示词不存在");
     }
-    this.db.clearAiPromptDefault();
-    this.db.setAiPromptDefault(id);
+    await this.db.clearAiPromptDefault();
+    await this.db.setAiPromptDefault(id);
   }
 
   getFormatSnippet(): string {
     return AI_PROMPT_FORMAT_SNIPPET;
   }
 
-  getDefaultPromptId(): number | undefined {
+  async getDefaultPromptId(): Promise<number | undefined> {
     return this.db.getDefaultAiPromptId();
   }
 
-  getCreatorBinding(mid: number): { mid: number; promptId: number } | undefined {
+  async getCreatorBinding(
+    mid: number,
+  ): Promise<{ mid: number; promptId: number } | undefined> {
     return this.db.getCreatorBindingByMid(mid);
   }
 
-  setCreatorBinding(mid: number, promptId: number): void {
-    if (!this.db.getAiPromptById(promptId)) {
+  async setCreatorBinding(mid: number, promptId: number): Promise<void> {
+    if (!(await this.db.getAiPromptById(promptId))) {
       throw new NotFoundException("提示词不存在");
     }
-    this.db.upsertCreatorBinding(mid, promptId);
+    await this.db.upsertCreatorBinding(mid, promptId);
   }
 
-  deleteCreatorBinding(mid: number): void {
-    this.db.deleteCreatorBinding(mid);
+  async deleteCreatorBinding(mid: number): Promise<void> {
+    await this.db.deleteCreatorBinding(mid);
   }
 
   /**
    * /analysis/run 的提示词解析：显式 promptId → 系统默认 → undefined（引擎回退内置）。
    * 引用的提示词已被删除时跳过向下。
    */
-  resolveForRun(promptId?: number): { promptId?: number; content?: string } {
+  async resolveForRun(promptId?: number): Promise<{
+    promptId?: number;
+    content?: string;
+  }> {
     if (promptId !== undefined) {
-      const explicitPrompt = this.db.getAiPromptById(promptId);
+      const explicitPrompt = await this.db.getAiPromptById(promptId);
       if (explicitPrompt) {
         return { promptId, content: explicitPrompt.content };
       }
     }
-    const defaultId = this.db.getDefaultAiPromptId();
+    const defaultId = await this.db.getDefaultAiPromptId();
     if (defaultId !== undefined) {
-      const defaultPrompt = this.db.getAiPromptById(defaultId);
+      const defaultPrompt = await this.db.getAiPromptById(defaultId);
       if (defaultPrompt) {
         return { promptId: defaultId, content: defaultPrompt.content };
       }
@@ -120,8 +128,11 @@ export class PromptService {
     return {};
   }
 
-  private assertNotSystem(id: number, conflictMessage: string): void {
-    const prompt = this.db.getAiPromptById(id);
+  private async assertNotSystem(
+    id: number,
+    conflictMessage: string,
+  ): Promise<void> {
+    const prompt = await this.db.getAiPromptById(id);
     if (!prompt) {
       throw new NotFoundException("提示词不存在");
     }
@@ -130,11 +141,13 @@ export class PromptService {
     }
   }
 
-  private fallbackDefaultToBuiltin(): void {
-    const builtin = this.db.listAiPrompts().find((p) => p.isSystem === 1);
+  private async fallbackDefaultToBuiltin(): Promise<void> {
+    const builtin = (await this.db.listAiPrompts()).find(
+      (p) => p.isSystem === 1,
+    );
     if (builtin?.id !== undefined) {
-      this.db.clearAiPromptDefault();
-      this.db.setAiPromptDefault(builtin.id);
+      await this.db.clearAiPromptDefault();
+      await this.db.setAiPromptDefault(builtin.id);
     }
   }
 }

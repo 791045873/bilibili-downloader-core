@@ -1,5 +1,7 @@
 # 2026-08-21 总结知识云端化与穿搭问答服务讨论
 
+> 状态更新（2026-08-24）：用户决定先执行本讨论目标第 1 点"数据库迁移云端"，范围为方案 A（六张表全部迁移到 PostgreSQL），在这一点上取代本文收敛的方案 B。云端数据库目标改为阿里云云数据库。详见 `docs/requirements/2026-08-24-sqlite-to-postgresql-migration.md` 与 `docs/plans/2026-08-24-sqlite-to-postgresql-migration-plan.md`。方案 B 的其余内容（知识发布管道/COS/RAG）仍有效，属后续需求。
+
 ## Source
 
 - 用户 chat 讨论（2026-08-21）：数据库迁移云端、截图上传 OSS、总结文本+图片同步云端、进一步 AI 分析（向量化）、独立前端穿搭问答（RAG）

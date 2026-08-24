@@ -50,7 +50,7 @@ Rule:
 
 Primary source:
 
-- the project's database model files (SQLite schema managed through server package)
+- the project's database model files (PostgreSQL schema owned by `packages/server/src/database/database.service.ts`, applied via `initSchema` on boot; `DATABASE_URL` connection)
 
 Rule:
 

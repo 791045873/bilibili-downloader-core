@@ -72,9 +72,9 @@ export class AnalysisTriggerService implements OnModuleInit {
         );
   }
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     // 启动对账：低清队列为内存态，重启后遗留子任务/卡死总结标 failed，避免永久等待
-    const reconciled = this.db.reconcileStaleAnalysisState();
+    const reconciled = await this.db.reconcileStaleAnalysisState();
     if (reconciled.failedSubTasks > 0 || reconciled.failedSummaryTasks > 0) {
       this.logger.log(
         createLogMessage("Reconciled stale analysis state after restart", {
@@ -97,7 +97,7 @@ export class AnalysisTriggerService implements OnModuleInit {
       });
     };
 
-    this.downloadScheduler.onLowResFinished = (
+    this.downloadScheduler.onLowResFinished = async (
       taskId,
       analysisSubTaskId,
       result,
@@ -111,7 +111,7 @@ export class AnalysisTriggerService implements OnModuleInit {
             quality: result.quality,
           }),
         );
-        this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
+        await this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
           status: "completed",
           outputFile: result.outputFile,
           completedAt: new Date().toISOString(),
@@ -141,14 +141,14 @@ export class AnalysisTriggerService implements OnModuleInit {
             error: result.error,
           }),
         );
-        this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
+        await this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
           status: "failed",
           errorMessage: result.error,
           completedAt: new Date().toISOString(),
         });
-        const task = this.db.getTaskById(taskId);
+        const task = await this.db.getTaskById(taskId);
         if (task) {
-          this.upsertAiSummaryTask(task, {
+          await this.upsertAiSummaryTask(task, {
             status: "failed",
             summaryOutput: "",
             errorMessage: result.error,
@@ -183,7 +183,7 @@ export class AnalysisTriggerService implements OnModuleInit {
       }),
     );
 
-    const task = this.db.getTaskById(taskId);
+    const task = await this.db.getTaskById(taskId);
     if (!task) {
       this.logger.warn(
         createLogMessage(
@@ -247,7 +247,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     );
 
     // 原子认领：pending/analyzing 进行中直接拒绝，防并发双跑
-    const claim = this.db.claimAiSummaryTask({
+    const claim = await this.db.claimAiSummaryTask({
       bvid: task.bvid,
       cid: task.cid,
       title: task.title,
@@ -272,9 +272,9 @@ export class AnalysisTriggerService implements OnModuleInit {
     // 认领已完成，ai_summary_task 已置 pending（唯一权威），无需再写 task 镜像
 
     // 低清未就绪则等待（认领保持进行中，续跑由 onLowResFinished 驱动 runAnalysis）
-    const lowResSubTask = this.db
-      .getAnalysisSubTasks(task.bvid, task.cid)
-      .find((s) => s.status !== "failed");
+    const lowResSubTask = (
+      await this.db.getAnalysisSubTasks(task.bvid, task.cid)
+    ).find((s) => s.status !== "failed");
     if (lowResSubTask && lowResSubTask.status !== "completed") {
       this.logger.log(
         createLogMessage(
@@ -301,26 +301,29 @@ export class AnalysisTriggerService implements OnModuleInit {
     task: TaskRecord,
     explicit?: number,
   ): Promise<number | undefined> {
-    if (explicit !== undefined && this.promptService.get(explicit)) {
+    if (explicit !== undefined && (await this.promptService.get(explicit))) {
       return explicit;
     }
     if (
       task.promptId !== undefined &&
-      this.promptService.get(task.promptId)
+      (await this.promptService.get(task.promptId))
     ) {
       return task.promptId;
     }
     if (task.bvid) {
       const mid = await this.resolveCreatorMid(task.bvid);
       if (mid !== undefined) {
-        const binding = this.promptService.getCreatorBinding(mid);
-        if (binding && this.promptService.get(binding.promptId)) {
+        const binding = await this.promptService.getCreatorBinding(mid);
+        if (binding && (await this.promptService.get(binding.promptId))) {
           return binding.promptId;
         }
       }
     }
-    const defaultId = this.promptService.getDefaultPromptId();
-    if (defaultId !== undefined && this.promptService.get(defaultId)) {
+    const defaultId = await this.promptService.getDefaultPromptId();
+    if (
+      defaultId !== undefined &&
+      (await this.promptService.get(defaultId))
+    ) {
       return defaultId;
     }
     return undefined;
@@ -350,7 +353,7 @@ export class AnalysisTriggerService implements OnModuleInit {
   }
 
   private async runAnalysis(taskId: number, now: string): Promise<void> {
-    const task = this.db.getTaskById(taskId);
+    const task = await this.db.getTaskById(taskId);
     if (!task) {
       return;
     }
@@ -359,17 +362,15 @@ export class AnalysisTriggerService implements OnModuleInit {
     const taskCid = task.cid;
     const lowResSubTask =
       task.bvid && typeof task.cid === "number"
-        ? (this.db
-            .getAnalysisSubTasks(task.bvid, task.cid)
-            .find((s) => s.status !== "failed") as
-            | AnalysisSubTaskRecord
-            | undefined)
+        ? ((await this.db.getAnalysisSubTasks(task.bvid, task.cid)).find(
+            (s) => s.status !== "failed",
+          ) as AnalysisSubTaskRecord | undefined)
         : undefined;
     let llmVideoPath: string | undefined;
     let isTempVideo = false;
 
     try {
-      this.upsertAiSummaryTask(task, {
+      await this.upsertAiSummaryTask(task, {
         status: "analyzing",
         summaryOutput: "",
         errorMessage: "",
@@ -421,13 +422,13 @@ export class AnalysisTriggerService implements OnModuleInit {
       const summaryDir = this.resolveSummaryDir(task);
       const metadataVideoUrl = `https://www.bilibili.com/video/${effectiveBvid}`;
 
-      const summaryRecord = this.db.getAiSummaryTaskByResource(
+      const summaryRecord = await this.db.getAiSummaryTaskByResource(
         effectiveBvid,
         effectiveCid,
       );
       const resolvedPromptId = summaryRecord?.promptId;
       const resolvedPrompt = resolvedPromptId
-        ? this.promptService.get(resolvedPromptId)
+        ? await this.promptService.get(resolvedPromptId)
         : undefined;
 
       const input: AnalysisInput = {
@@ -456,7 +457,7 @@ export class AnalysisTriggerService implements OnModuleInit {
       );
 
       const engine = new AnalysisEngine(
-        this.getLlmConfig(),
+        await this.getLlmConfig(),
         undefined,
         this.analysisVideoResolver,
       );
@@ -472,7 +473,7 @@ export class AnalysisTriggerService implements OnModuleInit {
           emptySummary: result.emptySummary,
         }),
       );
-      this.upsertAiSummaryTask(task, {
+      await this.upsertAiSummaryTask(task, {
         status: "completed",
         summaryOutput: result.summaryPath,
         errorMessage: "",
@@ -499,7 +500,7 @@ export class AnalysisTriggerService implements OnModuleInit {
         }),
         err instanceof Error ? err.stack : undefined,
       );
-      this.upsertAiSummaryTask(task, {
+      await this.upsertAiSummaryTask(task, {
         status: "failed",
         summaryOutput: "",
         errorMessage: msg,
@@ -548,7 +549,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     taskId: number,
     task: TaskRecord,
   ): Promise<TaskRecord> {
-    const latestTask = this.db.getTaskById(taskId) ?? task;
+    const latestTask = (await this.db.getTaskById(taskId)) ?? task;
     if (!isNil(latestTask.outputFile) && !isNil(latestTask.bvid)) {
       return latestTask;
     }
@@ -558,7 +559,8 @@ export class AnalysisTriggerService implements OnModuleInit {
     }
 
     const completedTask =
-      this.db.findCompletedTaskByBvidAndCid(task.bvid, task.cid) ?? latestTask;
+      (await this.db.findCompletedTaskByBvidAndCid(task.bvid, task.cid)) ??
+      latestTask;
 
     // 磁盘校验：重载文件已不存在时回退当前任务，交由下游低清恢复
     if (
@@ -653,8 +655,8 @@ export class AnalysisTriggerService implements OnModuleInit {
     return join(base, existingDir ?? candidateName);
   }
 
-  private getLlmConfig(): LlmConfig {
-    const stored = this.db.getSettings([
+  private async getLlmConfig(): Promise<LlmConfig> {
+    const stored = await this.db.getSettings([
       "llm.apiKey",
       "llm.modelName",
     ]);
@@ -677,15 +679,15 @@ export class AnalysisTriggerService implements OnModuleInit {
     };
   }
 
-  getAiSummaryTasksPaginated(params: {
+  async getAiSummaryTasksPaginated(params: {
     page: number;
     pageSize: number;
     status?: string[];
     search?: string;
     updatedFrom?: string;
     updatedTo?: string;
-  }): PaginatedAiSummaryTaskView {
-    const result = this.db.listAiSummaryTasksPaginated({
+  }): Promise<PaginatedAiSummaryTaskView> {
+    const result = await this.db.listAiSummaryTasksPaginated({
       page: params.page,
       pageSize: params.pageSize,
       filter: {
@@ -704,8 +706,10 @@ export class AnalysisTriggerService implements OnModuleInit {
     };
   }
 
-  getAiSummaryTaskById(id: number): AiSummaryTaskView | undefined {
-    const record = this.db.getAiSummaryTaskById(id);
+  async getAiSummaryTaskById(
+    id: number,
+  ): Promise<AiSummaryTaskView | undefined> {
+    const record = await this.db.getAiSummaryTaskById(id);
     if (!record) {
       return undefined;
     }
@@ -716,7 +720,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     };
   }
 
-  deleteAiSummaryTask(id: number): boolean {
+  async deleteAiSummaryTask(id: number): Promise<boolean> {
     return this.db.deleteAiSummaryTask(id);
   }
 
@@ -736,7 +740,7 @@ export class AnalysisTriggerService implements OnModuleInit {
    */
   async runRebuild(id: number): Promise<void> {
     try {
-      const record = this.db.getAiSummaryTaskById(id);
+      const record = await this.db.getAiSummaryTaskById(id);
       if (!record) {
         this.logger.warn(
           createLogMessage("Summary rebuild aborted because record was not found", {
@@ -766,7 +770,10 @@ export class AnalysisTriggerService implements OnModuleInit {
         return;
       }
 
-      const task = this.db.findLatestTaskByBvidAndCid(record.bvid, record.cid);
+      const task = await this.db.findLatestTaskByBvidAndCid(
+        record.bvid,
+        record.cid,
+      );
       if (!task || !task.bvid || typeof task.cid !== "number") {
         throw new Error("无对应的下载任务，无法重新构建");
       }
@@ -799,7 +806,7 @@ export class AnalysisTriggerService implements OnModuleInit {
         record.modelName ?? "",
       );
 
-      this.upsertAiSummaryTask(task, {
+      await this.upsertAiSummaryTask(task, {
         status: "completed",
         summaryOutput: result.summaryPath,
         errorMessage: "",
@@ -855,7 +862,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     }
   }
 
-  private upsertAiSummaryTask(
+  private async upsertAiSummaryTask(
     task: TaskRecord,
     fields: {
       status: string;
@@ -867,12 +874,12 @@ export class AnalysisTriggerService implements OnModuleInit {
       lastTriggeredAt?: string;
       lastCompletedAt?: string;
     },
-  ): void {
+  ): Promise<void> {
     if (!task.bvid || typeof task.cid !== "number") {
       return;
     }
 
-    this.db.upsertAiSummaryTask({
+    await this.db.upsertAiSummaryTask({
       bvid: task.bvid,
       cid: task.cid,
       title: task.title,

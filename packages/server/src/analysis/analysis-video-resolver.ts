@@ -83,7 +83,7 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
 
     // 无可用视频：重置失效子任务并重新调度低清下载（资源级键，同资源唯一）
     await mkdir(input.llmVideoDir, { recursive: true });
-    const subTasks = this.databaseService.getAnalysisSubTasks(
+    const subTasks = await this.databaseService.getAnalysisSubTasks(
       input.bvid,
       input.cid,
     );
@@ -91,7 +91,7 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
 
     let analysisSubTaskId: number;
     if (stale) {
-      this.databaseService.updateAnalysisSubTaskStatus(stale.id!, {
+      await this.databaseService.updateAnalysisSubTaskStatus(stale.id!, {
         status: "created",
         errorMessage: "",
         completedAt: "",
@@ -100,14 +100,14 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
     } else {
       const failed = subTasks.find((s) => s.status === "failed");
       if (failed) {
-        this.databaseService.updateAnalysisSubTaskStatus(failed.id!, {
+        await this.databaseService.updateAnalysisSubTaskStatus(failed.id!, {
           status: "created",
           errorMessage: "",
           completedAt: "",
         });
         analysisSubTaskId = failed.id!;
       } else {
-        analysisSubTaskId = this.databaseService.insertAnalysisSubTask({
+        analysisSubTaskId = await this.databaseService.insertAnalysisSubTask({
           taskId: input.taskId,
           bvid: input.bvid,
           cid: input.cid,
@@ -203,10 +203,8 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
       );
     }
 
-    const completedTask = this.databaseService.findCompletedTaskByBvidAndCid(
-      bvid,
-      cid,
-    );
+    const completedTask =
+      await this.databaseService.findCompletedTaskByBvidAndCid(bvid, cid);
     if (
       completedTask?.outputFile &&
       (completedTask.quality ?? 0) >= 80 &&
@@ -278,7 +276,7 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
       }),
     );
 
-    const taskRecord = this.downloadService.getTaskById(task.id);
+    const taskRecord = await this.downloadService.getTaskById(task.id);
     if (!taskRecord) {
       throw new Error(`无法加载新建下载任务: ${task.id}`);
     }
@@ -288,7 +286,7 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
       10 * 60 * 1000,
     );
 
-    const finalRecord = this.downloadService.getTaskById(task.id);
+    const finalRecord = await this.downloadService.getTaskById(task.id);
     if (finalRecord?.status !== TaskStatus.Success || !finalRecord.outputFile) {
       this.logger.error(
         createLogMessage(

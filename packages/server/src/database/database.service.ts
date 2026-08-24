@@ -1,12 +1,19 @@
-import { Injectable, Logger } from "@nestjs/common";
-import Database from "better-sqlite3";
-import { join } from "node:path";
-import { mkdirSync } from "node:fs";
+import {
+  Injectable,
+  Logger,
+  OnApplicationShutdown,
+  OnModuleInit,
+} from "@nestjs/common";
+import { Pool, types as pgTypes } from "pg";
 import { createLogMessage } from "../logging/server-log.util.js";
 import {
   BUILTIN_AI_PROMPT_CONTENT,
   BUILTIN_AI_PROMPT_NAME,
 } from "../analysis/prompt-template.js";
+
+pgTypes.setTypeParser(20, (value: string) => Number(value));
+pgTypes.setTypeParser(1114, (value: string) => toIsoTimestamp(value));
+pgTypes.setTypeParser(1184, (value: string) => toIsoTimestamp(value));
 
 /**
  * 任务记录（对应 task 表）
@@ -117,150 +124,192 @@ export interface PaginatedAiSummaryTaskResult {
 }
 
 @Injectable()
-export class DatabaseService {
+export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(DatabaseService.name);
-  private readonly db: Database.Database;
+  private readonly pool: Pool;
+  private readonly databaseUrl: string;
   private readonly progressBuckets = new Map<number, number>();
 
   constructor() {
-    const outputDir =
-      process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads");
-    const dbPath = join(outputDir, "tasks.db");
-
-    // ensureOutputDir before opening db
-    mkdirSync(outputDir, { recursive: true });
-
-    this.db = new Database(dbPath);
-    this.db.pragma("journal_mode = WAL");
-    this.initSchema();
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      throw new Error(
+        "DATABASE_URL is required. Set it to a PostgreSQL connection string.",
+      );
+    }
+    this.databaseUrl = databaseUrl;
+    this.pool = new Pool({
+      connectionString: databaseUrl,
+      max: 10,
+      connectionTimeoutMillis: 10_000,
+    });
     this.logger.log(
-      createLogMessage("SQLite database connected", {
-        outputPath: dbPath,
-        sourceType: "sqlite",
+      createLogMessage("PostgreSQL pool created", {
+        sourceType: "postgres",
       }),
     );
   }
 
+  async onModuleInit(): Promise<void> {
+    await this.connectWithRetry();
+    await this.initSchema();
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    await this.pool.end();
+  }
+
+  private async connectWithRetry(maxAttempts = 10): Promise<void> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const client = await this.pool.connect();
+        client.release();
+        this.logger.log(
+          createLogMessage("PostgreSQL database connected", {
+            sourceType: "postgres",
+            databaseUrl: sanitizeDatabaseUrl(this.databaseUrl),
+          }),
+        );
+        return;
+      } catch (err) {
+        if (attempt === maxAttempts) {
+          throw new Error(
+            `Failed to connect to PostgreSQL after ${maxAttempts} attempts: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+        const delayMs = 1000 * attempt;
+        this.logger.warn(
+          createLogMessage("PostgreSQL connection retry", {
+            attempt,
+            delayMs,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
   // ==================== Schema ====================
 
-  private initSchema(): void {
-    this.db.exec(`
+  private async initSchema(): Promise<void> {
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS task (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id BIGSERIAL PRIMARY KEY,
         bvid TEXT,
-        cid INTEGER,
+        cid BIGINT,
         title TEXT,
         quality INTEGER,
         codec TEXT,
-        outputPath TEXT,
+        "fileNameTemplate" TEXT,
+        "outputPath" TEXT,
         subtitle_lang TEXT,
         auto_summary INTEGER DEFAULT 0,
         summary_status TEXT DEFAULT 'none',
         summary_output TEXT,
+        prompt_id INTEGER,
         status TEXT NOT NULL DEFAULT 'created',
-        progress REAL DEFAULT 0,
+        progress DOUBLE PRECISION DEFAULT 0,
         speed TEXT,
-        outputFile TEXT,
-        fileSize INTEGER,
-        errorCode TEXT,
-        errorMessage TEXT,
-        durationMs INTEGER,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        completedAt TEXT
+        "outputFile" TEXT,
+        "fileSize" BIGINT,
+        "errorCode" TEXT,
+        "errorMessage" TEXT,
+        "durationMs" BIGINT,
+        "createdAt" TIMESTAMPTZ NOT NULL,
+        "updatedAt" TIMESTAMPTZ NOT NULL,
+        "completedAt" TIMESTAMPTZ
       )
     `);
-    this.db.exec(`
+    await this.pool.query(`
       CREATE INDEX IF NOT EXISTS idx_task_status ON task(status);
-      CREATE INDEX IF NOT EXISTS idx_task_created ON task(createdAt);
+      CREATE INDEX IF NOT EXISTS idx_task_created ON task("createdAt");
       CREATE INDEX IF NOT EXISTS idx_task_bvid_cid ON task(bvid, cid);
     `);
 
-    this.db.exec(`
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS analysis_sub_task (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        task_id INTEGER NOT NULL,
+        id BIGSERIAL PRIMARY KEY,
+        task_id BIGINT NOT NULL REFERENCES task(id),
         bvid TEXT,
-        cid INTEGER,
+        cid BIGINT,
         quality INTEGER,
         status TEXT NOT NULL DEFAULT 'created',
         output_file TEXT,
         error_message TEXT,
-        created_at TEXT NOT NULL,
-        completed_at TEXT,
-        FOREIGN KEY (task_id) REFERENCES task(id)
+        created_at TIMESTAMPTZ NOT NULL,
+        completed_at TIMESTAMPTZ
       )
     `);
-    this.db.exec(`
+    await this.pool.query(`
       CREATE INDEX IF NOT EXISTS idx_analysis_sub_task_task_id
       ON analysis_sub_task(task_id);
     `);
 
-    this.db.exec(`
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS ai_summary_task (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id BIGSERIAL PRIMARY KEY,
         bvid TEXT NOT NULL,
-        cid INTEGER NOT NULL,
+        cid BIGINT NOT NULL,
         title TEXT,
-        source_task_id INTEGER,
+        source_task_id BIGINT,
+        prompt_id INTEGER,
         status TEXT NOT NULL DEFAULT 'pending',
         summary_output TEXT,
         error_message TEXT,
+        execution_timing TEXT,
         raw_response TEXT,
         model_name TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        last_triggered_at TEXT,
-        last_completed_at TEXT,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        last_triggered_at TIMESTAMPTZ,
+        last_completed_at TIMESTAMPTZ,
         UNIQUE (bvid, cid)
       )
     `);
-    this.db.exec(`
+    await this.pool.query(`
       CREATE INDEX IF NOT EXISTS idx_ai_summary_task_updated_at
       ON ai_summary_task(updated_at DESC);
     `);
 
-    this.db.exec(`
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY,
         value TEXT
       )
     `);
 
-    this.db.exec(`
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS ai_prompt (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id BIGSERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         content TEXT NOT NULL,
         is_system INTEGER DEFAULT 0,
         is_default INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
       )
     `);
-    this.db.exec(`
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS ai_prompt_creator (
-        mid INTEGER PRIMARY KEY,
-        prompt_id INTEGER NOT NULL
+        mid BIGINT PRIMARY KEY,
+        prompt_id BIGINT NOT NULL
       )
     `);
 
     // 空表播种内置提示词（幂等：仅空表执行）
-    const promptCount = (this.db
-      .prepare(`SELECT COUNT(*) AS count FROM ai_prompt`)
-      .get() as { count: number }).count;
-    if (promptCount === 0) {
+    const promptCount = await this.pool.query(
+      `SELECT COUNT(*) AS count FROM ai_prompt`,
+    );
+    if (Number(promptCount.rows[0].count) === 0) {
       const now = new Date().toISOString();
-      this.db
-        .prepare(
-          `INSERT INTO ai_prompt (name, content, is_system, is_default, created_at, updated_at)
-           VALUES (@name, @content, 1, 1, @now, @now)`,
-        )
-        .run({
-          name: BUILTIN_AI_PROMPT_NAME,
-          content: BUILTIN_AI_PROMPT_CONTENT,
-          now,
-        });
+      await this.pool.query(
+        `INSERT INTO ai_prompt (name, content, is_system, is_default, created_at, updated_at)
+         VALUES ($1, $2, 1, 1, $3, $3)`,
+        [BUILTIN_AI_PROMPT_NAME, BUILTIN_AI_PROMPT_CONTENT, now],
+      );
       this.logger.log(
         createLogMessage("Seeded builtin AI summary prompt", {
           isSystem: true,
@@ -269,84 +318,19 @@ export class DatabaseService {
       );
     }
 
-    // 已有数据库升级: task 补充提示词列
-    try {
-      this.db.exec(`ALTER TABLE task ADD COLUMN prompt_id INTEGER`);
-    } catch {
-      // 列已存在的忽略
-    }
-
-    // 已有数据库升级: ai_summary_task 补充提示词列
-    try {
-      this.db.exec(`ALTER TABLE ai_summary_task ADD COLUMN prompt_id INTEGER`);
-    } catch {
-      // 列已存在的忽略
-    }
-
-    // 已有数据库升级: ai_summary_task 补充执行耗时列
-    try {
-      this.db.exec(`ALTER TABLE ai_summary_task ADD COLUMN execution_timing TEXT`);
-    } catch {
-      // 列已存在的忽略
-    }
-
-    // 已有数据库升级: ai_summary_task 补充模型原始返回与模型名列
-    try {
-      this.db.exec(`ALTER TABLE ai_summary_task ADD COLUMN raw_response TEXT`);
-    } catch {
-      // 列已存在的忽略
-    }
-    try {
-      this.db.exec(`ALTER TABLE ai_summary_task ADD COLUMN model_name TEXT`);
-    } catch {
-      // 列已存在的忽略
-    }
-
-    // 已有数据库升级: 补充 subtitle_lang 列
-    try {
-      this.db.exec(`ALTER TABLE task ADD COLUMN subtitle_lang TEXT`);
-    } catch {
-      // 列已存在的忽略
-    }
-    try {
-      this.db.exec(
-        `ALTER TABLE task ADD COLUMN auto_summary INTEGER DEFAULT 0`,
-      );
-    } catch {
-      // 列已存在的忽略
-    }
-    try {
-      this.db.exec(
-        `ALTER TABLE task ADD COLUMN summary_status TEXT DEFAULT 'none'`,
-      );
-    } catch {
-      // 列已存在的忽略
-    }
-    try {
-      this.db.exec(`ALTER TABLE task ADD COLUMN summary_output TEXT`);
-    } catch {
-      // 列已存在的忽略
-    }
-    try {
-      this.db.exec(`ALTER TABLE task ADD COLUMN fileNameTemplate TEXT`);
-    } catch {
-      // 列已存在的忽略
-    }
-
-    // 状态单一来源迁移：把历史 task.summary_status 合并进 ai_summary_task（幂等）
-    // ai_summary_task 是 AI 总结状态的唯一权威；此后不再向 task 写入 summary 状态。
-    this.db.exec(`
-      INSERT OR IGNORE INTO ai_summary_task (
+    // 状态单一来源迁移：把历史 task.summary_status 合并进 ai_summary_task（幂等，仅首次建表后有数据时生效）
+    await this.pool.query(`
+      INSERT INTO ai_summary_task (
         bvid, cid, title, status, summary_output, error_message,
         created_at, updated_at, last_triggered_at, last_completed_at
       )
       SELECT
         t.bvid, t.cid, t.title, t.summary_status, t.summary_output, NULL,
-        COALESCE(t.completedAt, t.createdAt, datetime('now')),
-        COALESCE(t.completedAt, t.createdAt, datetime('now')),
+        COALESCE(t."completedAt", t."createdAt", now()),
+        COALESCE(t."completedAt", t."createdAt", now()),
         NULL,
         CASE
-          WHEN t.summary_status = 'completed' THEN COALESCE(t.completedAt, t.createdAt)
+          WHEN t.summary_status = 'completed' THEN COALESCE(t."completedAt", t."createdAt")
           ELSE NULL
         END
       FROM task t
@@ -354,13 +338,12 @@ export class DatabaseService {
         AND t.cid IS NOT NULL
         AND t.summary_status IS NOT NULL
         AND t.summary_status != 'none'
+      ON CONFLICT (bvid, cid) DO NOTHING
     `);
 
-    // 子任务资源级键迁移：analysis_sub_task 按 (bvid,cid,quality) 活跃唯一
-    // 先对同组重复记录去重（保留最新 id，其余标 failed），再建部分唯一索引（幂等）。
-    // 部分索引（WHERE status != 'failed'）允许保留失败历史行，同时强制活跃行唯一。
+    // 子任务资源级键迁移：analysis_sub_task 按 (bvid,cid,quality) 活跃唯一（幂等）
     try {
-      this.db.exec(`
+      await this.pool.query(`
         UPDATE analysis_sub_task
         SET status = 'failed',
             error_message = COALESCE(error_message, 'superseded by newer record')
@@ -368,7 +351,7 @@ export class DatabaseService {
           SELECT MAX(id) FROM analysis_sub_task GROUP BY bvid, cid, quality
         )
       `);
-      this.db.exec(`
+      await this.pool.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_analysis_sub_task_active
         ON analysis_sub_task(bvid, cid, quality)
         WHERE status != 'failed'
@@ -395,24 +378,24 @@ export class DatabaseService {
       t.title,
       t.quality,
       t.codec,
-      t.fileNameTemplate,
-      t.outputPath,
-      t.subtitle_lang AS subtitleLang,
-      t.auto_summary AS autoSummary,
-      t.prompt_id AS promptId,
-      ast.status AS summaryStatus,
-      ast.summary_output AS summaryOutput,
+      t."fileNameTemplate",
+      t."outputPath",
+      t.subtitle_lang AS "subtitleLang",
+      t.auto_summary AS "autoSummary",
+      t.prompt_id AS "promptId",
+      ast.status AS "summaryStatus",
+      ast.summary_output AS "summaryOutput",
       t.status,
       t.progress,
       t.speed,
-      t.outputFile,
-      t.fileSize,
-      t.errorCode,
-      t.errorMessage,
-      t.durationMs,
-      t.createdAt,
-      t.updatedAt,
-      t.completedAt
+      t."outputFile",
+      t."fileSize",
+      t."errorCode",
+      t."errorMessage",
+      t."durationMs",
+      t."createdAt",
+      t."updatedAt",
+      t."completedAt"
     FROM task t
     LEFT JOIN ai_summary_task ast
       ON ast.bvid = t.bvid AND ast.cid = t.cid
@@ -424,60 +407,61 @@ export class DatabaseService {
       bvid,
       cid,
       title,
-      source_task_id AS sourceTaskId,
-      prompt_id AS promptId,
+      source_task_id AS "sourceTaskId",
+      prompt_id AS "promptId",
       status,
-      summary_output AS summaryOutput,
-      error_message AS errorMessage,
-      execution_timing AS executionTiming,
-      raw_response AS rawResponse,
-      model_name AS modelName,
-      created_at AS createdAt,
-      updated_at AS updatedAt,
-      last_triggered_at AS lastTriggeredAt,
-      last_completed_at AS lastCompletedAt
+      summary_output AS "summaryOutput",
+      error_message AS "errorMessage",
+      execution_timing AS "executionTiming",
+      raw_response AS "rawResponse",
+      model_name AS "modelName",
+      created_at AS "createdAt",
+      updated_at AS "updatedAt",
+      last_triggered_at AS "lastTriggeredAt",
+      last_completed_at AS "lastCompletedAt"
     FROM ai_summary_task
   `;
 
   /** 插入新任务，返回自增 id */
-  insertTask(record: TaskRecord): number {
+  async insertTask(record: TaskRecord): Promise<number> {
     const now = new Date().toISOString();
-    const stmt = this.db.prepare(`
-      INSERT INTO task (bvid, cid, title, quality, codec, fileNameTemplate, outputPath, subtitle_lang, status, progress, speed,
+    const { rows } = await this.pool.query(
+      `INSERT INTO task (bvid, cid, title, quality, codec, "fileNameTemplate", "outputPath", subtitle_lang, status, progress, speed,
             auto_summary, summary_status, summary_output, prompt_id,
-                        outputFile, fileSize, errorCode, errorMessage, durationMs,
-                        createdAt, updatedAt, completedAt)
-      VALUES (@bvid, @cid, @title, @quality, @codec, @fileNameTemplate, @outputPath, @subtitleLang, @status, @progress, @speed,
-              @autoSummary, @summaryStatus, @summaryOutput, @promptId,
-              @outputFile, @fileSize, @errorCode, @errorMessage, @durationMs,
-              @createdAt, @updatedAt, @completedAt)
-    `);
-    const result = stmt.run({
-      bvid: record.bvid ?? null,
-      cid: record.cid ?? null,
-      title: record.title ?? null,
-      quality: record.quality ?? null,
-      codec: record.codec ?? null,
-      fileNameTemplate: record.fileNameTemplate ?? null,
-      outputPath: record.outputPath ?? null,
-      subtitleLang: record.subtitleLang ?? null,
-      status: record.status ?? "created",
-      progress: record.progress ?? 0,
-      speed: record.speed ?? null,
-      autoSummary: record.autoSummary ?? 0,
-      summaryStatus: record.summaryStatus ?? "none",
-      summaryOutput: record.summaryOutput ?? null,
-      promptId: record.promptId ?? null,
-      outputFile: record.outputFile ?? null,
-      fileSize: record.fileSize ?? null,
-      errorCode: record.errorCode ?? null,
-      errorMessage: record.errorMessage ?? null,
-      durationMs: record.durationMs ?? null,
-      createdAt: record.createdAt ?? now,
-      updatedAt: now,
-      completedAt: record.completedAt ?? null,
-    });
-    const id = Number(result.lastInsertRowid);
+            "outputFile", "fileSize", "errorCode", "errorMessage", "durationMs",
+            "createdAt", "updatedAt", "completedAt")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+              $12, $13, $14, $15,
+              $16, $17, $18, $19, $20,
+              $21, $22, $23)
+      RETURNING id`,
+      [
+        record.bvid ?? null,
+        record.cid ?? null,
+        record.title ?? null,
+        record.quality ?? null,
+        record.codec ?? null,
+        record.fileNameTemplate ?? null,
+        record.outputPath ?? null,
+        record.subtitleLang ?? null,
+        record.status ?? "created",
+        record.progress ?? 0,
+        record.speed ?? null,
+        record.autoSummary ?? 0,
+        record.summaryStatus ?? "none",
+        record.summaryOutput ?? null,
+        record.promptId ?? null,
+        record.outputFile ?? null,
+        record.fileSize ?? null,
+        record.errorCode ?? null,
+        record.errorMessage ?? null,
+        record.durationMs ?? null,
+        record.createdAt ?? now,
+        now,
+        record.completedAt ?? null,
+      ],
+    );
+    const id = Number(rows[0].id);
     this.logger.log(
       createLogMessage("Persisted download task", {
         taskId: id,
@@ -495,13 +479,16 @@ export class DatabaseService {
   }
 
   /** 更新任务进度（每秒调用一次） */
-  updateTaskProgress(id: number, progress: number, speed?: string): void {
+  async updateTaskProgress(
+    id: number,
+    progress: number,
+    speed?: string,
+  ): Promise<void> {
     const now = new Date().toISOString();
-    this.db
-      .prepare(
-        "UPDATE task SET progress = @progress, speed = @speed, updatedAt = @updatedAt WHERE id = @id",
-      )
-      .run({ id, progress, speed: speed ?? null, updatedAt: now });
+    await this.pool.query(
+      `UPDATE task SET progress = $1, speed = $2, "updatedAt" = $3 WHERE id = $4`,
+      [progress, speed ?? null, now, id],
+    );
 
     const bucket = Math.floor(Math.max(0, Math.min(progress, 100)) / 10);
     if (this.progressBuckets.get(id) !== bucket || progress >= 100) {
@@ -519,7 +506,7 @@ export class DatabaseService {
   /**
    * 更新任务状态（完成/失败时）。AI 总结状态由 ai_summary_task 单一来源，不在此写入。
    */
-  updateTaskStatus(
+  async updateTaskStatus(
     id: number,
     fields: {
       status: string;
@@ -532,45 +519,32 @@ export class DatabaseService {
       durationMs?: number;
       progress?: number;
     },
-  ): void {
-    const previous = this.getTaskById(id);
+  ): Promise<void> {
+    const previous = await this.getTaskById(id);
     const now = new Date().toISOString();
-    const setClauses: string[] = ["status = @status", "updatedAt = @updatedAt"];
-    if (fields.autoSummary !== undefined)
-      setClauses.push("auto_summary = @autoSummary");
-    if (fields.promptId !== undefined) setClauses.push("prompt_id = @promptId");
-    if (fields.outputFile !== undefined)
-      setClauses.push("outputFile = @outputFile");
-    if (fields.fileSize !== undefined) setClauses.push("fileSize = @fileSize");
-    if (fields.errorCode !== undefined)
-      setClauses.push("errorCode = @errorCode");
-    if (fields.errorMessage !== undefined)
-      setClauses.push("errorMessage = @errorMessage");
-    if (fields.durationMs !== undefined)
-      setClauses.push("durationMs = @durationMs");
-    if (fields.progress !== undefined) setClauses.push("progress = @progress");
+    const parts: string[] = [];
+    const values: unknown[] = [];
+    const add = (clause: string, value: unknown) => {
+      parts.push(clause.replace("?", `$${values.length + 1}`));
+      values.push(value);
+    };
+    add("status = ?", fields.status);
+    add(`"updatedAt" = ?`, now);
+    if (fields.autoSummary !== undefined) add("auto_summary = ?", fields.autoSummary);
+    if (fields.promptId !== undefined) add("prompt_id = ?", fields.promptId);
+    if (fields.outputFile !== undefined) add(`"outputFile" = ?`, fields.outputFile);
+    if (fields.fileSize !== undefined) add(`"fileSize" = ?`, fields.fileSize);
+    if (fields.errorCode !== undefined) add(`"errorCode" = ?`, fields.errorCode);
+    if (fields.errorMessage !== undefined) add(`"errorMessage" = ?`, fields.errorMessage);
+    if (fields.durationMs !== undefined) add(`"durationMs" = ?`, fields.durationMs);
+    if (fields.progress !== undefined) add("progress = ?", fields.progress);
     if (fields.status === "success" || fields.status === "failed") {
-      setClauses.push("completedAt = @completedAt");
+      add(`"completedAt" = ?`, now);
     }
-    this.db
-      .prepare(`UPDATE task SET ${setClauses.join(", ")} WHERE id = @id`)
-      .run({
-        id,
-        status: fields.status,
-        autoSummary: fields.autoSummary ?? null,
-        promptId: fields.promptId ?? null,
-        outputFile: fields.outputFile ?? null,
-        fileSize: fields.fileSize ?? null,
-        errorCode: fields.errorCode ?? null,
-        errorMessage: fields.errorMessage ?? null,
-        durationMs: fields.durationMs ?? null,
-        progress: fields.progress ?? null,
-        updatedAt: now,
-        completedAt:
-          fields.status === "success" || fields.status === "failed"
-            ? now
-            : null,
-      });
+    await this.pool.query(
+      `UPDATE task SET ${parts.join(", ")} WHERE id = $${values.length + 1}`,
+      [...values, id],
+    );
 
     const statusChanged = previous?.status !== fields.status;
     const shouldLog =
@@ -614,63 +588,95 @@ export class DatabaseService {
   }
 
   /** 获取所有任务 */
-  getTasks(): TaskRecord[] {
-    return this.db
-      .prepare(`${this.taskSelectSql} ORDER BY t.createdAt DESC`)
-      .all() as TaskRecord[];
+  async getTasks(): Promise<TaskRecord[]> {
+    const { rows } = await this.pool.query(
+      `${this.taskSelectSql} ORDER BY t."createdAt" DESC`,
+    );
+    return rows as TaskRecord[];
   }
 
-  listTasksPaginated(params: {
+  async listTasksPaginated(params: {
     page: number;
     pageSize: number;
     statusGroup: TaskStatusGroup[];
-  }): PaginatedTaskResult {
+  }): Promise<PaginatedTaskResult> {
     const { page, pageSize, statusGroup } = params;
     const offset = (page - 1) * pageSize;
     const { whereClause, queryParams } = this.buildTaskStatusFilter(statusGroup);
-    const totalRow = this.db
-      .prepare(
-        `SELECT COUNT(*) AS total FROM task t ${whereClause}`,
-      )
-      .get(...queryParams) as { total: number };
-    const items = this.db
-      .prepare(
-        `${this.taskSelectSql}
-         ${whereClause}
-         ORDER BY t.createdAt DESC
-         LIMIT ? OFFSET ?`,
-      )
-      .all(...queryParams, pageSize, offset) as TaskRecord[];
+    const totalRow = await this.pool.query(
+      `SELECT COUNT(*) AS total FROM task t ${whereClause}`,
+      queryParams,
+    );
+    const total = Number(totalRow.rows[0].total);
+    const items = await this.pool.query(
+      `${this.taskSelectSql}
+       ${whereClause}
+       ORDER BY t."createdAt" DESC
+       LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`,
+      [...queryParams, pageSize, offset],
+    );
 
     return {
-      items,
+      items: items.rows as TaskRecord[],
       page,
       pageSize,
-      total: totalRow.total,
-      hasMore: offset + items.length < totalRow.total,
+      total,
+      hasMore: offset + items.rows.length < total,
     };
   }
 
   /** 获取单个任务 */
-  getTaskById(id: number): TaskRecord | undefined {
-    return this.db.prepare(`${this.taskSelectSql} WHERE t.id = ?`).get(id) as
-      | TaskRecord
-      | undefined;
+  async getTaskById(id: number): Promise<TaskRecord | undefined> {
+    const { rows } = await this.pool.query(
+      `${this.taskSelectSql} WHERE t.id = $1 LIMIT 1`,
+      [id],
+    );
+    return rows[0] as TaskRecord | undefined;
   }
 
   /** 取队首 "created" 任务（调度器抢占用） */
-  findNextCreatedTask(): TaskRecord | undefined {
-    return this.db
-      .prepare(
-        `${this.taskSelectSql} WHERE t.status = 'created' ORDER BY t.createdAt ASC LIMIT 1`,
-      )
-      .get() as TaskRecord | undefined;
+  async findNextCreatedTask(): Promise<TaskRecord | undefined> {
+    const { rows } = await this.pool.query(
+      `${this.taskSelectSql} WHERE t.status = 'created' ORDER BY t."createdAt" ASC LIMIT 1`,
+    );
+    return rows[0] as TaskRecord | undefined;
+  }
+
+  /**
+   * 原子抢占队首 created 任务（created → downloading）。
+   * 单语句守卫更新，避免异步化后两步操作产生的并发双抢。
+   */
+  async claimNextCreatedTask(): Promise<TaskRecord | undefined> {
+    const now = new Date().toISOString();
+    const { rows } = await this.pool.query(
+      `UPDATE task SET status = 'downloading', "updatedAt" = $1
+       WHERE id = (
+         SELECT id FROM task WHERE status = 'created' ORDER BY "createdAt" ASC LIMIT 1
+       )
+       RETURNING id`,
+      [now],
+    );
+    if (rows.length === 0) {
+      return undefined;
+    }
+    const id = Number(rows[0].id);
+    this.logger.log(
+      createLogMessage("Persisted task status change", {
+        taskId: id,
+        fromStatus: "created",
+        toStatus: "downloading",
+        status: "downloading",
+      }),
+    );
+    return this.getTaskById(id);
   }
 
   /** 删除任务 */
-  deleteTask(id: number): void {
-    this.db.prepare("DELETE FROM analysis_sub_task WHERE task_id = ?").run(id);
-    this.db.prepare("DELETE FROM task WHERE id = ?").run(id);
+  async deleteTask(id: number): Promise<void> {
+    await this.pool.query(`DELETE FROM analysis_sub_task WHERE task_id = $1`, [
+      id,
+    ]);
+    await this.pool.query(`DELETE FROM task WHERE id = $1`, [id]);
     this.progressBuckets.delete(id);
     this.logger.log(
       createLogMessage("Deleted task row from database", {
@@ -680,55 +686,54 @@ export class DatabaseService {
   }
 
   /** 清空所有任务 */
-  clearTasks(): void {
-    this.db.prepare("DELETE FROM analysis_sub_task").run();
-    this.db.prepare("DELETE FROM task").run();
+  async clearTasks(): Promise<void> {
+    await this.pool.query(`DELETE FROM analysis_sub_task`);
+    await this.pool.query(`DELETE FROM task`);
     this.progressBuckets.clear();
     this.logger.log("Cleared task table from database");
   }
 
-  /** 关闭数据库连接 */
-  close(): void {
-    this.db.close();
-  }
-
   /** 按 bvid+cid 批量查询最新任务（用于前端入队去重判定） */
-  findTasksByBvidsAndCids(
+  async findTasksByBvidsAndCids(
     pairs: { bvid: string; cid: number }[],
-  ): Pick<
-    TaskRecord,
-    | "id"
-    | "bvid"
-    | "cid"
-    | "status"
-    | "createdAt"
-    | "autoSummary"
-    | "summaryStatus"
-  >[] {
+  ): Promise<
+    Pick<
+      TaskRecord,
+      | "id"
+      | "bvid"
+      | "cid"
+      | "status"
+      | "createdAt"
+      | "autoSummary"
+      | "summaryStatus"
+    >[]
+  > {
     if (pairs.length === 0) return [];
-    const placeholders = pairs.map(() => "(?, ?)").join(", ");
-    const params = pairs.flatMap((p) => [p.bvid, p.cid]);
-    return (
-      this.db
-        .prepare(
-          `SELECT t.id, t.bvid, t.cid, t.status, t.createdAt, t.auto_summary AS autoSummary,
-                  ast.status AS summaryStatus
-           FROM task t
-           LEFT JOIN ai_summary_task ast ON ast.bvid = t.bvid AND ast.cid = t.cid
-           WHERE (t.bvid, t.cid) IN (${placeholders})
-           ORDER BY t.createdAt DESC`,
-        )
-        .all(...params) as Pick<
-        TaskRecord,
-        | "id"
-        | "bvid"
-        | "cid"
-        | "status"
-        | "createdAt"
-        | "autoSummary"
-        | "summaryStatus"
-      >[]
-    ).reduce(
+    const values: unknown[] = [];
+    const tuples = pairs.map((pair) => {
+      const index = values.length + 1;
+      values.push(pair.bvid, pair.cid);
+      return `($${index}, $${index + 1})`;
+    });
+    const { rows } = await this.pool.query(
+      `SELECT t.id, t.bvid, t.cid, t.status, t."createdAt", t.auto_summary AS "autoSummary",
+              ast.status AS "summaryStatus"
+       FROM task t
+       LEFT JOIN ai_summary_task ast ON ast.bvid = t.bvid AND ast.cid = t.cid
+       WHERE (t.bvid, t.cid) IN (${tuples.join(", ")})
+       ORDER BY t."createdAt" DESC`,
+      values,
+    );
+    return (rows as Pick<
+      TaskRecord,
+      | "id"
+      | "bvid"
+      | "cid"
+      | "status"
+      | "createdAt"
+      | "autoSummary"
+      | "summaryStatus"
+    >[]).reduce(
       (acc, row) => {
         if (!acc.some((r) => r.bvid === row.bvid && r.cid === row.cid)) {
           acc.push(row);
@@ -749,90 +754,89 @@ export class DatabaseService {
   }
 
   /** 按 bvid+cid 查询最新任务 */
-  findLatestTaskByBvidAndCid(
+  async findLatestTaskByBvidAndCid(
     bvid: string,
     cid: number,
-  ): TaskRecord | undefined {
-    return this.db
-      .prepare(
-        `${this.taskSelectSql}
-         WHERE t.bvid = ? AND t.cid = ?
-         ORDER BY t.createdAt DESC
-         LIMIT 1`,
-      )
-      .get(bvid, cid) as TaskRecord | undefined;
+  ): Promise<TaskRecord | undefined> {
+    const { rows } = await this.pool.query(
+      `${this.taskSelectSql}
+       WHERE t.bvid = $1 AND t.cid = $2
+       ORDER BY t."createdAt" DESC
+       LIMIT 1`,
+      [bvid, cid],
+    );
+    return rows[0] as TaskRecord | undefined;
   }
 
   /** 查询某个视频分P最近完成下载任务（用于截图源本地回退） */
-  findCompletedTaskByBvidAndCid(
+  async findCompletedTaskByBvidAndCid(
     bvid: string,
     cid: number,
-  ): TaskRecord | undefined {
-    return this.db
-      .prepare(
-        `${this.taskSelectSql}
-         WHERE t.bvid = ? AND t.cid = ? AND t.status = 'success'
-         ORDER BY t.createdAt DESC
-         LIMIT 1`,
-      )
-      .get(bvid, cid) as TaskRecord | undefined;
+  ): Promise<TaskRecord | undefined> {
+    const { rows } = await this.pool.query(
+      `${this.taskSelectSql}
+       WHERE t.bvid = $1 AND t.cid = $2 AND t.status = 'success'
+       ORDER BY t."createdAt" DESC
+       LIMIT 1`,
+      [bvid, cid],
+    );
+    return rows[0] as TaskRecord | undefined;
   }
 
   // ==================== 应用设置（键值） ====================
 
   /** 批量读取应用设置，返回 key → value（缺失的 key 不含在结果中） */
-  getSettings(keys: string[]): Record<string, string> {
+  async getSettings(keys: string[]): Promise<Record<string, string>> {
     if (keys.length === 0) return {};
-    const placeholders = keys.map(() => "?").join(", ");
-    const rows = this.db
-      .prepare(
-        `SELECT key, value FROM app_settings WHERE key IN (${placeholders})`,
-      )
-      .all(...keys) as { key: string; value: string }[];
+    const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
+    const { rows } = await this.pool.query(
+      `SELECT key, value FROM app_settings WHERE key IN (${placeholders})`,
+      keys,
+    );
     const result: Record<string, string> = {};
-    for (const row of rows) {
+    for (const row of rows as { key: string; value: string }[]) {
       result[row.key] = row.value;
     }
     return result;
   }
 
   /** 批量写入应用设置（upsert），value 为空串视为删除该键 */
-  setSettings(entries: Record<string, string>): void {
-    const upsert = this.db.prepare(`
-      INSERT INTO app_settings (key, value) VALUES (@key, @value)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `);
-    const remove = this.db.prepare(`DELETE FROM app_settings WHERE key = ?`);
+  async setSettings(entries: Record<string, string>): Promise<void> {
     for (const [key, value] of Object.entries(entries)) {
       if (value === "") {
-        remove.run(key);
+        await this.pool.query(`DELETE FROM app_settings WHERE key = $1`, [key]);
       } else {
-        upsert.run({ key, value });
+        await this.pool.query(
+          `INSERT INTO app_settings (key, value) VALUES ($1, $2)
+           ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value`,
+          [key, value],
+        );
       }
     }
   }
 
-  insertAnalysisSubTask(record: AnalysisSubTaskRecord): number {
-    const stmt = this.db.prepare(`
-      INSERT INTO analysis_sub_task (
+  async insertAnalysisSubTask(record: AnalysisSubTaskRecord): Promise<number> {
+    const { rows } = await this.pool.query(
+      `INSERT INTO analysis_sub_task (
         task_id, bvid, cid, quality, status, output_file, error_message, created_at, completed_at
       )
       VALUES (
-        @taskId, @bvid, @cid, @quality, @status, @outputFile, @errorMessage, @createdAt, @completedAt
+        $1, $2, $3, $4, $5, $6, $7, $8, $9
       )
-    `);
-    const result = stmt.run({
-      taskId: record.taskId,
-      bvid: record.bvid ?? null,
-      cid: record.cid ?? null,
-      quality: record.quality ?? null,
-      status: record.status ?? "created",
-      outputFile: record.outputFile ?? null,
-      errorMessage: record.errorMessage ?? null,
-      createdAt: record.createdAt,
-      completedAt: record.completedAt ?? null,
-    });
-    const id = Number(result.lastInsertRowid);
+      RETURNING id`,
+      [
+        record.taskId,
+        record.bvid ?? null,
+        record.cid ?? null,
+        record.quality ?? null,
+        record.status ?? "created",
+        record.outputFile ?? null,
+        record.errorMessage ?? null,
+        record.createdAt,
+        record.completedAt ?? null,
+      ],
+    );
+    const id = Number(rows[0].id);
     this.logger.log(
       createLogMessage("Persisted analysis sub task", {
         taskId: record.taskId,
@@ -846,7 +850,7 @@ export class DatabaseService {
     return id;
   }
 
-  updateAnalysisSubTaskStatus(
+  async updateAnalysisSubTaskStatus(
     id: number,
     fields: {
       status: string;
@@ -854,16 +858,16 @@ export class DatabaseService {
       errorMessage?: string;
       completedAt?: string;
     },
-  ): void {
-    const previous = this.db
-      .prepare(
-        `
-        SELECT task_id AS taskId, bvid, cid, quality, status
+  ): Promise<void> {
+    const previous = await this.pool.query(
+      `
+        SELECT task_id AS "taskId", bvid, cid, quality, status
         FROM analysis_sub_task
-        WHERE id = ?
+        WHERE id = $1
       `,
-      )
-      .get(id) as
+      [id],
+    );
+    const prev = previous.rows[0] as
       | {
           taskId: number;
           bvid?: string;
@@ -873,33 +877,29 @@ export class DatabaseService {
         }
       | undefined;
 
-    const setClauses: string[] = ["status = @status"];
-    if (fields.outputFile !== undefined)
-      setClauses.push("output_file = @outputFile");
-    if (fields.errorMessage !== undefined)
-      setClauses.push("error_message = @errorMessage");
-    if (fields.completedAt !== undefined)
-      setClauses.push("completed_at = @completedAt");
+    const parts: string[] = [];
+    const values: unknown[] = [];
+    const add = (clause: string, value: unknown) => {
+      parts.push(clause.replace("?", `$${values.length + 1}`));
+      values.push(value);
+    };
+    add("status = ?", fields.status);
+    if (fields.outputFile !== undefined) add("output_file = ?", fields.outputFile);
+    if (fields.errorMessage !== undefined) add("error_message = ?", fields.errorMessage);
+    if (fields.completedAt !== undefined) add("completed_at = ?", fields.completedAt);
 
-    this.db
-      .prepare(
-        `UPDATE analysis_sub_task SET ${setClauses.join(", ")} WHERE id = @id`,
-      )
-      .run({
-        id,
-        status: fields.status,
-        outputFile: fields.outputFile ?? null,
-        errorMessage: fields.errorMessage ?? null,
-        completedAt: fields.completedAt ?? null,
-      });
+    await this.pool.query(
+      `UPDATE analysis_sub_task SET ${parts.join(", ")} WHERE id = $${values.length + 1}`,
+      [...values, id],
+    );
 
     const details = {
-      taskId: previous?.taskId,
+      taskId: prev?.taskId,
       analysisSubTaskId: id,
-      bvid: previous?.bvid,
-      cid: previous?.cid,
-      quality: previous?.quality,
-      fromStatus: previous?.status,
+      bvid: prev?.bvid,
+      cid: prev?.cid,
+      quality: prev?.quality,
+      fromStatus: prev?.status,
       toStatus: fields.status,
       status: fields.status,
       outputFile: fields.outputFile,
@@ -918,85 +918,92 @@ export class DatabaseService {
   }
 
   /** 按资源（bvid+cid）查询分析子任务 —— 资源级键，跨任务溯源 */
-  getAnalysisSubTasks(bvid: string, cid: number): AnalysisSubTaskRecord[] {
-    return this.db
-      .prepare(
-        `
+  async getAnalysisSubTasks(
+    bvid: string,
+    cid: number,
+  ): Promise<AnalysisSubTaskRecord[]> {
+    const { rows } = await this.pool.query(
+      `
         SELECT
           id,
-          task_id AS taskId,
+          task_id AS "taskId",
           bvid,
           cid,
           quality,
           status,
-          output_file AS outputFile,
-          error_message AS errorMessage,
-          created_at AS createdAt,
-          completed_at AS completedAt
+          output_file AS "outputFile",
+          error_message AS "errorMessage",
+          created_at AS "createdAt",
+          completed_at AS "completedAt"
         FROM analysis_sub_task
-        WHERE bvid = ? AND cid = ?
+        WHERE bvid = $1 AND cid = $2
         ORDER BY created_at ASC
       `,
-      )
-      .all(bvid, cid) as AnalysisSubTaskRecord[];
+      [bvid, cid],
+    );
+    return rows as AnalysisSubTaskRecord[];
   }
 
-  getAiSummaryTaskByResource(
+  async getAiSummaryTaskByResource(
     bvid: string,
     cid: number,
-  ): AiSummaryTaskRecord | undefined {
-    return this.db
-      .prepare(
-        `${this.aiSummaryTaskSelectSql}
-         WHERE bvid = ? AND cid = ?
-         LIMIT 1`,
-      )
-      .get(bvid, cid) as AiSummaryTaskRecord | undefined;
+  ): Promise<AiSummaryTaskRecord | undefined> {
+    const { rows } = await this.pool.query(
+      `${this.aiSummaryTaskSelectSql}
+       WHERE bvid = $1 AND cid = $2
+       LIMIT 1`,
+      [bvid, cid],
+    );
+    return rows[0] as AiSummaryTaskRecord | undefined;
   }
 
-  listAiSummaryTasksPaginated(params: {
+  async listAiSummaryTasksPaginated(params: {
     page: number;
     pageSize: number;
     filter?: AiSummaryTaskListFilter;
-  }): PaginatedAiSummaryTaskResult {
+  }): Promise<PaginatedAiSummaryTaskResult> {
     const { page, pageSize, filter } = params;
     const offset = (page - 1) * pageSize;
     const { whereClause, queryParams } = this.buildAiSummaryTaskFilter(filter);
-    const totalRow = this.db
-      .prepare(`SELECT COUNT(*) AS total FROM ai_summary_task ${whereClause}`)
-      .get(...queryParams) as { total: number };
-    const items = this.db
-      .prepare(
-        `${this.aiSummaryTaskSelectSql}
-         ${whereClause}
-         ORDER BY updated_at DESC
-         LIMIT ? OFFSET ?`,
-      )
-      .all(...queryParams, pageSize, offset) as AiSummaryTaskRecord[];
+    const totalRow = await this.pool.query(
+      `SELECT COUNT(*) AS total FROM ai_summary_task ${whereClause}`,
+      queryParams,
+    );
+    const total = Number(totalRow.rows[0].total);
+    const items = await this.pool.query(
+      `${this.aiSummaryTaskSelectSql}
+       ${whereClause}
+       ORDER BY updated_at DESC
+       LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`,
+      [...queryParams, pageSize, offset],
+    );
 
     return {
-      items,
+      items: items.rows as AiSummaryTaskRecord[],
       page,
       pageSize,
-      total: totalRow.total,
-      hasMore: offset + items.length < totalRow.total,
+      total,
+      hasMore: offset + items.rows.length < total,
     };
   }
 
-  getAiSummaryTaskById(id: number): AiSummaryTaskRecord | undefined {
-    return this.db
-      .prepare(`${this.aiSummaryTaskSelectSql} WHERE id = ? LIMIT 1`)
-      .get(id) as AiSummaryTaskRecord | undefined;
+  async getAiSummaryTaskById(
+    id: number,
+  ): Promise<AiSummaryTaskRecord | undefined> {
+    const { rows } = await this.pool.query(
+      `${this.aiSummaryTaskSelectSql} WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    return rows[0] as AiSummaryTaskRecord | undefined;
   }
 
   /** 删除 AI 总结任务记录（仅删 DB，不删磁盘；进行中记录条件拒绝，避免删后被管道以新 id 复活） */
-  deleteAiSummaryTask(id: number): boolean {
-    const result = this.db
-      .prepare(
-        "DELETE FROM ai_summary_task WHERE id = ? AND status NOT IN ('pending', 'analyzing')",
-      )
-      .run(id);
-    if (result.changes > 0) {
+  async deleteAiSummaryTask(id: number): Promise<boolean> {
+    const result = await this.pool.query(
+      `DELETE FROM ai_summary_task WHERE id = $1 AND status NOT IN ('pending', 'analyzing')`,
+      [id],
+    );
+    if ((result.rowCount ?? 0) > 0) {
       this.logger.log(
         createLogMessage("Deleted ai_summary_task row from database", {
           summaryTaskId: id,
@@ -1028,7 +1035,9 @@ export class DatabaseService {
     }
     const statuses = [...expanded];
     return {
-      whereClause: `WHERE t.status IN (${statuses.map(() => "?").join(", ")})`,
+      whereClause: `WHERE t.status IN (${statuses
+        .map((_, i) => `$${i + 1}`)
+        .join(", ")})`,
       queryParams: statuses,
     };
   }
@@ -1041,19 +1050,21 @@ export class DatabaseService {
     const params: string[] = [];
 
     if (filter?.status && filter.status.length > 0) {
-      clauses.push(`status IN (${filter.status.map(() => "?").join(", ")})`);
+      clauses.push(
+        `status IN (${filter.status.map((_, i) => `$${i + 1}`).join(", ")})`,
+      );
       params.push(...filter.status);
     }
     if (filter?.search) {
-      clauses.push("COALESCE(title, '') LIKE ? ESCAPE '\\'");
+      clauses.push(`COALESCE(title, '') ILIKE $${params.length + 1} ESCAPE '\\'`);
       params.push(`%${escapeLikePattern(filter.search)}%`);
     }
     if (filter?.updatedFrom) {
-      clauses.push("updated_at >= ?");
+      clauses.push(`updated_at >= $${params.length + 1}`);
       params.push(filter.updatedFrom);
     }
     if (filter?.updatedTo) {
-      clauses.push("updated_at <= ?");
+      clauses.push(`updated_at <= $${params.length + 1}`);
       params.push(filter.updatedTo);
     }
 
@@ -1068,52 +1079,51 @@ export class DatabaseService {
 
   /**
    * 原子认领 AI 总结：pending/analyzing 时拒绝认领，否则置为 pending。
-   * 单进程 + better-sqlite3 同步事务内保证互斥，防并发双跑。
+   * 单语句 INSERT ... ON CONFLICT DO UPDATE WHERE，PostgreSQL 保证互斥，防并发双跑。
    */
-  claimAiSummaryTask(record: {
+  async claimAiSummaryTask(record: {
     bvid: string;
     cid: number;
     title?: string;
     sourceTaskId?: number;
     promptId?: number;
-  }): { claimed: boolean; record: AiSummaryTaskRecord | undefined } {
+  }): Promise<{ claimed: boolean; record: AiSummaryTaskRecord | undefined }> {
     const now = new Date().toISOString();
-    const res = this.db
-      .prepare(
-        `
+    const res = await this.pool.query(
+      `
         INSERT INTO ai_summary_task (
           bvid, cid, title, source_task_id, prompt_id, status, summary_output, error_message,
           created_at, updated_at, last_triggered_at, last_completed_at
         )
         VALUES (
-          @bvid, @cid, @title, @sourceTaskId, @promptId, 'pending', NULL, NULL,
-          @now, @now, @now, NULL
+          $1, $2, $3, $4, $5, 'pending', NULL, NULL,
+          $6, $6, $6, NULL
         )
-        ON CONFLICT(bvid, cid) DO UPDATE SET
-          title = excluded.title,
-          source_task_id = excluded.source_task_id,
-          prompt_id = excluded.prompt_id,
+        ON CONFLICT (bvid, cid) DO UPDATE SET
+          title = EXCLUDED.title,
+          source_task_id = EXCLUDED.source_task_id,
+          prompt_id = EXCLUDED.prompt_id,
           status = 'pending',
           execution_timing = NULL,
           raw_response = NULL,
           model_name = NULL,
-          updated_at = @now,
-          last_triggered_at = @now
-        WHERE status NOT IN ('pending', 'analyzing')
+          updated_at = EXCLUDED.updated_at,
+          last_triggered_at = EXCLUDED.last_triggered_at
+        WHERE ai_summary_task.status NOT IN ('pending', 'analyzing')
       `,
-      )
-      .run({
-        bvid: record.bvid,
-        cid: record.cid,
-        title: record.title ?? null,
-        sourceTaskId: record.sourceTaskId ?? null,
-        promptId: record.promptId ?? null,
+      [
+        record.bvid,
+        record.cid,
+        record.title ?? null,
+        record.sourceTaskId ?? null,
+        record.promptId ?? null,
         now,
-      });
+      ],
+    );
 
     return {
-      claimed: res.changes > 0,
-      record: this.getAiSummaryTaskByResource(record.bvid, record.cid),
+      claimed: (res.rowCount ?? 0) > 0,
+      record: await this.getAiSummaryTaskByResource(record.bvid, record.cid),
     };
   }
 
@@ -1122,35 +1132,38 @@ export class DatabaseService {
    * 遗留 created 子任务标 failed；遗留 pending/analyzing 的总结标 failed。
    * ai_summary_task 为状态单一来源，task 镜像由读取侧 JOIN 覆盖，无需同步。
    */
-  reconcileStaleAnalysisState(): {
+  async reconcileStaleAnalysisState(): Promise<{
     failedSubTasks: number;
     failedSummaryTasks: number;
-  } {
+  }> {
     const now = new Date().toISOString();
     const lowResMsg = "服务重启，低清下载中断";
     const summaryMsg = "服务重启，AI 总结中断，请重新触发";
 
-    const subRes = this.db
-      .prepare(
-        `UPDATE analysis_sub_task SET status = 'failed', error_message = @msg, completed_at = @now WHERE status = 'created'`,
-      )
-      .run({ msg: lowResMsg, now });
+    const subRes = await this.pool.query(
+      `UPDATE analysis_sub_task SET status = 'failed', error_message = $1, completed_at = $2 WHERE status = 'created'`,
+      [lowResMsg, now],
+    );
 
-    const sumRes = this.db
-      .prepare(
-        `UPDATE ai_summary_task SET status = 'failed', error_message = @msg, updated_at = @now, last_completed_at = @now WHERE status IN ('pending', 'analyzing')`,
-      )
-      .run({ msg: summaryMsg, now });
+    const sumRes = await this.pool.query(
+      `UPDATE ai_summary_task SET status = 'failed', error_message = $1, updated_at = $2, last_completed_at = $2 WHERE status IN ('pending', 'analyzing')`,
+      [summaryMsg, now],
+    );
 
     return {
-      failedSubTasks: subRes.changes,
-      failedSummaryTasks: sumRes.changes,
+      failedSubTasks: subRes.rowCount ?? 0,
+      failedSummaryTasks: sumRes.rowCount ?? 0,
     };
   }
 
-  upsertAiSummaryTask(record: AiSummaryTaskRecord): AiSummaryTaskRecord {
+  async upsertAiSummaryTask(
+    record: AiSummaryTaskRecord,
+  ): Promise<AiSummaryTaskRecord> {
     const now = new Date().toISOString();
-    const existing = this.getAiSummaryTaskByResource(record.bvid, record.cid);
+    const existing = await this.getAiSummaryTaskByResource(
+      record.bvid,
+      record.cid,
+    );
     const createdAt = existing?.createdAt ?? record.createdAt ?? now;
     // promptId 未提供时保留既有值（认领时写入本次解析结果，终态更新/普通状态更新不覆盖）
     const promptId =
@@ -1172,9 +1185,8 @@ export class DatabaseService {
       record.modelName !== undefined
         ? record.modelName
         : (existing?.modelName ?? null);
-    this.db
-      .prepare(
-        `
+    await this.pool.query(
+      `
         INSERT INTO ai_summary_task (
           bvid,
           cid,
@@ -1193,56 +1205,46 @@ export class DatabaseService {
           last_completed_at
         )
         VALUES (
-          @bvid,
-          @cid,
-          @title,
-          @sourceTaskId,
-          @promptId,
-          @status,
-          @summaryOutput,
-          @errorMessage,
-          @executionTiming,
-          @rawResponse,
-          @modelName,
-          @createdAt,
-          @updatedAt,
-          @lastTriggeredAt,
-          @lastCompletedAt
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+          $12, $13, $14, $15
         )
-        ON CONFLICT(bvid, cid) DO UPDATE SET
-          title = excluded.title,
-          source_task_id = excluded.source_task_id,
-          prompt_id = excluded.prompt_id,
-          status = excluded.status,
-          summary_output = excluded.summary_output,
-          error_message = excluded.error_message,
-          execution_timing = excluded.execution_timing,
-          raw_response = excluded.raw_response,
-          model_name = excluded.model_name,
-          updated_at = excluded.updated_at,
-          last_triggered_at = excluded.last_triggered_at,
-          last_completed_at = excluded.last_completed_at
+        ON CONFLICT (bvid, cid) DO UPDATE SET
+          title = EXCLUDED.title,
+          source_task_id = EXCLUDED.source_task_id,
+          prompt_id = EXCLUDED.prompt_id,
+          status = EXCLUDED.status,
+          summary_output = EXCLUDED.summary_output,
+          error_message = EXCLUDED.error_message,
+          execution_timing = EXCLUDED.execution_timing,
+          raw_response = EXCLUDED.raw_response,
+          model_name = EXCLUDED.model_name,
+          updated_at = EXCLUDED.updated_at,
+          last_triggered_at = EXCLUDED.last_triggered_at,
+          last_completed_at = EXCLUDED.last_completed_at
       `,
-      )
-      .run({
-        bvid: record.bvid,
-        cid: record.cid,
-        title: record.title ?? null,
-        sourceTaskId: record.sourceTaskId ?? null,
+      [
+        record.bvid,
+        record.cid,
+        record.title ?? null,
+        record.sourceTaskId ?? null,
         promptId,
-        status: record.status,
-        summaryOutput: record.summaryOutput ?? null,
-        errorMessage: record.errorMessage ?? null,
+        record.status,
+        record.summaryOutput ?? null,
+        record.errorMessage ?? null,
         executionTiming,
         rawResponse,
         modelName,
         createdAt,
-        updatedAt: record.updatedAt ?? now,
-        lastTriggeredAt: record.lastTriggeredAt ?? null,
-        lastCompletedAt: record.lastCompletedAt ?? null,
-      });
+        record.updatedAt ?? now,
+        record.lastTriggeredAt ?? null,
+        record.lastCompletedAt ?? null,
+      ],
+    );
 
-    const persisted = this.getAiSummaryTaskByResource(record.bvid, record.cid);
+    const persisted = await this.getAiSummaryTaskByResource(
+      record.bvid,
+      record.cid,
+    );
     if (!persisted) {
       throw new Error("AI summary task upsert failed");
     }
@@ -1267,48 +1269,49 @@ export class DatabaseService {
       id,
       name,
       content,
-      is_system AS isSystem,
-      is_default AS isDefault,
-      created_at AS createdAt,
-      updated_at AS updatedAt
+      is_system AS "isSystem",
+      is_default AS "isDefault",
+      created_at AS "createdAt",
+      updated_at AS "updatedAt"
     FROM ai_prompt
   `;
 
   /** 提示词列表：内置排前，其余按创建时间升序 */
-  listAiPrompts(): AiPromptRecord[] {
-    return this.db
-      .prepare(
-        `${this.aiPromptSelectSql} ORDER BY is_system DESC, created_at ASC`,
-      )
-      .all() as AiPromptRecord[];
+  async listAiPrompts(): Promise<AiPromptRecord[]> {
+    const { rows } = await this.pool.query(
+      `${this.aiPromptSelectSql} ORDER BY is_system DESC, created_at ASC`,
+    );
+    return rows as AiPromptRecord[];
   }
 
-  getAiPromptById(id: number): AiPromptRecord | undefined {
-    return this.db
-      .prepare(`${this.aiPromptSelectSql} WHERE id = ? LIMIT 1`)
-      .get(id) as AiPromptRecord | undefined;
+  async getAiPromptById(id: number): Promise<AiPromptRecord | undefined> {
+    const { rows } = await this.pool.query(
+      `${this.aiPromptSelectSql} WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    return rows[0] as AiPromptRecord | undefined;
   }
 
-  insertAiPrompt(record: {
+  async insertAiPrompt(record: {
     name: string;
     content: string;
     isSystem?: number;
     isDefault?: number;
-  }): AiPromptRecord {
+  }): Promise<AiPromptRecord> {
     const now = new Date().toISOString();
-    const result = this.db
-      .prepare(
-        `INSERT INTO ai_prompt (name, content, is_system, is_default, created_at, updated_at)
-         VALUES (@name, @content, @isSystem, @isDefault, @now, @now)`,
-      )
-      .run({
-        name: record.name,
-        content: record.content,
-        isSystem: record.isSystem ?? 0,
-        isDefault: record.isDefault ?? 0,
+    const { rows } = await this.pool.query(
+      `INSERT INTO ai_prompt (name, content, is_system, is_default, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $5)
+       RETURNING id`,
+      [
+        record.name,
+        record.content,
+        record.isSystem ?? 0,
+        record.isDefault ?? 0,
         now,
-      });
-    const id = Number(result.lastInsertRowid);
+      ],
+    );
+    const id = Number(rows[0].id);
     this.logger.log(
       createLogMessage("Persisted AI summary prompt", {
         promptId: id,
@@ -1316,31 +1319,36 @@ export class DatabaseService {
         isSystem: record.isSystem ?? 0,
       }),
     );
-    const persisted = this.getAiPromptById(id);
+    const persisted = await this.getAiPromptById(id);
     if (!persisted) {
       throw new Error("AI prompt insert failed");
     }
     return persisted;
   }
 
-  updateAiPrompt(
+  async updateAiPrompt(
     id: number,
     fields: { name?: string; content?: string },
-  ): AiPromptRecord | undefined {
-    const setClauses: string[] = ["updated_at = @now"];
-    if (fields.name !== undefined) setClauses.push("name = @name");
-    if (fields.content !== undefined) setClauses.push("content = @content");
+  ): Promise<AiPromptRecord | undefined> {
     const now = new Date().toISOString();
-    this.db
-      .prepare(
-        `UPDATE ai_prompt SET ${setClauses.join(", ")} WHERE id = @id`,
-      )
-      .run({ id, now, name: fields.name ?? null, content: fields.content ?? null });
+    const parts: string[] = [];
+    const values: unknown[] = [];
+    const add = (clause: string, value: unknown) => {
+      parts.push(clause.replace("?", `$${values.length + 1}`));
+      values.push(value);
+    };
+    add(`updated_at = ?`, now);
+    if (fields.name !== undefined) add("name = ?", fields.name);
+    if (fields.content !== undefined) add("content = ?", fields.content);
+    await this.pool.query(
+      `UPDATE ai_prompt SET ${parts.join(", ")} WHERE id = $${values.length + 1}`,
+      [...values, id],
+    );
     return this.getAiPromptById(id);
   }
 
-  deleteAiPrompt(id: number): void {
-    this.db.prepare("DELETE FROM ai_prompt WHERE id = ?").run(id);
+  async deleteAiPrompt(id: number): Promise<void> {
+    await this.pool.query(`DELETE FROM ai_prompt WHERE id = $1`, [id]);
     this.logger.log(
       createLogMessage("Deleted AI summary prompt", {
         promptId: id,
@@ -1348,40 +1356,41 @@ export class DatabaseService {
     );
   }
 
-  clearAiPromptDefault(): void {
-    this.db.prepare(`UPDATE ai_prompt SET is_default = 0`).run();
+  async clearAiPromptDefault(): Promise<void> {
+    await this.pool.query(`UPDATE ai_prompt SET is_default = 0`);
   }
 
-  setAiPromptDefault(id: number): void {
-    this.db
-      .prepare(
-        `UPDATE ai_prompt SET is_default = 1, updated_at = @now WHERE id = @id`,
-      )
-      .run({ id, now: new Date().toISOString() });
+  async setAiPromptDefault(id: number): Promise<void> {
+    await this.pool.query(
+      `UPDATE ai_prompt SET is_default = 1, updated_at = $1 WHERE id = $2`,
+      [new Date().toISOString(), id],
+    );
   }
 
-  getDefaultAiPromptId(): number | undefined {
-    const row = this.db
-      .prepare(`SELECT id FROM ai_prompt WHERE is_default = 1 LIMIT 1`)
-      .get() as { id: number } | undefined;
+  async getDefaultAiPromptId(): Promise<number | undefined> {
+    const { rows } = await this.pool.query(
+      `SELECT id FROM ai_prompt WHERE is_default = 1 LIMIT 1`,
+    );
+    const row = rows[0] as { id: number } | undefined;
     return row?.id;
   }
 
-  getCreatorBindingByMid(mid: number): { mid: number; promptId: number } | undefined {
-    return this.db
-      .prepare(
-        `SELECT mid, prompt_id AS promptId FROM ai_prompt_creator WHERE mid = ? LIMIT 1`,
-      )
-      .get(mid) as { mid: number; promptId: number } | undefined;
+  async getCreatorBindingByMid(
+    mid: number,
+  ): Promise<{ mid: number; promptId: number } | undefined> {
+    const { rows } = await this.pool.query(
+      `SELECT mid, prompt_id AS "promptId" FROM ai_prompt_creator WHERE mid = $1 LIMIT 1`,
+      [mid],
+    );
+    return rows[0] as { mid: number; promptId: number } | undefined;
   }
 
-  upsertCreatorBinding(mid: number, promptId: number): void {
-    this.db
-      .prepare(
-        `INSERT INTO ai_prompt_creator (mid, prompt_id) VALUES (@mid, @promptId)
-         ON CONFLICT(mid) DO UPDATE SET prompt_id = excluded.prompt_id`,
-      )
-      .run({ mid, promptId });
+  async upsertCreatorBinding(mid: number, promptId: number): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO ai_prompt_creator (mid, prompt_id) VALUES ($1, $2)
+       ON CONFLICT(mid) DO UPDATE SET prompt_id = EXCLUDED.prompt_id`,
+      [mid, promptId],
+    );
     this.logger.log(
       createLogMessage("Persisted AI prompt creator binding", {
         mid,
@@ -1390,8 +1399,10 @@ export class DatabaseService {
     );
   }
 
-  deleteCreatorBinding(mid: number): void {
-    this.db.prepare(`DELETE FROM ai_prompt_creator WHERE mid = ?`).run(mid);
+  async deleteCreatorBinding(mid: number): Promise<void> {
+    await this.pool.query(`DELETE FROM ai_prompt_creator WHERE mid = $1`, [
+      mid,
+    ]);
     this.logger.log(
       createLogMessage("Deleted AI prompt creator binding", {
         mid,
@@ -1402,4 +1413,37 @@ export class DatabaseService {
 
 function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (m) => `\\${m}`);
+}
+
+function toIsoTimestamp(value: string): string {
+  const match =
+    /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)([+-]\d{2}:?\d{2})?$/.exec(
+      value,
+    );
+  if (match) {
+    let offset = match[3] ?? "";
+    if (/^[+-]\d{2}$/.test(offset)) offset = `${offset}:00`;
+    if (/^[+-]\d{4}$/.test(offset)) {
+      offset = `${offset.slice(0, 3)}:${offset.slice(3)}`;
+    }
+    const date = new Date(`${match[1]}T${match[2]}${offset}`);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+  }
+  const fallback = new Date(value);
+  if (!Number.isNaN(fallback.getTime())) {
+    return fallback.toISOString();
+  }
+  return value;
+}
+
+function sanitizeDatabaseUrl(databaseUrl: string): string {
+  try {
+    const url = new URL(databaseUrl);
+    url.password = "****";
+    return url.toString();
+  } catch {
+    return "<invalid database url>";
+  }
 }

@@ -138,8 +138,8 @@ export class DownloadService implements OnModuleInit {
     );
   }
 
-  restoreTaskCacheFromDatabase(): void {
-    const tasks = this.db.getTasks();
+  async restoreTaskCacheFromDatabase(): Promise<void> {
+    const tasks = await this.db.getTasks();
     this.taskCache.clear();
 
     for (const task of tasks) {
@@ -367,7 +367,7 @@ export class DownloadService implements OnModuleInit {
   /** 创建下载任务（仅落库，不执行，由 Scheduler 调度） */
   async createTask(dto: DownloadDto): Promise<{ id: number; message: string }> {
     const now = new Date().toISOString();
-    const id = this.db.insertTask({
+    const id = await this.db.insertTask({
       bvid: dto.bvid,
       cid: dto.cid,
       title: dto.title,
@@ -456,7 +456,7 @@ autoSummary: dto.autoSummary,
 
     cached.status = TaskStatus.Downloading;
     cached.title = task.title ?? cached.title;
-    this.db.updateTaskStatus(id, { status: TaskStatus.Downloading });
+    await this.db.updateTaskStatus(id, { status: TaskStatus.Downloading });
 
     try {
       const cookieString = this.cookieFile
@@ -534,7 +534,17 @@ autoSummary: dto.autoSummary,
         (e: { percentage: number; speedBytesPerSec: number }) => {
           cached.progress = e.percentage;
           cached.speed = formatBytes(e.speedBytesPerSec) + "/s";
-          this.db.updateTaskProgress(id, e.percentage, cached.speed);
+          this.db.updateTaskProgress(id, e.percentage, cached.speed).catch(
+            (err: unknown) => {
+              this.logger.error(
+                createLogMessage("Failed to persist task progress", {
+                  taskId: id,
+                  error:
+                    err instanceof Error ? err.message : String(err),
+                }),
+              );
+            },
+          );
         },
       );
 
@@ -558,7 +568,7 @@ autoSummary: dto.autoSummary,
       cached.durationMs = result.timing?.totalMs;
       cached.completedAt = new Date().toISOString();
 
-      this.db.updateTaskStatus(id, {
+      await this.db.updateTaskStatus(id, {
         status: result.status,
         outputFile: result.outputFile,
         fileSize: result.fileSize,
@@ -585,7 +595,7 @@ autoSummary: dto.autoSummary,
       cached.status = TaskStatus.Failed;
       cached.error = msg;
 
-      this.db.updateTaskStatus(id, {
+      await this.db.updateTaskStatus(id, {
         status: TaskStatus.Failed,
         errorMessage: msg,
       });
@@ -613,7 +623,7 @@ autoSummary: dto.autoSummary,
       throw new Error(`任务 ${id} 状态为 ${cached.status}，无法停止`);
     }
     cached.status = TaskStatus.Stopped;
-    this.db.updateTaskStatus(id, { status: TaskStatus.Stopped });
+    await this.db.updateTaskStatus(id, { status: TaskStatus.Stopped });
     this.logger.log(
       createLogMessage("Stopped queued download task", {
         taskId: id,
@@ -631,7 +641,7 @@ autoSummary: dto.autoSummary,
       throw new Error(`任务 ${id} 状态为 ${cached.status}，无法恢复`);
     }
     cached.status = TaskStatus.Created;
-    this.db.updateTaskStatus(id, { status: TaskStatus.Created });
+    await this.db.updateTaskStatus(id, { status: TaskStatus.Created });
     this.logger.log(
       createLogMessage("Resumed queued download task", {
         taskId: id,
@@ -665,23 +675,23 @@ autoSummary: dto.autoSummary,
     );
   }
 
-  getTasksPaginated(params: {
+  async getTasksPaginated(params: {
     page: number;
     pageSize: number;
     statusGroup: TaskStatusGroup[];
-  }): PaginatedTaskResult {
+  }): Promise<PaginatedTaskResult> {
     return this.db.listTasksPaginated(params);
   }
 
-  /** 获取单个任务详情（从SQLite） */
-  getTaskById(id: number): TaskRecord | undefined {
+  /** 获取单个任务详情 */
+  async getTaskById(id: number): Promise<TaskRecord | undefined> {
     return this.db.getTaskById(id);
   }
 
   /** 删除任务 */
   async deleteTask(id: number): Promise<{ message: string }> {
     this.taskCache.delete(id);
-    this.db.deleteTask(id);
+    await this.db.deleteTask(id);
     this.logger.log(
       createLogMessage("Deleted download task", {
         taskId: id,
@@ -694,7 +704,7 @@ autoSummary: dto.autoSummary,
   async clearTasks(): Promise<{ message: string }> {
     const taskCount = this.taskCache.size;
     this.taskCache.clear();
-    this.db.clearTasks();
+    await this.db.clearTasks();
     this.logger.log(
       createLogMessage("Cleared all download tasks", {
         taskCount,

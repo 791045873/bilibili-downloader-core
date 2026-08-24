@@ -13,7 +13,7 @@ Keep it current enough to route common work. Do not turn it into a full architec
 | Core         | `packages/core/src/`          | 下载领域模型、用例编排、ports 接口                | 2026-06-02    | high       |
 | Bilibili SDK | `packages/bilibili-api-sdk/`  | B站非官方 REST API SDK（workspace 包，含 vitest 测试；内建接口级缓存 MemoryCacheStore/FileCacheStore 与 -412 自动重试） | 2026-08-12    | high       |
 | Adapters     | `packages/adapters/src/`      | B站 API 适配（基于 bilibili-api-sdk）、HTTP 下载器、FFmpeg、文件系统 | 2026-08-07    | high       |
-| Server       | `packages/server/src/`        | NestJS 后端 API，下载任务管理、视频分析编排、全局请求日志 | 2026-08-11    | high       |
+| Server       | `packages/server/src/`        | NestJS 后端 API，下载任务管理、视频分析编排、全局请求日志；持久化为 PostgreSQL（`pg` 连接池，经 `DATABASE_URL`），`database.service.ts` 为唯一数据访问层，一次性迁移脚本在 `packages/server/scripts/migrate-sqlite-to-postgres.mjs` | 2026-08-24    | high       |
 | Server Logging | `packages/server/src/logging/` | RequestLoggingInterceptor、safe log allowlist、请求体安全裁剪；`FileConsoleLogger`（`LOG_DIR` 开启终端+文件双写，`rotating-file-stream` 按天轮转，`LOG_MAX_FILES` 保留数） | 2026-08-13 | high |
 | Vision Proxy | `packages/vision-proxy/`     | 可选 Python 薄代理，仅负责 DashScope 本地视觉文件调用（pyproject.toml 锁定依赖 + .venv 于包目录下；body 上限/socket 超时/并发上限/healthz）。容器部署时作为独立 `vision-proxy` 容器运行；宿主开发模式经 `start-vision-proxy` 自动重启，开发模式读 `packages/vision-proxy/.env` 的 HOST/PORT；密钥经 `Authorization` 头由 Node 透传（DB 来源），SDK 基址代码写死 | 2026-08-20    | high     |
 | Frontend     | `packages/frontend/src/`      | React 19 SPA，视频输入、下载列表、AI 总结任务、设置（react-router 7 + Zustand + antd 6 + TanStack Query + Tailwind 4） | 2026-08-14    | high       |

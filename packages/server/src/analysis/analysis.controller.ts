@@ -64,7 +64,7 @@ export class AnalysisController {
   async runAnalyze(@Body() body: AnalysisRequest & { promptId?: number }) {
     validateRequest(body);
     const promptId = parseOptionalPromptId(body.promptId);
-    const resolved = this.promptService.resolveForRun(promptId);
+    const resolved = await this.promptService.resolveForRun(promptId);
     const input: AnalysisInput = {
       videoPath: body.videoPath,
       subtitlePath: body.subtitlePath,
@@ -74,6 +74,9 @@ export class AnalysisController {
       screenshotVideoPath: body.screenshotVideoPath,
       systemPrompt: resolved.content,
     };
+    const resolvedPromptName = resolved.promptId
+      ? (await this.promptService.get(resolved.promptId))?.name
+      : undefined;
     this.logger.log(
       createLogMessage("Manual analysis request accepted", {
         bvid: body.metadata.bvid,
@@ -86,13 +89,11 @@ export class AnalysisController {
         sourceType: body.metadata.type,
         promptId: resolved.promptId,
         hasCustomSystemPrompt: Boolean(resolved.content),
-        promptName: resolved.promptId
-          ? this.promptService.get(resolved.promptId)?.name
-          : undefined,
+        promptName: resolvedPromptName,
       }),
     );
     const engine = new AnalysisEngine(
-      this.getLlmConfig(),
+      await this.getLlmConfig(),
       undefined,
       this.analysisVideoResolver,
     );
@@ -116,7 +117,7 @@ export class AnalysisController {
       }),
     );
 
-    const task = this.databaseService.findLatestTaskByBvidAndCid(
+    const task = await this.databaseService.findLatestTaskByBvidAndCid(
       body.bvid,
       body.cid,
     );
@@ -137,7 +138,7 @@ export class AnalysisController {
       };
     }
 
-    const summaryTask = this.databaseService.getAiSummaryTaskByResource(
+    const summaryTask = await this.databaseService.getAiSummaryTaskByResource(
       body.bvid,
       body.cid,
     );
@@ -173,7 +174,7 @@ export class AnalysisController {
       throw new ConflictException("该任务已开启 AI 总结");
     }
 
-    this.databaseService.updateTaskStatus(task.id!, {
+    await this.databaseService.updateTaskStatus(task.id!, {
       status: task.status,
       autoSummary: 1,
     });
@@ -198,8 +199,10 @@ export class AnalysisController {
     "llm.modelName",
   ] as const;
 
-  private resolveLlmSettings(): Record<string, string> {
-    const stored = this.databaseService.getSettings([...this.llmConfigKeys]);
+  private async resolveLlmSettings(): Promise<Record<string, string>> {
+    const stored = await this.databaseService.getSettings([
+      ...this.llmConfigKeys,
+    ]);
     return {
       "llm.apiKey": stored["llm.apiKey"] ?? "",
       "llm.modelName": stored["llm.modelName"] ?? "",
@@ -207,8 +210,8 @@ export class AnalysisController {
   }
 
   @Get("/config")
-  getLlmConfigStatus() {
-    const settings = this.resolveLlmSettings();
+  async getLlmConfigStatus() {
+    const settings = await this.resolveLlmSettings();
     const apiKey = settings["llm.apiKey"];
     const modelName = settings["llm.modelName"];
     const apiKeyMasked =
@@ -226,7 +229,7 @@ export class AnalysisController {
   }
 
   @Put("/config")
-  updateLlmConfig(
+  async updateLlmConfig(
     @Body()
     body: {
       apiKey?: string;
@@ -237,7 +240,7 @@ export class AnalysisController {
     if (body.apiKey !== undefined) patch["llm.apiKey"] = String(body.apiKey).trim();
     if (body.modelName !== undefined) patch["llm.modelName"] = String(body.modelName).trim();
 
-    this.databaseService.setSettings(patch);
+    await this.databaseService.setSettings(patch);
 
     this.logger.log(
       createLogMessage("LLM config updated via frontend", {
@@ -257,7 +260,7 @@ export class AnalysisController {
       modelName?: string;
     },
   ): Promise<{ ok: boolean; model?: string; message?: string; error?: string }> {
-    const settings = this.resolveLlmSettings();
+    const settings = await this.resolveLlmSettings();
     const apiKey =
       body?.apiKey !== undefined
         ? String(body.apiKey).trim()
@@ -376,7 +379,7 @@ export class AnalysisController {
         parsed.videoQualityList.length > 1 &&
         lowestQuality.id !== highestQuality.id
       ) {
-        this.scheduleInitialLowResDownload({
+        await this.scheduleInitialLowResDownload({
           taskId: created.id,
           bvid,
           cid,
@@ -409,15 +412,15 @@ export class AnalysisController {
     }
   }
 
-  private scheduleInitialLowResDownload(input: {
+  private async scheduleInitialLowResDownload(input: {
     taskId: number;
     bvid: string;
     cid: number;
     title: string;
     quality: number;
-  }): void {
+  }): Promise<void> {
     try {
-      const analysisSubTaskId = this.databaseService.insertAnalysisSubTask({
+      const analysisSubTaskId = await this.databaseService.insertAnalysisSubTask({
         taskId: input.taskId,
         bvid: input.bvid,
         cid: input.cid,
@@ -471,8 +474,8 @@ export class AnalysisController {
     return `${mainTitle} P${matchedPage.page}`;
   }
 
-  private getLlmConfig(): LlmConfig {
-    const settings = this.resolveLlmSettings();
+  private async getLlmConfig(): Promise<LlmConfig> {
+    const settings = await this.resolveLlmSettings();
     const apiKey = settings["llm.apiKey"];
     const modelName = settings["llm.modelName"];
     const visionProxyUrl = process.env.QWEN_VISION_PROXY_URL;

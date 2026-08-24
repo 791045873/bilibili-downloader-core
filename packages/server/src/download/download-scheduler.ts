@@ -52,11 +52,11 @@ export class DownloadScheduler implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     // 恢复：将上次中断的 downloading 任务标记为 failed
-    const tasks = this.db.getTasks();
+    const tasks = await this.db.getTasks();
     let recoveredTaskCount = 0;
     for (const t of tasks) {
       if (t.status === TaskStatus.Downloading) {
-        this.db.updateTaskStatus(t.id!, {
+        await this.db.updateTaskStatus(t.id!, {
           status: TaskStatus.Failed,
           errorMessage: "服务重启，任务中断",
         });
@@ -64,7 +64,7 @@ export class DownloadScheduler implements OnModuleInit {
       }
     }
 
-    this.downloadService.restoreTaskCacheFromDatabase();
+    await this.downloadService.restoreTaskCacheFromDatabase();
 
     // 注册回调：下载完成时自动调度下一个
     this.downloadService.onTaskFinished = (taskId: number) => {
@@ -76,12 +76,12 @@ export class DownloadScheduler implements OnModuleInit {
           maxConcurrency: this.maxConcurrency,
         }),
       );
-      this.tryScheduleNext();
+      void this.tryScheduleNext();
       this.onAnalysisTrigger?.(taskId);
     };
 
     // 启动调度
-    this.tryScheduleNext();
+    await this.tryScheduleNext();
     this.logger.log(
       createLogMessage("Download scheduler started", {
         maxConcurrency: this.maxConcurrency,
@@ -108,7 +108,7 @@ export class DownloadScheduler implements OnModuleInit {
         hasOutputPath: Boolean(dto.outputPath),
       }),
     );
-    this.tryScheduleNext();
+    await this.tryScheduleNext();
     return result;
   }
 
@@ -120,7 +120,7 @@ export class DownloadScheduler implements OnModuleInit {
   /** 恢复任务 + 触发调度 */
   async resumeTask(id: number): Promise<{ message: string }> {
     const result = await this.downloadService.resumeTask(id);
-    this.tryScheduleNext();
+    await this.tryScheduleNext();
     return result;
   }
 
@@ -177,13 +177,11 @@ export class DownloadScheduler implements OnModuleInit {
 
   // ==================== 调度核心 ====================
 
-  private tryScheduleNext(): void {
+  private async tryScheduleNext(): Promise<void> {
     while (this.runningSet.size < this.maxConcurrency) {
-      const task = this.db.findNextCreatedTask();
+      // 原子抢占：created → downloading（单语句守卫更新，防并发双抢）
+      const task = await this.db.claimNextCreatedTask();
       if (!task) break; // 队列空
-
-      // 原子抢占：created → downloading
-      this.db.updateTaskStatus(task.id!, { status: TaskStatus.Downloading });
 
       const id = task.id!;
       this.runningSet.add(id);

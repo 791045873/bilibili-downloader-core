@@ -33,9 +33,9 @@ export class PromptController {
   }
 
   @Get("/creator")
-  getCreatorBinding(@Query("mid") mid: string) {
+  async getCreatorBinding(@Query("mid") mid: string) {
     const midNum = toPositiveInt(mid, "mid");
-    const binding = this.promptService.getCreatorBinding(midNum);
+    const binding = await this.promptService.getCreatorBinding(midNum);
     if (!binding) {
       return null;
     }
@@ -43,31 +43,33 @@ export class PromptController {
   }
 
   @Put("/creator")
-  setCreatorBinding(
+  async setCreatorBinding(
     @Body() body: { mid?: number; promptId?: number },
-  ): { message: string } {
+  ): Promise<{ message: string }> {
     const mid = toPositiveInt(body?.mid, "mid");
     const promptId = toPositiveInt(body?.promptId, "promptId");
-    this.promptService.setCreatorBinding(mid, promptId);
+    await this.promptService.setCreatorBinding(mid, promptId);
     return { message: "已绑定" };
   }
 
   @Delete("/creator")
-  deleteCreatorBinding(@Query("mid") mid: string): { message: string } {
+  async deleteCreatorBinding(
+    @Query("mid") mid: string,
+  ): Promise<{ message: string }> {
     const midNum = toPositiveInt(mid, "mid");
-    this.promptService.deleteCreatorBinding(midNum);
+    await this.promptService.deleteCreatorBinding(midNum);
     return { message: "已解除绑定" };
   }
 
   @Get()
-  list(): { items: ReturnType<PromptService["list"]> } {
-    return { items: this.promptService.list() };
+  async list(): Promise<{ items: Awaited<ReturnType<PromptService["list"]>> }> {
+    return { items: await this.promptService.list() };
   }
 
   @Post()
-  create(
+  async create(
     @Body() body: { name?: unknown; content?: unknown },
-  ): ReturnType<PromptService["create"]> {
+  ): Promise<Awaited<ReturnType<PromptService["create"]>>> {
     if (
       typeof body?.name !== "string" ||
       body.name.trim().length === 0 ||
@@ -88,17 +90,19 @@ export class PromptController {
   }
 
   @Put("/:id/default")
-  setDefault(@Param("id") id: string): ReturnType<PromptService["get"]> {
+  async setDefault(
+    @Param("id") id: string,
+  ): Promise<Awaited<ReturnType<PromptService["get"]>>> {
     const promptId = toPositiveInt(id, "id");
-    this.promptService.setDefault(promptId);
+    await this.promptService.setDefault(promptId);
     return this.promptService.get(promptId);
   }
 
   @Put("/:id")
-  update(
+  async update(
     @Param("id") id: string,
     @Body() body: { name?: unknown; content?: unknown },
-  ): ReturnType<PromptService["update"]> {
+  ): Promise<Awaited<ReturnType<PromptService["update"]>>> {
     const promptId = toPositiveInt(id, "id");
     const patch: { name?: string; content?: string } = {};
     if (body?.name !== undefined) {
@@ -117,9 +121,9 @@ export class PromptController {
   }
 
   @Delete("/:id")
-  remove(@Param("id") id: string): { message: string } {
+  async remove(@Param("id") id: string): Promise<{ message: string }> {
     const promptId = toPositiveInt(id, "id");
-    this.promptService.remove(promptId);
+    await this.promptService.remove(promptId);
     return { message: "已删除" };
   }
 }

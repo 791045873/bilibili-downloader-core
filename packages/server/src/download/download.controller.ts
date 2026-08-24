@@ -73,7 +73,10 @@ export class DownloadController {
   }
 
   @Post("/tasks/:id/auto-summary")
-  setAutoSummary(@Param("id") id: string, @Body() body: { enabled?: boolean }) {
+  async setAutoSummary(
+    @Param("id") id: string,
+    @Body() body: { enabled?: boolean },
+  ) {
     const numId = Number.parseInt(id, 10);
     if (Number.isNaN(numId)) {
       this.logger.warn(
@@ -93,7 +96,7 @@ export class DownloadController {
       throw new BadRequestException("enabled 必须为布尔值");
     }
 
-    const task = this.downloadService.getTaskById(numId);
+    const task = await this.downloadService.getTaskById(numId);
     if (!task) {
       this.logger.warn(
         createLogMessage(
@@ -106,7 +109,7 @@ export class DownloadController {
       throw new BadRequestException("任务不存在");
     }
 
-    this.databaseService.updateTaskStatus(numId, {
+    await this.databaseService.updateTaskStatus(numId, {
       status: task.status,
       autoSummary: body.enabled ? 1 : 0,
     });
@@ -130,7 +133,7 @@ export class DownloadController {
   // ==================== 查询 ====================
 
   @Get("/tasks")
-  getTasks(
+  async getTasks(
     @Query("page") page = "1",
     @Query("pageSize") pageSize = "20",
     @Query("statusGroup") statusGroup = "all",
@@ -142,7 +145,7 @@ export class DownloadController {
   }
 
   @Get("/tasks/:id")
-  getTask(@Param("id") id: string) {
+  async getTask(@Param("id") id: string) {
     const numId = Number.parseInt(id, 10);
     if (Number.isNaN(numId)) {
       this.logger.warn(
@@ -152,7 +155,7 @@ export class DownloadController {
       );
       return { error: "无效的任务 ID" };
     }
-    const task = this.downloadService.getTaskById(numId);
+    const task = await this.downloadService.getTaskById(numId);
     if (!task) {
       this.logger.warn(
         createLogMessage("Get task returned task-not-found", {
@@ -172,7 +175,9 @@ export class DownloadController {
   // ==================== 任务状态查询（入队去重） ====================
 
   @Post("/tasks/check")
-  checkTasks(@Body() body: { items: { bvid: string; cid: number }[] }) {
+  async checkTasks(
+    @Body() body: { items: { bvid: string; cid: number }[] },
+  ) {
     const items = Array.isArray(body?.items) ? body.items : [];
     if (items.length === 0) {
       this.logger.warn(
