@@ -52,6 +52,25 @@ function statusLabel(status: string): string {
   }
 }
 
+const knowledgeTagColor: Record<string, string> = {
+  synced: "cyan",
+  failed: "red",
+  pending: "gold",
+};
+
+function knowledgeLabel(status?: string | null): string {
+  switch (status) {
+    case "synced":
+      return "已发布";
+    case "failed":
+      return "发布失败";
+    case "pending":
+      return "发布中";
+    default:
+      return "未发布";
+  }
+}
+
 function formatTime(value?: string): string {
   if (!value) return "—";
   const date = new Date(value);
@@ -239,6 +258,16 @@ export function Component() {
     }
   }
 
+  async function handlePublish(task: AiSummaryTaskEntry) {
+    setError("");
+    try {
+      await api.publishAiSummaryTask(task.id);
+      await query.refetch();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "发布到知识库失败");
+    }
+  }
+
   async function openRawResponse(task: AiSummaryTaskEntry) {
     setRawTask(task);
     setRawTitle((task.title || `${task.bvid}-${task.cid}`) + " - 原始返回");
@@ -321,12 +350,24 @@ export function Component() {
       title: "状态",
       render: (_, task) => (
         <div>
-          <Tag color={statusTagColor[task.status] ?? "default"}>
-            {statusLabel(task.status)}
-          </Tag>
+          <div className="flex items-center gap-2">
+            <Tag color={statusTagColor[task.status] ?? "default"}>
+              {statusLabel(task.status)}
+            </Tag>
+            {task.knowledgeStatus && (
+              <Tag color={knowledgeTagColor[task.knowledgeStatus] ?? "default"}>
+                {knowledgeLabel(task.knowledgeStatus)}
+              </Tag>
+            )}
+          </div>
           {task.status === "failed" && task.errorMessage && (
             <div className="mt-1 max-w-[240px] break-all text-xs text-red-600">
               {task.errorMessage}
+            </div>
+          )}
+          {task.knowledgeStatus === "failed" && task.knowledgeError && (
+            <div className="mt-1 max-w-[240px] break-all text-xs text-orange-600">
+              {task.knowledgeError}
             </div>
           )}
         </div>
@@ -381,7 +422,7 @@ export function Component() {
     },
     {
       title: "操作",
-      width: 300,
+      width: 380,
       render: (_, task) => (
         <div className="flex items-center gap-2">
           <Button
@@ -402,6 +443,23 @@ export function Component() {
             onClick={() => void handleRetrigger(task)}
           >
             重新总结
+          </Button>
+          <Button
+            size="small"
+            color={
+              task.knowledgeStatus === "failed" || !task.knowledgeStatus
+                ? "cyan"
+                : "default"
+            }
+            variant={
+              task.knowledgeStatus === "failed" || !task.knowledgeStatus
+                ? "solid"
+                : "outlined"
+            }
+            disabled={task.status !== "completed"}
+            onClick={() => void handlePublish(task)}
+          >
+            发布
           </Button>
           <Button
             size="small"

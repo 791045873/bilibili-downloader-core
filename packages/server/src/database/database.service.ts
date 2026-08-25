@@ -85,6 +85,10 @@ export interface AiSummaryTaskRecord {
   /** 本次执行记录：成功=模型返回 content 原文；失败=错误信息 */
   rawResponse?: string;
   modelName?: string;
+  /** 知识发布状态（pending / synced / failed） */
+  knowledgeStatus?: string;
+  /** 知识发布失败信息 */
+  knowledgeError?: string;
   createdAt?: string;
   updatedAt?: string;
   lastTriggeredAt?: string;
@@ -266,8 +270,14 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         updated_at TIMESTAMPTZ NOT NULL,
         last_triggered_at TIMESTAMPTZ,
         last_completed_at TIMESTAMPTZ,
+        knowledge_status TEXT,
+        knowledge_error TEXT,
         UNIQUE (bvid, cid)
       )
+    `);
+    await this.pool.query(`
+      ALTER TABLE ai_summary_task ADD COLUMN IF NOT EXISTS knowledge_status TEXT;
+      ALTER TABLE ai_summary_task ADD COLUMN IF NOT EXISTS knowledge_error TEXT;
     `);
     await this.pool.query(`
       CREATE INDEX IF NOT EXISTS idx_ai_summary_task_updated_at
@@ -297,6 +307,41 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         mid BIGINT PRIMARY KEY,
         prompt_id BIGINT NOT NULL
       )
+    `);
+
+    // 云端知识库：一份视频总结（对应一个 bvid+cid 的 completed 总结）
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS summary (
+        id BIGSERIAL PRIMARY KEY,
+        bvid TEXT NOT NULL,
+        cid BIGINT NOT NULL,
+        video_title TEXT NOT NULL,
+        video_url TEXT,
+        model_name TEXT,
+        raw_response JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (bvid, cid)
+      )
+    `);
+    // 一条技巧 = 一个 RAG chunk（embedding 列 Phase 2 再补）
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS summary_segment (
+        id BIGSERIAL PRIMARY KEY,
+        summary_id BIGINT NOT NULL REFERENCES summary(id) ON DELETE CASCADE,
+        seq INT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        timestamp_seconds INT,
+        frame_description TEXT,
+        screenshot_url TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (summary_id, seq)
+      )
+    `);
+    await this.pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_summary_segment_summary_id
+      ON summary_segment(summary_id);
     `);
 
     // 空表播种内置提示词（幂等：仅空表执行）
@@ -415,6 +460,8 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       execution_timing AS "executionTiming",
       raw_response AS "rawResponse",
       model_name AS "modelName",
+      knowledge_status AS "knowledgeStatus",
+      knowledge_error AS "knowledgeError",
       created_at AS "createdAt",
       updated_at AS "updatedAt",
       last_triggered_at AS "lastTriggeredAt",
@@ -1407,6 +1454,101 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       createLogMessage("Deleted AI prompt creator binding", {
         mid,
       }),
+    );
+  }
+
+  // ==================== 云端知识库（summary / summary_segment） ====================
+
+  /**
+   * 事务内 upsert 一份总结的知识内容（summary + 全量 segments）。
+   * 幂等：按 (bvid,cid) 冲突更新 summary，删除该 summary 的旧 segments 后重插。
+   */
+  async upsertSummaryKnowledge(args: {
+    bvid: string;
+    cid: number;
+    videoTitle: string;
+    videoUrl?: string;
+    modelName?: string;
+    rawResponse: string;
+    segments: Array<{
+      seq: number;
+      title: string;
+      content: string;
+      timestampSeconds?: number;
+      frameDescription?: string;
+      screenshotUrl?: string;
+    }>;
+  }): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows } = await client.query(
+        `INSERT INTO summary (bvid, cid, video_title, video_url, model_name, raw_response, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, now(), now())
+         ON CONFLICT (bvid, cid) DO UPDATE SET
+           video_title = EXCLUDED.video_title,
+           video_url = EXCLUDED.video_url,
+           model_name = EXCLUDED.model_name,
+           raw_response = EXCLUDED.raw_response,
+           updated_at = now()
+         RETURNING id`,
+        [
+          args.bvid,
+          args.cid,
+          args.videoTitle,
+          args.videoUrl ?? null,
+          args.modelName ?? null,
+          args.rawResponse,
+        ],
+      );
+      const summaryId = Number(rows[0].id);
+      await client.query(`DELETE FROM summary_segment WHERE summary_id = $1`, [
+        summaryId,
+      ]);
+      for (const segment of args.segments) {
+        await client.query(
+          `INSERT INTO summary_segment (summary_id, seq, title, content, timestamp_seconds, frame_description, screenshot_url)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            summaryId,
+            segment.seq,
+            segment.title,
+            segment.content,
+            segment.timestampSeconds ?? null,
+            segment.frameDescription ?? null,
+            segment.screenshotUrl ?? null,
+          ],
+        );
+      }
+      await client.query("COMMIT");
+      this.logger.log(
+        createLogMessage("Published summary knowledge to cloud", {
+          bvid: args.bvid,
+          cid: args.cid,
+          summaryId,
+          segmentCount: args.segments.length,
+        }),
+      );
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** 更新 AI 总结任务的知识发布状态 */
+  async updateSummaryKnowledgeStatus(
+    bvid: string,
+    cid: number,
+    status: string,
+    error?: string,
+  ): Promise<void> {
+    await this.pool.query(
+      `UPDATE ai_summary_task
+       SET knowledge_status = $1, knowledge_error = $2, updated_at = $3
+       WHERE bvid = $4 AND cid = $5`,
+      [status, error ?? null, new Date().toISOString(), bvid, cid],
     );
   }
 }

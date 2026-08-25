@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import { DatabaseService } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
+import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
 import {
   extractSummaryMeta,
   rewriteMarkdownImageUrls,
@@ -30,6 +31,7 @@ export class AnalysisTaskController {
     private readonly analysisTriggerService: AnalysisTriggerService,
     private readonly databaseService: DatabaseService,
     private readonly downloadService: DownloadService,
+    private readonly knowledgePublisher: KnowledgePublisherService,
   ) {}
 
   @Post("/tasks/:id/summary")
@@ -293,6 +295,66 @@ export class AnalysisTaskController {
       });
 
     return { message: "重新构建已开始" };
+  }
+
+  @Post("/summary-tasks/:id/publish")
+  @HttpCode(HttpStatus.OK)
+  async publishAiSummaryTask(@Param("id") id: string) {
+    const summaryTaskId = Number.parseInt(id, 10);
+    if (Number.isNaN(summaryTaskId)) {
+      this.logger.warn(
+        `Publish ai summary task rejected due to invalid id: ${id}`,
+      );
+      throw new BadRequestException("无效的任务 ID");
+    }
+
+    const record = await this.databaseService.getAiSummaryTaskById(
+      summaryTaskId,
+    );
+    if (!record) {
+      this.logger.warn(
+        `Publish ai summary task rejected due to not-found: ${summaryTaskId}`,
+      );
+      throw new NotFoundException("AI 总结任务不存在");
+    }
+    if (record.status !== "completed") {
+      throw new ConflictException("仅已完成的 AI 总结可发布到知识库");
+    }
+    if (!record.rawResponse) {
+      throw new ConflictException("无可用的大模型返回内容，无法发布");
+    }
+    if (!record.summaryOutput) {
+      throw new ConflictException("无输出文档，无法发布");
+    }
+    if (!record.bvid || typeof record.cid !== "number") {
+      throw new ConflictException("记录缺少视频资源标识，无法发布");
+    }
+
+    const task = await this.databaseService.findLatestTaskByBvidAndCid(
+      record.bvid,
+      record.cid,
+    );
+
+    void this.knowledgePublisher
+      .publish({
+        bvid: record.bvid,
+        cid: record.cid,
+        videoTitle:
+          task?.title || record.title || `${record.bvid}-${record.cid}`,
+        videoUrl: `https://www.bilibili.com/video/${record.bvid}`,
+        modelName: record.modelName,
+        rawResponse: record.rawResponse,
+        summaryPath: record.summaryOutput,
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `AI summary publish failed for summary task ${summaryTaskId}: ${message}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+      });
+
+    return { message: "发布已开始" };
   }
 }
 

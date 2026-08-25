@@ -20,6 +20,7 @@ import { sanitizeFileName } from "../download/file-naming.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 import { PromptService } from "./prompt.service.js";
 import { SUMMARY_BASE_DIR } from "./summary-dir.js";
+import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
 
 /** AI 总结任务执行耗时明细 */
 export interface AiSummaryExecutionTiming {
@@ -63,6 +64,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     private readonly notificationService: NotificationService,
     private readonly analysisVideoResolver: AnalysisVideoResolver,
     private readonly promptService: PromptService,
+    private readonly knowledgePublisher: KnowledgePublisherService,
   ) {
     this.llmVideoDir = process.env.ANALYSIS_LLM_VIDEO_DIR
       ? resolve(process.env.ANALYSIS_LLM_VIDEO_DIR)
@@ -489,6 +491,27 @@ export class AnalysisTriggerService implements OnModuleInit {
         videoUrl: input.metadata.videoUrl,
         markdownPath: result.summaryPath,
       });
+      void this.knowledgePublisher
+        .publish({
+          bvid: effectiveBvid,
+          cid: effectiveCid,
+          videoTitle: task.title || `${effectiveBvid}-${effectiveCid}`,
+          videoUrl: metadataVideoUrl,
+          modelName: result.modelName,
+          rawResponse: result.rawResponse,
+          summaryPath: result.summaryPath,
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            createLogMessage("Knowledge publish trigger failed", {
+              taskId,
+              bvid: effectiveBvid,
+              cid: effectiveCid,
+              error: message,
+            }),
+          );
+        });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(
@@ -814,6 +837,27 @@ export class AnalysisTriggerService implements OnModuleInit {
         lastTriggeredAt: now,
         lastCompletedAt: new Date().toISOString(),
       });
+      void this.knowledgePublisher
+        .publish({
+          bvid: record.bvid,
+          cid: record.cid,
+          videoTitle: task.title || `${record.bvid}-${record.cid}`,
+          videoUrl: `https://www.bilibili.com/video/${record.bvid}`,
+          modelName: record.modelName,
+          rawResponse: record.rawResponse,
+          summaryPath: result.summaryPath,
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            createLogMessage("Knowledge publish trigger failed (rebuild)", {
+              id,
+              bvid: record.bvid,
+              cid: record.cid,
+              error: message,
+            }),
+          );
+        });
       this.logger.log(
         createLogMessage("Summary rebuild completed", {
           id,

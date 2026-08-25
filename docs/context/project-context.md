@@ -16,9 +16,9 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `docs/requirements/2026-08-17-ai-summary-view-markdown.md`（数据库迁移需求：`docs/requirements/2026-08-24-sqlite-to-postgresql-migration.md`，已完成）
+- Active requirement: `docs/requirements/2026-08-17-ai-summary-view-markdown.md`（数据库迁移需求：`docs/requirements/2026-08-24-sqlite-to-postgresql-migration.md`，已完成；COS 知识发布管道需求：`docs/requirements/2026-08-24-cos-summary-knowledge-publish.md`，实现完成）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-08-24-sqlite-to-postgresql-migration-plan.md`（2026-08-24 已关闭；最近关闭：`docs/plans/2026-08-24-docker-image-version-plan.md`；此前：`docs/plans/2026-08-21-timestamp-parse-compat-plan.md`、`2026-08-21-llm-concurrency-limit-plan.md`、`2026-08-21-task-status-multiselect-filter-plan.md` 已关闭、`2026-08-20-split-dockerfile-server-vision-proxy-plan.md` 已关闭、`2026-08-18-remove-baseurl-config-plan.md`、`2026-08-18-proxy-auth-from-db-plan.md`、`2026-08-18-remove-llm-dead-paths-plan.md`、`2026-08-18-env-var-cleanup-plan.md`、`2026-08-18-extract-vision-proxy-package-plan.md`、`2026-08-18-docker-split-vision-proxy-plan.md` 均已关闭）
+- Active plan: `docs/plans/2026-08-24-cos-summary-knowledge-publish-plan.md`（2026-08-24 实现完成，关闭待人工确认；此前：`docs/plans/2026-08-24-sqlite-to-postgresql-migration-plan.md` 已关闭）
 - Active backlog item: 无（最近完成项：移除前端 BaseURL 配置、测试连接改用原生端点；此前：视觉代理密钥改为 DB 来源 + 请求透传、移除多模态直连分支与 chatCompletion 死代码、环境变量清理、提取 Python 视觉代理为独立子包、Docker 拆分视觉代理为独立容器）
 - AI autonomy: `plan-first`（2026-08-04 已切换到方案 B，更新后的计划需重新审计后再实施）
 - Current blocker: `none`

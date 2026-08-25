@@ -256,6 +256,12 @@ export async function rebuildAiSummaryTask(
   return request(`/summary-tasks/${id}/rebuild`, { method: "POST" });
 }
 
+export async function publishAiSummaryTask(
+  id: number,
+): Promise<{ message: string }> {
+  return request(`/summary-tasks/${id}/publish`, { method: "POST" });
+}
+
 // ==================== LLM 配置 ====================
 
 export interface AnalysisLlmConfig {

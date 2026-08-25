@@ -144,3 +144,33 @@ export function rewriteMarkdownImageUrls(
     return `![${alt}](${baseUrl}${encoded})`;
   });
 }
+
+/**
+ * 将 md 中相对图片链接按映射表改写（如相对路径 → COS 公网 URL）。
+ * 已可解析的绝对地址/根相对/锚点原样保留；无映射的相对路径保留。
+ * @param content md 全文
+ * @param urlByRelPath 相对路径（如 screenshots/segment-0.jpg）→ 目标 URL 的映射
+ */
+export function rewriteMarkdownImages(
+  content: string,
+  urlByRelPath: Record<string, string>,
+): string {
+  return content.replace(
+    MARKDOWN_IMAGE_RE,
+    (match, alt: string, rawUrl: string) => {
+      const url = rawUrl.trim();
+      if (isAlreadyResolvable(url)) {
+        return match;
+      }
+      const rel = normalizeRelUrl(url);
+      if (rel === undefined) {
+        return match;
+      }
+      const target = urlByRelPath[rel];
+      if (!target) {
+        return match;
+      }
+      return `![${alt}](${target})`;
+    },
+  );
+}

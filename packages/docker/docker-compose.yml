@@ -37,5 +37,10 @@ services:
       QWEN_VISION_PROXY_URL: ${QWEN_VISION_PROXY_URL:-http://vision-proxy:8765/v1/chat/completions}
       QWEN_VISION_PROXY_TIMEOUT_MS: ${QWEN_VISION_PROXY_TIMEOUT_MS:-}
       DATABASE_URL: ${DATABASE_URL:?未设置 DATABASE_URL：请配置云端 PostgreSQL 连接串（见 packages/docker/.env.example）}
+      TENCENT_COS_SECRET_ID: ${TENCENT_COS_SECRET_ID:-}
+      TENCENT_COS_SECRET_KEY: ${TENCENT_COS_SECRET_KEY:-}
+      TENCENT_COS_REGION: ${TENCENT_COS_REGION:-}
+      TENCENT_COS_BUCKET: ${TENCENT_COS_BUCKET:-}
+      TENCENT_COS_PUBLIC_URL_PREFIX: ${TENCENT_COS_PUBLIC_URL_PREFIX:-}
     volumes:
       - "${DOWNLOAD_HOST_PATH:-${HOME:-$USERPROFILE}/Downloads/bilibili_download}:/download"
