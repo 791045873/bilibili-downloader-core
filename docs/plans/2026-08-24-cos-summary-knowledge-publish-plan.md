@@ -1,7 +1,7 @@
 # 2026-08-24-cos-summary-knowledge-publish-plan COS 截图上传与知识发布管道（Phase 1）
 
-> Plan Status: completed
-> Last Reviewed: 2026-08-24
+> Plan Status: closed（2026-09-01 用户确认关闭；遗留"COS 桶公网读权限"已于 2026-09-01 复验解决）
+> Last Reviewed: 2026-09-01
 > Source: `docs/requirements/2026-08-24-cos-summary-knowledge-publish.md`
 > Related: `docs/discussions/2026-08-21-summary-cloud-knowledge-base.md`、`docs/plans/2026-08-24-sqlite-to-postgresql-migration-plan.md`（已关闭）
 > Audit: required
@@ -158,13 +158,13 @@ Exit Criteria:
 
 ### COS 桶公网读权限
 
-- Classification: `optimization candidate`
-- Why Not Blocking Closure: 代码无关的桶配置项——目标桶 `ai-summary-1325700411` 当前为私有读（匿名 GET 403），需用户在 COS 控制台开通"公有读私有写"（或换用签名 URL，属独立决策）后，md 预览图片方可公网显示；发布管道/云端写入/URL 生成均不受影响。
-- Successor Required: `no`（用户控制台操作）
+- Classification: `resolved`（2026-09-01）
+- Why Not Blocking Closure: 代码无关的桶配置项——目标桶 `ai-summary-1325700411` 原为私有读（2026-08-24 匿名 GET 403）；用户已在 COS 控制台开通"公有读私有写"，2026-09-01 复验对不存在对象匿名 GET 返回 404 NoSuchKey，确认公网读生效，md 预览图片可公网显示。
+- Successor Required: `no`（用户控制台操作，已完成）
 
 ## Closure
 
-Status Note: 四个阶段实施与验证完成。发布管道端到端验证通过：截图上传 COS、云端 `summary`/`summary_segment` 写入（含 `screenshot_url`/`timestamp_seconds`）、本地 md 改写为 COS URL、`knowledge_status` pending→synced；前端状态/重试入口与 Docker 构建（镜像含 `cos-nodejs-sdk-v5`）已验证；测试方向 TD-1~8 回填（TD-1 公网读、TD-3 自动挂载、TD-4 失败注入、TD-5 UI 交互标注为 out of scope/待真实环境确认）。**遗留（用户侧）**：目标桶 `ai-summary-1325700411` 未开通"公有读私有写"，匿名 GET 返回 403，图片公网显示需用户在 COS 控制台开通（代码无关，已写入 `.env.example` 与 Deferred）。因属保护区域且无独立 subagent，最终关闭由用户人工确认。
+Status Note: 四个阶段实施与验证完成。发布管道端到端验证通过：截图上传 COS、云端 `summary`/`summary_segment` 写入（含 `screenshot_url`/`timestamp_seconds`）、本地 md 改写为 COS URL、`knowledge_status` pending→synced；前端状态/重试入口与 Docker 构建（镜像含 `cos-nodejs-sdk-v5`）已验证；测试方向 TD-1~8 回填（TD-3 自动挂载、TD-4 失败注入、TD-5 UI 交互标注为 out of scope/待真实环境确认）。**原遗留（用户侧）已解决**：目标桶 `ai-summary-1325700411` 曾为私有读（匿名 GET 403），用户已于 COS 控制台开通"公有读私有写"，2026-09-01 复验匿名 GET 不存在对象返回 404 NoSuchKey，公网读确认生效。因属保护区域且无独立 subagent，最终关闭由用户人工确认。
 
 Closure Audit Evidence:
 
@@ -173,4 +173,4 @@ Closure Audit Evidence:
 
 Follow-up:
 
-- <非阻塞 follow-up 一律进 Deferred But Adjudicated>；用户需在 COS 控制台开通桶公有读（见 Deferred"COS 桶公网读权限"）。
+- <非阻塞 follow-up 一律进 Deferred But Adjudicated>；原"COS 桶公有读"用户侧操作已于 2026-09-01 确认完成（见 Deferred"COS 桶公网读权限"），无剩余 follow-up。

@@ -38,3 +38,11 @@
 - **目标桶 `ai-summary-1325700411` 当前私有读（匿名 GET 403）**：需用户在 COS 控制台开通"公有读私有写"后，md 预览图片方可公网显示（代码无关）。备选：改用签名 URL（独立决策）。
 - 历史 89 条已完成总结回填（Phase 4）；向量化/RAG（Phase 2）；问答服务与穿搭照片（Phase 3）——后续需求。
 - 计划关闭由用户人工确认。
+
+## 2026-09-01 追记：桶公网读已开通并复验
+
+- 用户确认桶已开通"公有读私有写"。
+- 复验方法：对不存在对象 `summary/TESTCOS-999/screenshots/segment-0-frame-0.jpg` 匿名 GET——私有读桶返回 403，公有读桶返回 404 NoSuchKey。
+- 实测结果：HTTP 404，响应体 `<Code>NoSuchKey</Code>`，确认公网读生效（2026-08-24 首测为 403）。
+- 已回填：测试文档 TD-1/TD-6 状态改 `passed`、计划 Deferred"COS 桶公网读权限"改 `resolved`、计划 Closure Status Note 更新。原未决事项第一条就此解决，无剩余代码侧 follow-up。
+- **计划已关闭**（2026-09-01 用户确认）：`Plan Status: closed`；`project-context.md` active requirement / active plan 置 `none`。

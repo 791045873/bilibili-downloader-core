@@ -16,9 +16,9 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `docs/requirements/2026-08-17-ai-summary-view-markdown.md`（数据库迁移需求：`docs/requirements/2026-08-24-sqlite-to-postgresql-migration.md`，已完成；COS 知识发布管道需求：`docs/requirements/2026-08-24-cos-summary-knowledge-publish.md`，实现完成）
+- Active requirement: `none`（已全部完成：AI 总结视图 markdown 渲染 `docs/requirements/2026-08-17-ai-summary-view-markdown.md`；数据库迁移 `docs/requirements/2026-08-24-sqlite-to-postgresql-migration.md`；COS 知识发布管道 `docs/requirements/2026-08-24-cos-summary-knowledge-publish.md`）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-08-24-cos-summary-knowledge-publish-plan.md`（2026-08-24 实现完成，关闭待人工确认；此前：`docs/plans/2026-08-24-sqlite-to-postgresql-migration-plan.md` 已关闭）
+- Active plan: `none`（最近关闭：`docs/plans/2026-08-24-cos-summary-knowledge-publish-plan.md`，2026-09-01 用户确认关闭，桶公有读遗留项已复验解决；此前：`docs/plans/2026-08-24-sqlite-to-postgresql-migration-plan.md` 已关闭）
 - Active backlog item: 无（最近完成项：移除前端 BaseURL 配置、测试连接改用原生端点；此前：视觉代理密钥改为 DB 来源 + 请求透传、移除多模态直连分支与 chatCompletion 死代码、环境变量清理、提取 Python 视觉代理为独立子包、Docker 拆分视觉代理为独立容器）
 - AI autonomy: `plan-first`（2026-08-04 已切换到方案 B，更新后的计划需重新审计后再实施）
 - Current blocker: `none`

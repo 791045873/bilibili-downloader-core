@@ -18,8 +18,8 @@
 - 覆盖：COS 集成
 - 应可观察到：配置了 `TENCENT_COS_*` 时，COS 存储服务初始化成功；发布时截图上传到 COS，返回的公网 URL 可访问（GET 返回 200/图片）。
 - 不应观察到：缺少配置时静默失败；上传返回的 URL 不可访问。
-- 状态：`passed`（上传部分）/ 公网读部分 `out of scope`（桶配置待用户）
-- 证据：端到端测试——`CosStoreService` 读 `.env` 配置成功；发布时两张截图 PUT 上传成功并返回 `https://ai-summary-1325700411.cos.ap-chengdu.myqcloud.com/summary/TESTCOS-999/screenshots/segment-N-frame-0.jpg`。**匿名 GET 返回 403**：目标桶 `ai-summary-1325700411` 当前为私有读，未开通"公有读私有写"，属桶配置项（代码无关），已在 `.env.example` 与需求/计划中标注，待用户在 COS 控制台开通后图片方可公网显示。
+- 状态：`passed`（2026-09-01 公网读复验通过，全项通过）
+- 证据：端到端测试——`CosStoreService` 读 `.env` 配置成功；发布时两张截图 PUT 上传成功并返回 `https://ai-summary-1325700411.cos.ap-chengdu.myqcloud.com/summary/TESTCOS-999/screenshots/segment-N-frame-0.jpg`。公网读验证：2026-08-24 首测匿名 GET 返回 403（当时桶为私有读）；用户已在 COS 控制台开通"公有读私有写"，2026-09-01 复验对不存在对象匿名 GET 返回 404 NoSuchKey（私有读桶会返回 403），确认桶现为公有读，md 预览图片可公网显示。
 
 ### TD-2 云端知识表落库
 
@@ -58,8 +58,8 @@
 - 覆盖：md 改指 COS
 - 应可观察到：已发布总结的 md 预览中图片 `src` 为 COS 公网 URL 且可显示；未发布总结仍走本地 `/summary-files`。
 - 不应观察到：已发布总结图片仍指向本地 `/summary-files` 或 404。
-- 状态：`passed`（URL 改写）/ 图片显示受 TD-1 桶权限阻塞
-- 证据：发布后本地 md 内图片行改写为 `![测试帧描述一](https://ai-summary-1325700411.cos.ap-chengdu.myqcloud.com/summary/TESTCOS-999/screenshots/segment-0-frame-0.jpg)`。图片实际显示依赖桶开通公有读（见 TD-1）。
+- 状态：`passed`（URL 改写 + 桶已公有读，2026-09-01 复验）
+- 证据：发布后本地 md 内图片行改写为 `![测试帧描述一](https://ai-summary-1325700411.cos.ap-chengdu.myqcloud.com/summary/TESTCOS-999/screenshots/segment-0-frame-0.jpg)`。图片公网显示前置条件已满足：桶 `ai-summary-1325700411` 已开通公有读（见 TD-1，2026-09-01 复验）。
 
 ### TD-7 本地备份保留
 
