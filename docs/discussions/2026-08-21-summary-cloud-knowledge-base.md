@@ -1,6 +1,7 @@
 # 2026-08-21 总结知识云端化与穿搭问答服务讨论
 
 > 状态更新（2026-08-24）：用户决定先执行本讨论目标第 1 点"数据库迁移云端"，范围为方案 A（六张表全部迁移到 PostgreSQL），在这一点上取代本文收敛的方案 B。云端数据库目标改为阿里云云数据库。详见 `docs/requirements/2026-08-24-sqlite-to-postgresql-migration.md` 与 `docs/plans/2026-08-24-sqlite-to-postgresql-migration-plan.md`。方案 B 的其余内容（知识发布管道/COS/RAG）仍有效，属后续需求。
+> 状态更新（2026-09-01）：Phase 1（知识发布管道）已完成并关闭；用户确认 Embedding 模型选型为 DashScope `qwen3.7-text-embedding`（Open Question #3 解决），进入 Phase 2 需求准备。Phase 2 需求已定稿：`docs/requirements/2026-09-01-knowledge-vector-search.md`。历史回填从 Phase 4 提前并拆为独立需求（用户部署镜像后手动触发一次）：`docs/requirements/2026-09-01-knowledge-backfill.md`，实施顺序为回填 → 向量化。
 
 ## Source
 
@@ -40,8 +41,9 @@
 11. **兜底策略：严格"暂无相关内容"**：无命中/低置信度时不编造，不允许 LLM 附带通用穿搭常识。
 12. **会话存储：PostgreSQL**（与知识库同一库，起步同库避免多数据源）。
 13. **照片上传先压缩一次**再存 COS（降低存储与多模态 token 成本；压缩参数 Phase 3 需求细化）。
-14. **Embedding 模型选型后置**（Phase 2 前定，不阻塞 Phase 1）。
+14. ~~**Embedding 模型选型后置**~~（已解决，2026-09-01：选定 DashScope `qwen3.7-text-embedding`，见决策 #16）。
 15. **知识发布转云端，本地逻辑先不删**：现有本地写入路径（磁盘 md/截图、本地 SQLite）保留作为备份（影子双写迁移策略，见下文）。
+16. **Embedding 模型：DashScope `qwen3.7-text-embedding`**（用户确认，2026-09-01）：Qwen3.7 系列多语言统一向量模型，支持 256~2560 自定义维度（2560/2048/1536/1024 默认/768/512/256），批次大小 20，单批最大 128K Token，与现有 DashScope/LLM 通道同源。维度建议默认 1024（官方推荐通用场景性能/成本平衡点），最终维度在 Phase 2 需求文档定稿。调用走 DashScope OpenAI 兼容端点（`compatible-mode/v1`），API Key 复用/新增 `TENCENT/DASHSCOPE` 配置由需求阶段细化。
 
 ## 现状盘点
 
@@ -119,10 +121,11 @@
 
 `bvid, cid, video_title, video_url, timestamp_seconds, screenshot_url, model, created_at`（timestamp_seconds 由现有 `transTimestampToSeconds` 解析，供 B 站 `?t=` 跳转）。
 
-### embedding 模型与维度（选型后置）
+### embedding 模型与维度（已定，2026-09-01）
 
-- 待定：DashScope text-embedding-v3（与现有通道同源）vs 腾讯云 embedding（与 COS 同厂商）；Phase 2 前定。
-- 维度随所选模型；`summary_segment.embedding` 类型与之匹配。
+- 已选定：DashScope `qwen3.7-text-embedding`（见已确认决策 #16），与现有 DashScope/LLM 通道同源。
+- 可选维度：2560/2048/1536/1024（默认）/768/512/256；建议 1024（通用场景推荐），Phase 2 需求定稿。
+- `summary_segment.embedding` 用 pgvector `vector(1024)`（若维度最终调整则同步改）；云端 PostgreSQL 需启用 pgvector 扩展（需求/计划阶段确认 RDS 支持与启用方式）。
 
 ### 更新与删除策略
 
@@ -293,7 +296,7 @@ Phase 4  历史数据回填 + 删除/重总结级联治理
 
 1. **删除/重总结的级联语义**：COS 截图文件是否随记录删除（保留可作引用存档，删除省成本）——Phase 4 定。
 2. **Q&A 服务用户与访问方式**：公开互联网？登录/限流？规模预期？——先按无鉴权设计，后续如公开运营再评估（触碰 auth 保护区域时需 owner doc + 测试）。
-3. **Embedding 模型选型**：DashScope text-embedding-v3 vs 腾讯云 embedding——Phase 2 前定。
+3. ~~**Embedding 模型选型**~~（已解决 2026-09-01：DashScope `qwen3.7-text-embedding`，维度建议 1024，Phase 2 需求定稿）。
 4. **Python 侧（vision proxy）增强范围**：基址配置化 / 流式 / 参数透传——Phase 3 需求阶段评估。
 5. **照片压缩参数**：尺寸/质量目标——Phase 3 需求阶段细化。
 6. **照片隐私策略**：已确认后置。
