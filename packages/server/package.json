@@ -12,6 +12,8 @@
     "start:vision-proxy": "node ../../scripts/start-vision-proxy.mjs",
     "start:prod": "node --env-file=.env dist/main",
     "migrate:sqlite-to-pg": "node --env-file=.env scripts/migrate-sqlite-to-postgres.mjs",
+    "prisma:emit": "prisma contract emit",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -21,16 +23,19 @@
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
+    "@prisma/orm-postgres": "8.0.0-rc.8",
     "cos-nodejs-sdk-v5": "^3.0.0",
     "lodash": "^4.18.1",
     "nodemailer": "^7.0.5",
     "pg": "^8.16.0",
     "reflect-metadata": "^0.2.2",
     "rotating-file-stream": "^3.2.9",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "temporal-polyfill": "1.0.4"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
+    "@prisma/cli-engine": "0.3.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/lodash": "^4.17.24",
@@ -38,6 +43,8 @@
     "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.15.0",
     "better-sqlite3": "^12.10.0",
-    "typescript": "^5.7.0"
+    "prisma": "8.0.0-rc.12",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.8"
   }
 }

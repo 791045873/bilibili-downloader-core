@@ -1,0 +1,137 @@
+// use prisma-next
+// Contract inferred from the live database schema. Edit as needed, then run `prisma contract emit`.
+
+model AiPrompt {
+  id        BigInt      @id(map: "ai_prompt_pkey") @default(autoincrement())
+  name      String
+  content   String
+  isSystem  Int?        @default(0) @map("is_system")
+  isDefault Int?        @default(0) @map("is_default")
+  createdAt Timestamptz @map("created_at")
+  updatedAt Timestamptz @map("updated_at")
+
+  @@map("ai_prompt")
+}
+
+model AiPromptCreator {
+  mid      BigInt @id(map: "ai_prompt_creator_pkey")
+  promptId BigInt @map("prompt_id")
+
+  @@map("ai_prompt_creator")
+}
+
+model AiSummaryTask {
+  id              BigInt       @id(map: "ai_summary_task_pkey") @default(autoincrement())
+  bvid            String
+  cid             BigInt
+  title           String?
+  sourceTaskId    BigInt?      @map("source_task_id")
+  promptId        Int?         @map("prompt_id")
+  status          String       @default("pending")
+  summaryOutput   String?      @map("summary_output")
+  errorMessage    String?      @map("error_message")
+  executionTiming String?      @map("execution_timing")
+  rawResponse     String?      @map("raw_response")
+  modelName       String?      @map("model_name")
+  createdAt       Timestamptz  @map("created_at")
+  updatedAt       Timestamptz  @map("updated_at")
+  lastTriggeredAt Timestamptz? @map("last_triggered_at")
+  lastCompletedAt Timestamptz? @map("last_completed_at")
+  knowledgeStatus String?      @map("knowledge_status")
+  knowledgeError  String?      @map("knowledge_error")
+
+  @@unique([bvid, cid], map: "ai_summary_task_bvid_cid_key")
+  @@index([updatedAt], map: "idx_ai_summary_task_updated_at")
+  @@map("ai_summary_task")
+}
+
+model Task {
+  id               BigInt            @id(map: "task_pkey") @default(autoincrement())
+  bvid             String?
+  cid              BigInt?
+  title            String?
+  quality          Int?
+  codec            String?
+  fileNameTemplate String?
+  outputPath       String?
+  subtitleLang     String?           @map("subtitle_lang")
+  autoSummary      Int?              @default(0) @map("auto_summary")
+  summaryStatus    String?           @default("none") @map("summary_status")
+  summaryOutput    String?           @map("summary_output")
+  promptId         Int?              @map("prompt_id")
+  status           String            @default("created")
+  progress         Float?            @default(0)
+  speed            String?
+  outputFile       String?
+  fileSize         BigInt?
+  errorCode        String?
+  errorMessage     String?
+  durationMs       BigInt?
+  createdAt        Timestamptz
+  updatedAt        Timestamptz
+  completedAt      Timestamptz?
+  analysisSubTasks AnalysisSubTask[]
+
+  @@index([bvid, cid], map: "idx_task_bvid_cid")
+  @@index([createdAt], map: "idx_task_created")
+  @@index([status], map: "idx_task_status")
+  @@map("task")
+}
+
+model AnalysisSubTask {
+  id           BigInt       @id(map: "analysis_sub_task_pkey") @default(autoincrement())
+  taskId       BigInt       @map("task_id")
+  bvid         String?
+  cid          BigInt?
+  quality      Int?
+  status       String       @default("created")
+  outputFile   String?      @map("output_file")
+  errorMessage String?      @map("error_message")
+  createdAt    Timestamptz  @map("created_at")
+  completedAt  Timestamptz? @map("completed_at")
+  task         Task         @relation(fields: [taskId], references: [id], map: "analysis_sub_task_task_id_fkey")
+
+  @@index([bvid, cid, quality], map: "idx_analysis_sub_task_active", where: "(status <> 'failed'::text)", unique: true)
+  @@index([taskId], map: "idx_analysis_sub_task_task_id")
+  @@map("analysis_sub_task")
+}
+
+model AppSettings {
+  key   String  @id(map: "app_settings_pkey")
+  value String?
+
+  @@map("app_settings")
+}
+
+model Summary {
+  id              BigInt           @id(map: "summary_pkey") @default(autoincrement())
+  bvid            String
+  cid             BigInt
+  videoTitle      String           @map("video_title")
+  videoUrl        String?          @map("video_url")
+  modelName       String?          @map("model_name")
+  rawResponse     Jsonb            @map("raw_response")
+  createdAt       Timestamptz      @default(now()) @map("created_at")
+  updatedAt       Timestamptz      @default(now()) @map("updated_at")
+  summarySegments SummarySegment[]
+
+  @@unique([bvid, cid], map: "summary_bvid_cid_key")
+  @@map("summary")
+}
+
+model SummarySegment {
+  id               BigInt      @id(map: "summary_segment_pkey") @default(autoincrement())
+  summaryId        BigInt      @map("summary_id")
+  seq              Int
+  title            String
+  content          String
+  timestampSeconds Int?        @map("timestamp_seconds")
+  frameDescription String?     @map("frame_description")
+  screenshotUrl    String?     @map("screenshot_url")
+  createdAt        Timestamptz @default(now()) @map("created_at")
+  summary          Summary     @relation(fields: [summaryId], references: [id], onDelete: Cascade, map: "summary_segment_summary_id_fkey")
+
+  @@unique([summaryId, seq], map: "summary_segment_summary_id_seq_key")
+  @@index([summaryId], map: "idx_summary_segment_summary_id")
+  @@map("summary_segment")
+}
