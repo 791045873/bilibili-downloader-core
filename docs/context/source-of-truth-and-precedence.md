@@ -50,7 +50,7 @@ Rule:
 
 Primary source:
 
-- the project's database model files (PostgreSQL schema owned by `packages/server/src/database/database.service.ts`, applied via `initSchema` on boot; `DATABASE_URL` connection)
+- the project's database contract files (`packages/server/src/prisma/contract.prisma` + emitted `contract.json`/`contract.d.ts`, owned by Prisma 8; schema changes via contract → emit → migration plan → db migrate; `DATABASE_URL` connection)
 
 Rule:
 

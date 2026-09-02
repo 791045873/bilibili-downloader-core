@@ -1,7 +1,7 @@
 # Plan：Prisma ORM 渐进式改造总 plan（Master Plan）
 
 > 日期：2026-09-01
-> 状态：`in progress`（分阶段执行；各阶段独立 plan 见 §5）
+> 状态：`closed`（2026-09-02 P0–P4 全部完成并闭合；各阶段独立 plan 见 §5）
 > 需求：`docs/requirements/2026-09-01-prisma-orm-introduction.md`
 > 讨论与决策记录：`docs/discussions/2026-09-01-prisma-orm-introduction.md`
 > Audit: 本 plan 经独立 subagent 审计并修订通过，见 `docs/audits/2026-09-01-plan-audit-prisma-introduction-master-plan.md`；各阶段子 plan 启动前需另行独立审计（本 plan 属高风险，不可用 cold-replay 替代）
@@ -56,7 +56,7 @@
 | P1 基础设施 | Prisma 8 依赖、`prisma.config.ts`、schema/contract、client 生成接入 build、NestJS `PrismaService` 注册（保留 `connectWithRetry` 语义或显式替代）；决策并记录连接策略与 pg 类型解析器影响；零行为变更 | `docs/plans/<date>-prisma-p1-infrastructure-plan.md` | pending |
 | P2 按域迁移 | 每域一档：a) ai_prompt + ai_prompt_creator + app_settings；b) summary + summary_segment（`updateSummaryKnowledgeStatus` 写 ai_summary_task 的路径保持旧栈直至 P2c；携带 `upsertSummaryKnowledge` 显式事务等价验证）；c) ai_summary_task（含启动对账路径）；d) task + analysis_sub_task（最大，最后；含 progressBuckets 与调度抢占语义）。方法签名作门面，raw SQL 仅用于不可表达项 | 每子域独立 plan（P2a–P2d） | pending |
 | P3 schema 所有权切换 | baseline migration、`initSchema()` DDL 退出、迁移 SQL 归档、播种改 seed、存量库演练；核对 partial unique index `idx_analysis_sub_task_active` 的 migrate 输出；决定 `migrate-sqlite-to-postgres.mjs` 归宿 | `docs/plans/<date>-prisma-p3-schema-ownership-plan.md` | pending |
-| P4 收尾与部署（ask-first） | 移除 `pg`/`@types/pg`（及 sqlite 脚本依赖 `better-sqlite3`/`@types/better-sqlite3` 的处置）、Dockerfile/compose 适配（显式处理 `--ignore-scripts` 与 prisma 产物 COPY）、文档更新（codebase-map、架构、app-overview） | `docs/plans/<date>-prisma-p4-cleanup-deployment-plan.md` | pending |
+| P4 收尾与部署（ask-first） | ~~移除 `pg`/`@types/pg`~~（**P4 实施时修正：`pg`/`@types/pg` 保留**——连接池/启动哨兵/守卫型 claim 仍依赖）、sqlite 脚本依赖 `better-sqlite3`/`@types/better-sqlite3` 移除 + 脚本归档、Dockerfile/compose 适配（显式处理 `--ignore-scripts` 与 prisma 产物 COPY，启动接线 `db init`）、文档更新（codebase-map、架构、app-overview） | `docs/plans/2026-09-02-prisma-p4-cleanup-deployment-plan.md` | 完成 |
 
 ## 6. 阶段闭合判据（每阶段）
 
@@ -82,6 +82,6 @@
 - [x] P2a–P2d 完成（P2a/P2b/P2c/P2d 全部闭合：`docs/testing/2026/09-0{1,2}-prisma-p2{a,b,c,d}-domain-migration-testing.md`；数据访问全量走 Prisma，raw SQL 仅剩 2 个守卫型 claim）
 - [x] P3 子 plan 编写并审计（`docs/audits/2026-09-02-plan-audit-prisma-p3-schema-ownership-plan.md`）+ 用户批准演练结果（2026-09-02）
 - [x] P3 完成（`docs/testing/2026/09-02-prisma-p3-schema-ownership-testing.md`；subagent 闭合审计——高风险定级）
-- [ ] P4 子 plan 编写并审计 + 用户批准（ask-first）
-- [ ] P4 完成
-- [ ] 总 plan 闭合审计
+- [x] P4 子 plan 编写并审计 + 用户批准（ask-first，2026-09-02）
+- [x] P4 完成（2026-09-02）
+- [x] 总 plan 闭合（2026-09-02）

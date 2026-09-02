@@ -7,6 +7,8 @@
 
 把 server 的数据访问层从单一 `DatabaseService` 手写 SQL（`pg` 连接池 + `initSchema()` 启动建表）渐进式迁移到 Prisma 8，最终由 Prisma 管理 schema 与迁移，`pg` 直连完全移除。全程不改变任何 API 对外行为与数据库表/列命名。
 
+> **偏差注记（2026-09-02 P4 闭合时修订）**：Goal 中"`pg` 直连完全移除"未按字面达成——最终架构保留 `pg` 连接池，用于连接管理（connectWithRetry）、启动哨兵与两个守卫型原子 claim（`claimAiSummaryTask`/`claimNextCreatedTask`，其 `ON CONFLICT ... WHERE` 守卫语义无 Prisma 等价表达，见 `docs/plans/2026-09-01-prisma-introduction-master-plan.md` §5 与 P2/P4 plan）。除上述例外，数据访问已全量走 Prisma。
+
 ## 已确认决策
 
 1. 采用**方案 B 渐进共存**：Prisma 与现有 `pg` 同库并存，按域逐个切换，最后切换 schema 所有权。
@@ -35,7 +37,7 @@
 ## Acceptance Criteria
 
 1. `pnpm typecheck`、`pnpm build` 通过；server 正常启动并完成既有全部功能（下载、分析、总结、知识发布、设置、提示词管理）。
-2. 全部数据访问经 Prisma client（raw SQL 例外仅限 §In Scope 列出的不可表达项），`pg` 直连与 `@types/pg` 从 server 依赖移除。
+2. ~~全部数据访问经 Prisma client（raw SQL 例外仅限 §In Scope 列出的不可表达项），`pg` 直连与 `@types/pg` 从 server 依赖移除~~（**按偏差注记修订**：数据访问全量经 Prisma，raw SQL 例外为守卫型 claim ×2 与启动哨兵；`pg`/`@types/pg` 作为连接层保留）。
 3. schema 变更由 Prisma Migrate 管理；对一个"已按旧 `initSchema()` 建库"的存量库执行新启动流程，不产生破坏性 DDL、不丢数据、幂等。
 4. 每个迁移域的行为测试在切换前后均通过（同一套测试）；数据删除路径的测试覆盖存在并随需求提交。
 5. 对外 API 响应 JSON 与改造前逐字段一致（含时间戳字符串格式）。

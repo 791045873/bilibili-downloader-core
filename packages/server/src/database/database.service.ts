@@ -541,17 +541,6 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     return merged;
   }
 
-  /** 取队首 "created" 任务（调度器抢占用；当前无消费方，待 P4 处置） */
-  async findNextCreatedTask(): Promise<TaskRecord | undefined> {
-    const row = await this.prismaDb.orm.public.Task
-      .where({ status: "created" })
-      .orderBy((m) => m.createdAt.asc())
-      .first();
-    if (!row) return undefined;
-    const [merged] = await this.mergeSummaryMirror([this.mapTaskRow(row)]);
-    return merged;
-  }
-
   /**
    * 原子抢占队首 created 任务（created → downloading）。
    * 单语句守卫更新，避免异步化后两步操作产生的并发双抢。

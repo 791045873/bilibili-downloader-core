@@ -44,4 +44,11 @@ prisma db verify          # ok:true："Database marker and schema match contract
 | 分歧修复 | `prisma db update --db <url>` | additive 操作修复缺列（drill 步骤 4） |
 | schema 演进（Phase 2 等） | 改 contract → `prisma contract emit` → `prisma migration plan --name <slug>` → `prisma db migrate` | drill 步骤 6 PoC 闭环 |
 
-`initSchema()` 已于 P3 移除；其一次性迁移 SQL 归档于 `scripts/one-off-migrations/`（勿重复执行）。运行时容器无 CLI：启动哨兵（表+关键列）做快检，`db verify` 做权威校验（部署接线见 P4）。
+`initSchema()` 已于 P3 移除；其一次性迁移 SQL 归档于 `scripts/one-off-migrations/`（勿重复执行）。
+
+## 部署接线（P4 起）
+
+- server 镜像内含 `prisma` CLI（prod 依赖）、`/app/prisma.config.ts` 与 `/app/src/prisma/contract.*`。
+- 容器启动命令：`prisma db init --verbose` → `node dist/main.js`。`db init` 覆盖三种状态：fresh 建表+签名 / 未签名存量库（schema 匹配）零操作采纳+签名 / 已签名库零操作（均已容器实测，见 `docs/testing/2026/09-02-prisma-p4-cleanup-deployment-testing.md`）。
+- schema 演进：改 contract → `prisma contract emit` → `migration plan --name <slug>` → `db migrate`，随镜像发布。
+- 注意：`prisma:seed` 依赖先 build（脚本引 `dist/`）；运行时容器无 vite/tsc，无影响。

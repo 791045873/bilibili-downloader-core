@@ -12,7 +12,7 @@ Track the stable feature map for the application.
 | 资源解析（B站 API） | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | 视频详情、播放流信息获取 |
 | FFmpeg 音视频合并 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | 分离下载后合并为 MP4 |
 | Web 前端 | done | `docs/design/app-overview.md` | `docs/requirements/mvp.md` | Vue 3 SPA，视频输入 + 下载列表 + 设置 |
-| Server 后端 API | done | `docs/design/app-overview.md` | `docs/requirements/mvp.md` | NestJS + SQLite，任务管理 |
+| Server 后端 API | done | `docs/design/app-overview.md` | `docs/requirements/mvp.md` | NestJS + PostgreSQL（Prisma 8），任务管理 |
 | Docker 容器化部署 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | compose 双容器（server + vision-proxy），NAS 挂载共享 volume |
 | HTTP 内置下载器 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | 支持重试和基础进度 |
 | 下载目录配置 | done | `docs/design/app-overview.md` | `docs/requirements/mvp.md` | 可配置输出目录 |

@@ -30,23 +30,25 @@ packages/
 ## Backend Stack
 
 - NestJS + TypeScript
-- SQLite（better-sqlite3）
+- PostgreSQL 15+（云端 RDS，当前 17.0；Prisma 8 ORM 管理 schema 与数据访问，见 Data Access Approach）
 - 可选 Python 薄代理：仅用于 DashScope 视觉模型读取本地图片路径，Node server 保持业务编排主体
 
 ## State Management Approach
 
 - 前端：Zustand（设置/登录/下载队列，持久化到 localStorage）+ TanStack Query（列表/详情等服务端数据）
-- 后端：NestJS service 层管理业务状态，SQLite 持久化
+- 后端：NestJS service 层管理业务状态，PostgreSQL 持久化
 
 ## Data Access Approach
 
-- SQLite 通过 server 包管理，使用 better-sqlite3
+- 数据访问层：`packages/server/src/database/database.service.ts` 门面，内部全量走 Prisma 8 client（`@prisma/orm-postgres`，contract 在 `src/prisma/contract.*`，`pnpm --filter @bilibili-downloader/server prisma:emit` 生成）；例外仅两个守卫型原子 claim（`claimAiSummaryTask`/`claimNextCreatedTask`）保留 raw SQL + `pg` Pool
+- Schema 所有权：Prisma contract/migration（2026-09-02 P3 起，`initSchema()` 已移除）。`db init` fresh / `db sign` 采纳存量 / `db migrate` 演进；权威校验 `db verify`，启动哨兵做表+关键列快检
+- 数据层行为测试：`packages/server/tests/`（vitest，`TEST_DATABASE_URL`，globalSetup 自动 `db init`）
 - 下载任务状态通过数据库记录
 - 下载文件通过文件系统管理（输出目录 + 临时目录）
 
 ## Testing Stack
 
-- 无（待建立）
+- 数据层行为测试：vitest + 真实 PostgreSQL（见上）；其余包暂无
 
 ## Build And Package Tools
 
@@ -61,6 +63,7 @@ packages/
 - server 经 compose 默认网络的服务名 `vision-proxy:8765` 调用代理（`QWEN_VISION_PROXY_URL` 默认 `http://vision-proxy:8765/v1/chat/completions`，由 compose 注入，运行期可完全自定义）；vision-proxy 容器内监听 `0.0.0.0:8765` 实现跨容器可达，但不向宿主机发布端口。
 - 两容器共享同一宿主机目录挂载到 `/download`（默认 `${HOME:-$USERPROFILE}/Downloads/bilibili_download`，可用 `DOWNLOAD_HOST_PATH` 覆盖，Windows 宿主经 `USERPROFILE` 回退）；日志默认写入 `/download/logs`
 - NAS 用户通过挂载 volume 将容器内下载目录映射到宿主机；大模型密钥由前端设置页存 DB，Node 经 `Authorization` 头传给 vision-proxy 容器，不写入镜像、不经 compose env
+- **数据库 schema 引导（2026-09-02 P4 起）**：server 容器启动命令为 `prisma db init`（幂等）→ 应用主进程。`db init` 覆盖三种状态：fresh 空库建表+签名 / 未签名存量库（schema 匹配）零操作采纳+签名 / 已签名库零操作。镜像内含 `prisma` CLI（prod 依赖）、`prisma.config.ts` 与 `src/prisma/contract.*`；DATABASE_URL 由 compose 注入。schema 演进（如 Phase 2 向量化加列）走"改 contract → emit → migration plan → db migrate"，随后升级镜像即可。启动期 DB 瞬断由 compose `restart: unless-stopped` 退避重试兜底；应用内哨兵（表+关键列）为最后防线
 
 ## External Platforms
 

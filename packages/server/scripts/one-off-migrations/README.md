@@ -17,4 +17,4 @@
 
 ## 相关脚本
 
-- `scripts/migrate-sqlite-to-postgres.mjs`：2026-08 的一次性 SQLite→PG 搬迁工具，与 Prisma 迁移无关，保留作历史工具（其 `pg`/`better-sqlite3` 依赖归属在 P4 清理时评估）。
+- `migrate-sqlite-to-postgres.mjs`（本目录）：2026-08 的一次性 SQLite→PG 搬迁工具（依赖 `better-sqlite3` + `pg`，两者已于 P4 从依赖移除；如需再用临时 `pnpm add -D better-sqlite3`），与 Prisma 迁移无关，保留作历史工具。

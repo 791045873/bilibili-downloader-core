@@ -99,6 +99,8 @@ WORKDIR /app
 
 COPY --from=builder /app/runtime ./
 COPY --from=builder /app/packages/frontend/dist ./public
+COPY --from=builder /app/packages/server/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/packages/server/src/prisma/ ./src/prisma/
 
 RUN mkdir -p /download /download/logs
 
@@ -108,8 +110,8 @@ ENV PORT=3000 \
     LOG_DIR=/download/logs \
     MAX_CONCURRENT_DOWNLOADS=10
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || '3000') + '/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "/app/dist/main.js"]
+CMD ["sh", "-c", "node node_modules/prisma/dist/prisma.js db init --verbose && exec node --env-file-if-exists=.env /app/dist/main.js"]

@@ -11,3 +11,5 @@ build/
 
 summaryDir/
 test_assets/
+# Prisma 本机迁移图状态（Phase 2 迁移 authoring 时再决定提交内容）
+packages/server/migrations/
