@@ -78,8 +78,8 @@
 - [x] P0 完成（2026-09-01，闭合证据见 `docs/testing/2026/09-01-prisma-p0-baseline-testing.md`；cold-replay 闭合）
 - [x] P1 子 plan 编写并审计（`docs/audits/2026-09-01-plan-audit-prisma-p1-infrastructure-plan.md`）
 - [x] P1 完成（2026-09-01，闭合证据见 `docs/testing/2026/09-01-prisma-p1-infrastructure-testing.md`；关键输入：int8→BigInt、timestamptz→Temporal.Instant、Temporal polyfill 必需）
-- [x] P2a–P2d 子 plan 各自编写并审计（P2a/P2b/P2c 已审计通过：`docs/audits/2026-09-01-plan-audit-prisma-p2{a,b,c}-domain-migration-plan.md`；P2d 待编写）
-- [ ] P2a–P2d 完成（P2a/P2b/P2c 已完成闭合：`docs/testing/2026/09-01-prisma-p2a-domain-migration-testing.md`、`docs/testing/2026/09-01-prisma-p2b-domain-migration-testing.md`、`docs/testing/2026/09-02-prisma-p2c-domain-migration-testing.md`）
+- [x] P2a–P2d 子 plan 各自编写并审计（`docs/audits/2026-09-01-plan-audit-prisma-p2{a,b,c}-domain-migration-plan.md`、`docs/audits/2026-09-02-plan-audit-prisma-p2d-domain-migration-plan.md`）
+- [x] P2a–P2d 完成（P2a/P2b/P2c/P2d 全部闭合：`docs/testing/2026/09-0{1,2}-prisma-p2{a,b,c,d}-domain-migration-testing.md`；数据访问全量走 Prisma，raw SQL 仅剩 2 个守卫型 claim）
 - [ ] P3 子 plan 编写并审计 + 用户批准演练结果
 - [ ] P3 完成
 - [ ] P4 子 plan 编写并审计 + 用户批准（ask-first）

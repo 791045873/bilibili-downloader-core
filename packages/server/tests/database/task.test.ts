@@ -148,6 +148,12 @@ describe("task queries", () => {
     await new Promise((r) => setTimeout(r, 10));
     const latest = await db.insertTask({ status: "created", bvid: "BV1", cid: 1 } as TaskRecord);
     await db.insertTask({ status: "created", bvid: "BV2", cid: 2 } as TaskRecord);
+    await db.upsertAiSummaryTask({
+      bvid: "BV2",
+      cid: 2,
+      status: "completed",
+      summaryOutput: "mirror-out",
+    });
 
     const rows = await db.findTasksByBvidsAndCids([
       { bvid: "BV1", cid: 1 },
@@ -157,6 +163,13 @@ describe("task queries", () => {
     expect(rows).toHaveLength(2);
     const bv1 = rows.find((r) => r.bvid === "BV1")!;
     expect(bv1.id).toBe(latest);
+    expect(bv1.summaryStatus).toBeNull();
+    const bv2 = rows.find((r) => r.bvid === "BV2")!;
+    expect(bv2.summaryStatus).toBe("completed");
+  });
+
+  it("findTasksByBvidsAndCids 空 pairs 提前返回空数组", async () => {
+    expect(await db.findTasksByBvidsAndCids([])).toEqual([]);
   });
 
   it("findLatestTaskByBvidAndCid 与 findCompletedTaskByBvidAndCid", async () => {

@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { Pool, types as pgTypes } from "pg";
 import { Temporal } from "temporal-polyfill";
-import { and } from "@prisma/orm-postgres/orm-client";
+import { and, or } from "@prisma/orm-postgres/orm-client";
 import type { ModelAccessor } from "@prisma/orm-postgres/orm-client";
 import type { Contract } from "../prisma/contract.d";
 import { createLogMessage } from "../logging/server-log.util.js";
@@ -427,100 +427,35 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
 
   // ==================== CRUD ====================
 
-  private readonly taskSelectSql = `
-    SELECT
-      t.id,
-      t.bvid,
-      t.cid,
-      t.title,
-      t.quality,
-      t.codec,
-      t."fileNameTemplate",
-      t."outputPath",
-      t.subtitle_lang AS "subtitleLang",
-      t.auto_summary AS "autoSummary",
-      t.prompt_id AS "promptId",
-      ast.status AS "summaryStatus",
-      ast.summary_output AS "summaryOutput",
-      t.status,
-      t.progress,
-      t.speed,
-      t."outputFile",
-      t."fileSize",
-      t."errorCode",
-      t."errorMessage",
-      t."durationMs",
-      t."createdAt",
-      t."updatedAt",
-      t."completedAt"
-    FROM task t
-    LEFT JOIN ai_summary_task ast
-      ON ast.bvid = t.bvid AND ast.cid = t.cid
-  `;
-
-  private readonly aiSummaryTaskSelectSql = `
-    SELECT
-      id,
-      bvid,
-      cid,
-      title,
-      source_task_id AS "sourceTaskId",
-      prompt_id AS "promptId",
-      status,
-      summary_output AS "summaryOutput",
-      error_message AS "errorMessage",
-      execution_timing AS "executionTiming",
-      raw_response AS "rawResponse",
-      model_name AS "modelName",
-      knowledge_status AS "knowledgeStatus",
-      knowledge_error AS "knowledgeError",
-      created_at AS "createdAt",
-      updated_at AS "updatedAt",
-      last_triggered_at AS "lastTriggeredAt",
-      last_completed_at AS "lastCompletedAt"
-    FROM ai_summary_task
-  `;
-
   /** 插入新任务，返回自增 id */
   async insertTask(record: TaskRecord): Promise<number> {
-    const now = new Date().toISOString();
-    const { rows } = await this.pool.query(
-      `INSERT INTO task (bvid, cid, title, quality, codec, "fileNameTemplate", "outputPath", subtitle_lang, status, progress, speed,
-            auto_summary, summary_status, summary_output, prompt_id,
-            "outputFile", "fileSize", "errorCode", "errorMessage", "durationMs",
-            "createdAt", "updatedAt", "completedAt")
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-              $12, $13, $14, $15,
-              $16, $17, $18, $19, $20,
-              $21, $22, $23)
-      RETURNING id`,
-      [
-        record.bvid ?? null,
-        record.cid ?? null,
-        record.title ?? null,
-        record.quality ?? null,
-        record.codec ?? null,
-        record.fileNameTemplate ?? null,
-        record.outputPath ?? null,
-        record.subtitleLang ?? null,
-        record.status ?? "created",
-        record.progress ?? 0,
-        record.speed ?? null,
-        record.autoSummary ?? 0,
-        record.summaryStatus ?? "none",
-        record.summaryOutput ?? null,
-        record.promptId ?? null,
-        record.outputFile ?? null,
-        record.fileSize ?? null,
-        record.errorCode ?? null,
-        record.errorMessage ?? null,
-        record.durationMs ?? null,
-        record.createdAt ?? now,
-        now,
-        record.completedAt ?? null,
-      ],
-    );
-    const id = Number(rows[0].id);
+    const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+    const created = await this.prismaDb.orm.public.Task.create({
+      bvid: record.bvid ?? null,
+      cid: record.cid != null ? BigInt(record.cid) : null,
+      title: record.title ?? null,
+      quality: record.quality ?? null,
+      codec: record.codec ?? null,
+      fileNameTemplate: record.fileNameTemplate ?? null,
+      outputPath: record.outputPath ?? null,
+      subtitleLang: record.subtitleLang ?? null,
+      status: record.status ?? "created",
+      progress: record.progress ?? 0,
+      speed: record.speed ?? null,
+      autoSummary: record.autoSummary ?? 0,
+      summaryStatus: record.summaryStatus ?? "none",
+      summaryOutput: record.summaryOutput ?? null,
+      promptId: record.promptId ?? null,
+      outputFile: record.outputFile ?? null,
+      fileSize: record.fileSize != null ? BigInt(record.fileSize) : null,
+      errorCode: record.errorCode ?? null,
+      errorMessage: record.errorMessage ?? null,
+      durationMs: record.durationMs != null ? BigInt(record.durationMs) : null,
+      createdAt: toInstant(record.createdAt ?? now)!,
+      updatedAt: now,
+      completedAt: toInstant(record.completedAt),
+    });
+    const id = Number(created.id);
     this.logger.log(
       createLogMessage("Persisted download task", {
         taskId: id,
@@ -580,30 +515,22 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     },
   ): Promise<void> {
     const previous = await this.getTaskById(id);
-    const now = new Date().toISOString();
-    const parts: string[] = [];
-    const values: unknown[] = [];
-    const add = (clause: string, value: unknown) => {
-      parts.push(clause.replace("?", `$${values.length + 1}`));
-      values.push(value);
-    };
-    add("status = ?", fields.status);
-    add(`"updatedAt" = ?`, now);
-    if (fields.autoSummary !== undefined) add("auto_summary = ?", fields.autoSummary);
-    if (fields.promptId !== undefined) add("prompt_id = ?", fields.promptId);
-    if (fields.outputFile !== undefined) add(`"outputFile" = ?`, fields.outputFile);
-    if (fields.fileSize !== undefined) add(`"fileSize" = ?`, fields.fileSize);
-    if (fields.errorCode !== undefined) add(`"errorCode" = ?`, fields.errorCode);
-    if (fields.errorMessage !== undefined) add(`"errorMessage" = ?`, fields.errorMessage);
-    if (fields.durationMs !== undefined) add(`"durationMs" = ?`, fields.durationMs);
-    if (fields.progress !== undefined) add("progress = ?", fields.progress);
-    if (fields.status === "success" || fields.status === "failed") {
-      add(`"completedAt" = ?`, now);
-    }
-    await this.pool.query(
-      `UPDATE task SET ${parts.join(", ")} WHERE id = $${values.length + 1}`,
-      [...values, id],
-    );
+    const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+    await this.prismaDb.orm.public.Task.where({ id: BigInt(id) }).update({
+      status: fields.status,
+      updatedAt: now,
+      ...(fields.autoSummary !== undefined ? { autoSummary: fields.autoSummary } : {}),
+      ...(fields.promptId !== undefined ? { promptId: fields.promptId } : {}),
+      ...(fields.outputFile !== undefined ? { outputFile: fields.outputFile } : {}),
+      ...(fields.fileSize !== undefined ? { fileSize: BigInt(fields.fileSize) } : {}),
+      ...(fields.errorCode !== undefined ? { errorCode: fields.errorCode } : {}),
+      ...(fields.errorMessage !== undefined ? { errorMessage: fields.errorMessage } : {}),
+      ...(fields.durationMs !== undefined ? { durationMs: BigInt(fields.durationMs) } : {}),
+      ...(fields.progress !== undefined ? { progress: fields.progress } : {}),
+      ...(fields.status === "success" || fields.status === "failed"
+        ? { completedAt: now }
+        : {}),
+    });
 
     const statusChanged = previous?.status !== fields.status;
     const shouldLog =
@@ -646,12 +573,116 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
+  private mapTaskRow(row: {
+    id: bigint;
+    bvid: string | null;
+    cid: bigint | null;
+    title: string | null;
+    quality: number | null;
+    codec: string | null;
+    fileNameTemplate: string | null;
+    outputPath: string | null;
+    subtitleLang: string | null;
+    autoSummary: number | null;
+    promptId: number | null;
+    status: string;
+    progress: number | null;
+    speed: string | null;
+    outputFile: string | null;
+    fileSize: bigint | null;
+    errorCode: string | null;
+    errorMessage: string | null;
+    durationMs: bigint | null;
+    createdAt: unknown;
+    updatedAt: unknown;
+    completedAt: unknown;
+  }): TaskRecord {
+    return {
+      id: Number(row.id),
+      bvid: row.bvid,
+      cid: row.cid == null ? null : Number(row.cid),
+      title: row.title,
+      quality: row.quality,
+      codec: row.codec,
+      fileNameTemplate: row.fileNameTemplate,
+      outputPath: row.outputPath,
+      subtitleLang: row.subtitleLang,
+      autoSummary: row.autoSummary,
+      promptId: row.promptId,
+      status: row.status,
+      progress: row.progress,
+      speed: row.speed,
+      outputFile: row.outputFile,
+      fileSize: row.fileSize == null ? null : Number(row.fileSize),
+      errorCode: row.errorCode,
+      errorMessage: row.errorMessage,
+      durationMs: row.durationMs == null ? null : Number(row.durationMs),
+      createdAt: toIsoString(row.createdAt),
+      updatedAt: toIsoString(row.updatedAt),
+      completedAt: toIsoString(row.completedAt),
+      summaryStatus: null,
+      summaryOutput: null,
+    } as unknown as TaskRecord;
+  }
+
+  private async mergeSummaryMirror(
+    rows: TaskRecord[],
+  ): Promise<TaskRecord[]> {
+    const keys = new Set<string>();
+    for (const row of rows) {
+      if (row.bvid != null && row.cid != null) {
+        keys.add(`${row.bvid}|${row.cid}`);
+      }
+    }
+    if (keys.size > 0) {
+      const mirrors = await this.prismaDb.orm.public.AiSummaryTask
+        .where((m) =>
+          or(
+            ...[...keys].map((key) => {
+              const [bvid, cid] = key.split("|");
+              return and(m.bvid.eq(bvid!), m.cid.eq(BigInt(Number(cid))));
+            }),
+          ),
+        )
+        .all();
+      const byKey = new Map<string, { status: string; summaryOutput: string | null }>(
+        mirrors.map((m) => [`${m.bvid}|${Number(m.cid)}`, { status: m.status, summaryOutput: m.summaryOutput }]),
+      );
+      for (const row of rows) {
+        if (row.bvid != null && row.cid != null) {
+          const mirror = byKey.get(`${row.bvid}|${row.cid}`);
+          if (mirror) {
+            row.summaryStatus = mirror.status;
+            row.summaryOutput = mirror.summaryOutput as unknown as string | undefined;
+          }
+        }
+      }
+    }
+    return rows;
+  }
+
+  private expandTaskStatusGroup(statusGroups: TaskStatusGroup[]): string[] {
+    const expanded = new Set<string>();
+    for (const group of statusGroups) {
+      if (group === "all") {
+        continue;
+      }
+      if (group === "active") {
+        expanded.add("created");
+        expanded.add("downloading");
+      } else {
+        expanded.add(group);
+      }
+    }
+    return [...expanded];
+  }
+
   /** 获取所有任务 */
   async getTasks(): Promise<TaskRecord[]> {
-    const { rows } = await this.pool.query(
-      `${this.taskSelectSql} ORDER BY t."createdAt" DESC`,
-    );
-    return rows as TaskRecord[];
+    const rows = await this.prismaDb.orm.public.Task
+      .orderBy((m) => m.createdAt.desc())
+      .all();
+    return this.mergeSummaryMirror(rows.map((row) => this.mapTaskRow(row)));
   }
 
   async listTasksPaginated(params: {
@@ -661,44 +692,57 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   }): Promise<PaginatedTaskResult> {
     const { page, pageSize, statusGroup } = params;
     const offset = (page - 1) * pageSize;
-    const { whereClause, queryParams } = this.buildTaskStatusFilter(statusGroup);
-    const totalRow = await this.pool.query(
-      `SELECT COUNT(*) AS total FROM task t ${whereClause}`,
-      queryParams,
-    );
-    const total = Number(totalRow.rows[0].total);
-    const items = await this.pool.query(
-      `${this.taskSelectSql}
-       ${whereClause}
-       ORDER BY t."createdAt" DESC
-       LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`,
-      [...queryParams, pageSize, offset],
+    const statuses = this.expandTaskStatusGroup(statusGroup);
+    const counted = await this.prismaDb.orm.public.Task
+      .where((m) =>
+        statuses.length > 0
+          ? m.status.in(statuses)
+          : (m.id.isNotNull() as never),
+      )
+      .aggregate((f) => ({ count: f.count() }));
+    const total = counted.count;
+    const items = await this.prismaDb.orm.public.Task
+      .where((m) =>
+        statuses.length > 0
+          ? m.status.in(statuses)
+          : (m.id.isNotNull() as never),
+      )
+      .orderBy((m) => m.createdAt.desc())
+      .limit(pageSize)
+      .offset(offset)
+      .all();
+    const mapped = await this.mergeSummaryMirror(
+      items.map((row) => this.mapTaskRow(row)),
     );
 
     return {
-      items: items.rows as TaskRecord[],
+      items: mapped,
       page,
       pageSize,
       total,
-      hasMore: offset + items.rows.length < total,
+      hasMore: offset + items.length < total,
     };
   }
 
   /** 获取单个任务 */
   async getTaskById(id: number): Promise<TaskRecord | undefined> {
-    const { rows } = await this.pool.query(
-      `${this.taskSelectSql} WHERE t.id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] as TaskRecord | undefined;
+    const row = await this.prismaDb.orm.public.Task
+      .where({ id: BigInt(id) })
+      .first();
+    if (!row) return undefined;
+    const [merged] = await this.mergeSummaryMirror([this.mapTaskRow(row)]);
+    return merged;
   }
 
-  /** 取队首 "created" 任务（调度器抢占用） */
+  /** 取队首 "created" 任务（调度器抢占用；当前无消费方，待 P4 处置） */
   async findNextCreatedTask(): Promise<TaskRecord | undefined> {
-    const { rows } = await this.pool.query(
-      `${this.taskSelectSql} WHERE t.status = 'created' ORDER BY t."createdAt" ASC LIMIT 1`,
-    );
-    return rows[0] as TaskRecord | undefined;
+    const row = await this.prismaDb.orm.public.Task
+      .where({ status: "created" })
+      .orderBy((m) => m.createdAt.asc())
+      .first();
+    if (!row) return undefined;
+    const [merged] = await this.mergeSummaryMirror([this.mapTaskRow(row)]);
+    return merged;
   }
 
   /**
@@ -732,10 +776,10 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
 
   /** 删除任务 */
   async deleteTask(id: number): Promise<void> {
-    await this.pool.query(`DELETE FROM analysis_sub_task WHERE task_id = $1`, [
-      id,
-    ]);
-    await this.pool.query(`DELETE FROM task WHERE id = $1`, [id]);
+    await this.prismaDb.orm.public.AnalysisSubTask
+      .where({ taskId: BigInt(id) })
+      .deleteAll();
+    await this.prismaDb.orm.public.Task.where({ id: BigInt(id) }).delete();
     this.progressBuckets.delete(id);
     this.logger.log(
       createLogMessage("Deleted task row from database", {
@@ -746,8 +790,12 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
 
   /** 清空所有任务 */
   async clearTasks(): Promise<void> {
-    await this.pool.query(`DELETE FROM analysis_sub_task`);
-    await this.pool.query(`DELETE FROM task`);
+    await this.prismaDb.orm.public.AnalysisSubTask
+      .where((m) => m.id.isNotNull())
+      .deleteAll();
+    await this.prismaDb.orm.public.Task
+      .where((m) => m.id.isNotNull())
+      .deleteAll();
     this.progressBuckets.clear();
     this.logger.log("Cleared task table from database");
   }
@@ -768,48 +816,38 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     >[]
   > {
     if (pairs.length === 0) return [];
-    const values: unknown[] = [];
-    const tuples = pairs.map((pair) => {
-      const index = values.length + 1;
-      values.push(pair.bvid, pair.cid);
-      return `($${index}, $${index + 1})`;
-    });
-    const { rows } = await this.pool.query(
-      `SELECT t.id, t.bvid, t.cid, t.status, t."createdAt", t.auto_summary AS "autoSummary",
-              ast.status AS "summaryStatus"
-       FROM task t
-       LEFT JOIN ai_summary_task ast ON ast.bvid = t.bvid AND ast.cid = t.cid
-       WHERE (t.bvid, t.cid) IN (${tuples.join(", ")})
-       ORDER BY t."createdAt" DESC`,
-      values,
+    const rows = await this.prismaDb.orm.public.Task
+      .where((m) =>
+        or(
+          ...pairs.map((pair) =>
+            and(m.bvid.eq(pair.bvid), m.cid.eq(BigInt(pair.cid))),
+          ),
+        ),
+      )
+      .orderBy((m) => m.createdAt.desc())
+      .all();
+    const merged = await this.mergeSummaryMirror(
+      rows.map((row) => this.mapTaskRow(row)),
     );
-    return (rows as Pick<
-      TaskRecord,
-      | "id"
-      | "bvid"
-      | "cid"
-      | "status"
-      | "createdAt"
-      | "autoSummary"
-      | "summaryStatus"
-    >[]).reduce(
-      (acc, row) => {
-        if (!acc.some((r) => r.bvid === row.bvid && r.cid === row.cid)) {
-          acc.push(row);
-        }
-        return acc;
-      },
-      [] as Pick<
-        TaskRecord,
-        | "id"
-        | "bvid"
-        | "cid"
-        | "status"
-        | "createdAt"
-        | "autoSummary"
-        | "summaryStatus"
-      >[],
-    );
+    return merged
+      .reduce(
+        (acc, row) => {
+          if (!acc.some((r) => r.bvid === row.bvid && r.cid === row.cid)) {
+            acc.push(row);
+          }
+          return acc;
+        },
+        [] as TaskRecord[],
+      )
+      .map((row) => ({
+        id: row.id,
+        bvid: row.bvid,
+        cid: row.cid,
+        status: row.status,
+        createdAt: row.createdAt,
+        autoSummary: row.autoSummary,
+        summaryStatus: row.summaryStatus,
+      }));
   }
 
   /** 按 bvid+cid 查询最新任务 */
@@ -817,14 +855,13 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     bvid: string,
     cid: number,
   ): Promise<TaskRecord | undefined> {
-    const { rows } = await this.pool.query(
-      `${this.taskSelectSql}
-       WHERE t.bvid = $1 AND t.cid = $2
-       ORDER BY t."createdAt" DESC
-       LIMIT 1`,
-      [bvid, cid],
-    );
-    return rows[0] as TaskRecord | undefined;
+    const row = await this.prismaDb.orm.public.Task
+      .where({ bvid, cid: BigInt(cid) })
+      .orderBy((m) => m.createdAt.desc())
+      .first();
+    if (!row) return undefined;
+    const [merged] = await this.mergeSummaryMirror([this.mapTaskRow(row)]);
+    return merged;
   }
 
   /** 查询某个视频分P最近完成下载任务（用于截图源本地回退） */
@@ -832,14 +869,13 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     bvid: string,
     cid: number,
   ): Promise<TaskRecord | undefined> {
-    const { rows } = await this.pool.query(
-      `${this.taskSelectSql}
-       WHERE t.bvid = $1 AND t.cid = $2 AND t.status = 'success'
-       ORDER BY t."createdAt" DESC
-       LIMIT 1`,
-      [bvid, cid],
-    );
-    return rows[0] as TaskRecord | undefined;
+    const row = await this.prismaDb.orm.public.Task
+      .where({ bvid, cid: BigInt(cid), status: "success" })
+      .orderBy((m) => m.createdAt.desc())
+      .first();
+    if (!row) return undefined;
+    const [merged] = await this.mergeSummaryMirror([this.mapTaskRow(row)]);
+    return merged;
   }
 
   // ==================== 应用设置（键值） ====================
@@ -873,27 +909,18 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   }
 
   async insertAnalysisSubTask(record: AnalysisSubTaskRecord): Promise<number> {
-    const { rows } = await this.pool.query(
-      `INSERT INTO analysis_sub_task (
-        task_id, bvid, cid, quality, status, output_file, error_message, created_at, completed_at
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9
-      )
-      RETURNING id`,
-      [
-        record.taskId,
-        record.bvid ?? null,
-        record.cid ?? null,
-        record.quality ?? null,
-        record.status ?? "created",
-        record.outputFile ?? null,
-        record.errorMessage ?? null,
-        record.createdAt,
-        record.completedAt ?? null,
-      ],
-    );
-    const id = Number(rows[0].id);
+    const created = await this.prismaDb.orm.public.AnalysisSubTask.create({
+      taskId: BigInt(record.taskId),
+      bvid: record.bvid ?? null,
+      cid: record.cid != null ? BigInt(record.cid) : null,
+      quality: record.quality ?? null,
+      status: record.status ?? "created",
+      outputFile: record.outputFile ?? null,
+      errorMessage: record.errorMessage ?? null,
+      createdAt: toInstant(record.createdAt)!,
+      completedAt: toInstant(record.completedAt),
+    });
+    const id = Number(created.id);
     this.logger.log(
       createLogMessage("Persisted analysis sub task", {
         taskId: record.taskId,
@@ -916,39 +943,27 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       completedAt?: string;
     },
   ): Promise<void> {
-    const previous = await this.pool.query(
-      `
-        SELECT task_id AS "taskId", bvid, cid, quality, status
-        FROM analysis_sub_task
-        WHERE id = $1
-      `,
-      [id],
-    );
-    const prev = previous.rows[0] as
-      | {
-          taskId: number;
-          bvid?: string;
-          cid?: number;
-          quality?: number;
-          status: string;
+    const prevRow = await this.prismaDb.orm.public.AnalysisSubTask
+      .where({ id: BigInt(id) })
+      .first();
+    const prev = prevRow
+      ? {
+          taskId: Number(prevRow.taskId),
+          bvid: prevRow.bvid ?? undefined,
+          cid: prevRow.cid == null ? undefined : Number(prevRow.cid),
+          quality: prevRow.quality ?? undefined,
+          status: prevRow.status,
         }
-      | undefined;
+      : undefined;
 
-    const parts: string[] = [];
-    const values: unknown[] = [];
-    const add = (clause: string, value: unknown) => {
-      parts.push(clause.replace("?", `$${values.length + 1}`));
-      values.push(value);
-    };
-    add("status = ?", fields.status);
-    if (fields.outputFile !== undefined) add("output_file = ?", fields.outputFile);
-    if (fields.errorMessage !== undefined) add("error_message = ?", fields.errorMessage);
-    if (fields.completedAt !== undefined) add("completed_at = ?", fields.completedAt);
-
-    await this.pool.query(
-      `UPDATE analysis_sub_task SET ${parts.join(", ")} WHERE id = $${values.length + 1}`,
-      [...values, id],
-    );
+    await this.prismaDb.orm.public.AnalysisSubTask
+      .where({ id: BigInt(id) })
+      .update({
+        status: fields.status,
+        ...(fields.outputFile !== undefined ? { outputFile: fields.outputFile } : {}),
+        ...(fields.errorMessage !== undefined ? { errorMessage: fields.errorMessage } : {}),
+        ...(fields.completedAt !== undefined ? { completedAt: toInstant(fields.completedAt) } : {}),
+      });
 
     const details = {
       taskId: prev?.taskId,
@@ -979,26 +994,22 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     bvid: string,
     cid: number,
   ): Promise<AnalysisSubTaskRecord[]> {
-    const { rows } = await this.pool.query(
-      `
-        SELECT
-          id,
-          task_id AS "taskId",
-          bvid,
-          cid,
-          quality,
-          status,
-          output_file AS "outputFile",
-          error_message AS "errorMessage",
-          created_at AS "createdAt",
-          completed_at AS "completedAt"
-        FROM analysis_sub_task
-        WHERE bvid = $1 AND cid = $2
-        ORDER BY created_at ASC
-      `,
-      [bvid, cid],
-    );
-    return rows as AnalysisSubTaskRecord[];
+    const rows = await this.prismaDb.orm.public.AnalysisSubTask
+      .where({ bvid, cid: BigInt(cid) })
+      .orderBy((m) => m.createdAt.asc())
+      .all();
+    return rows.map((row) => ({
+      id: Number(row.id),
+      taskId: Number(row.taskId),
+      bvid: row.bvid,
+      cid: row.cid == null ? null : Number(row.cid),
+      quality: row.quality,
+      status: row.status,
+      outputFile: row.outputFile,
+      errorMessage: row.errorMessage,
+      createdAt: toIsoString(row.createdAt),
+      completedAt: toIsoString(row.completedAt),
+    })) as AnalysisSubTaskRecord[];
   }
 
   private mapAiSummaryTaskRow(row: {
@@ -1126,69 +1137,6 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       );
   }
 
-  private buildTaskStatusFilter(statusGroups: TaskStatusGroup[]): {
-    whereClause: string;
-    queryParams: Array<string>;
-  } {
-    const expanded = new Set<string>();
-    for (const group of statusGroups) {
-      if (group === "all") {
-        continue;
-      }
-      if (group === "active") {
-        expanded.add("created");
-        expanded.add("downloading");
-      } else {
-        expanded.add(group);
-      }
-    }
-    if (expanded.size === 0) {
-      return { whereClause: "", queryParams: [] };
-    }
-    const statuses = [...expanded];
-    return {
-      whereClause: `WHERE t.status IN (${statuses
-        .map((_, i) => `$${i + 1}`)
-        .join(", ")})`,
-      queryParams: statuses,
-    };
-  }
-
-  private buildAiSummaryTaskFilter(filter?: AiSummaryTaskListFilter): {
-    whereClause: string;
-    queryParams: Array<string>;
-  } {
-    const clauses: string[] = [];
-    const params: string[] = [];
-
-    if (filter?.status && filter.status.length > 0) {
-      clauses.push(
-        `status IN (${filter.status.map((_, i) => `$${i + 1}`).join(", ")})`,
-      );
-      params.push(...filter.status);
-    }
-    if (filter?.search) {
-      clauses.push(`COALESCE(title, '') ILIKE $${params.length + 1} ESCAPE '\\'`);
-      params.push(`%${escapeLikePattern(filter.search)}%`);
-    }
-    if (filter?.updatedFrom) {
-      clauses.push(`updated_at >= $${params.length + 1}`);
-      params.push(filter.updatedFrom);
-    }
-    if (filter?.updatedTo) {
-      clauses.push(`updated_at <= $${params.length + 1}`);
-      params.push(filter.updatedTo);
-    }
-
-    if (clauses.length === 0) {
-      return { whereClause: "", queryParams: [] };
-    }
-    return {
-      whereClause: `WHERE ${clauses.join(" AND ")}`,
-      queryParams: params,
-    };
-  }
-
   /** 原子认领 AI 总结：pending/analyzing 时拒绝认领，否则置为 pending。
    * 单语句 INSERT ... ON CONFLICT DO UPDATE WHERE，PostgreSQL 保证互斥，防并发双跑。
    * 守卫语义无 Prisma 等价表达，保留 raw SQL（master plan 既定约束）。
@@ -1252,10 +1200,13 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     const lowResMsg = "服务重启，低清下载中断";
     const summaryMsg = "服务重启，AI 总结中断，请重新触发";
 
-    const subRes = await this.pool.query(
-      `UPDATE analysis_sub_task SET status = 'failed', error_message = $1, completed_at = $2 WHERE status = 'created'`,
-      [lowResMsg, now],
-    );
+    const subRes = await this.prismaDb.orm.public.AnalysisSubTask
+      .where((m) => m.status.in(["created"]))
+      .updateAll({
+        status: "failed",
+        errorMessage: lowResMsg,
+        completedAt: toInstant(now),
+      });
 
     const sumRes = await this.prismaDb.orm.public.AiSummaryTask
       .where((m) => m.status.in(["pending", "analyzing"]))
@@ -1267,7 +1218,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       });
 
     return {
-      failedSubTasks: subRes.rowCount ?? 0,
+      failedSubTasks: subRes.length,
       failedSummaryTasks: sumRes.length,
     };
   }
@@ -1358,18 +1309,6 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   }
 
   // ==================== AI 总结提示词（ai_prompt / ai_prompt_creator） ====================
-
-  private readonly aiPromptSelectSql = `
-    SELECT
-      id,
-      name,
-      content,
-      is_system AS "isSystem",
-      is_default AS "isDefault",
-      created_at AS "createdAt",
-      updated_at AS "updatedAt"
-    FROM ai_prompt
-  `;
 
   /** 提示词列表：内置排前，其余按创建时间升序 */
   async listAiPrompts(): Promise<AiPromptRecord[]> {
