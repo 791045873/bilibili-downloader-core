@@ -8,16 +8,24 @@ import { PromptController } from "./prompt.controller.js";
 import { PromptService } from "./prompt.service.js";
 import { CosStoreService } from "../knowledge/cos-store.service.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
+import { KnowledgeBackfillService } from "../knowledge/knowledge-backfill.service.js";
+import { KnowledgeBackfillController } from "../knowledge/knowledge-backfill.controller.js";
 
 @Module({
   imports: [DownloadModule],
-  controllers: [AnalysisController, AnalysisTaskController, PromptController],
+  controllers: [
+    AnalysisController,
+    AnalysisTaskController,
+    PromptController,
+    KnowledgeBackfillController,
+  ],
   providers: [
     AnalysisVideoResolver,
     AnalysisTriggerService,
     PromptService,
     CosStoreService,
     KnowledgePublisherService,
+    KnowledgeBackfillService,
   ],
   exports: [
     AnalysisTriggerService,

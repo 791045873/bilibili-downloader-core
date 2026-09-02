@@ -252,4 +252,19 @@ describe("reconcileStaleAnalysisState", () => {
   });
 });
 
+describe("listAiSummaryTasksForKnowledgeBackfill", () => {
+  it("NULL knowledge_status 包含、synced 排除、failed 包含；非 completed 或 raw_response 空排除", async () => {
+    await db.upsertAiSummaryTask({ bvid: "BV1", cid: 1, status: "completed", rawResponse: "{}" });
+    await db.upsertAiSummaryTask({ bvid: "BV2", cid: 2, status: "completed", rawResponse: "{}" });
+    await db.updateSummaryKnowledgeStatus("BV2", 2, "synced");
+    await db.upsertAiSummaryTask({ bvid: "BV3", cid: 3, status: "completed", rawResponse: "{}" });
+    await db.updateSummaryKnowledgeStatus("BV3", 3, "failed");
+    await db.upsertAiSummaryTask({ bvid: "BV4", cid: 4, status: "failed", rawResponse: "{}" });
+    await db.upsertAiSummaryTask({ bvid: "BV5", cid: 5, status: "completed" });
+
+    const rows = await db.listAiSummaryTasksForKnowledgeBackfill();
+    expect(rows.map((r) => r.bvid).sort()).toEqual(["BV1", "BV3"]);
+  });
+});
+
 // 一次性状态合并迁移用例已随迁移归档移除（见 packages/server/scripts/one-off-migrations/README.md）。

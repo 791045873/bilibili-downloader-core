@@ -75,6 +75,8 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | GET /api/analysis/prompts/format-snippet | 返回 JSON 格式要求片段 `{ snippet }`（服务端单一来源，前端编辑提示词时"一键插入"） | `packages/server/src/analysis/prompt.controller.ts` |
 | GET/PUT/DELETE /api/analysis/prompts/creator | 创作者绑定：GET ?mid 查询 `{ mid, promptId } | null`；PUT body `{ mid, promptId }` upsert（后写覆盖）；DELETE ?mid 解绑（幂等） | `packages/server/src/analysis/prompt.controller.ts` |
 | POST /api/analysis/trigger | 对 bvid/cid 触发 AI 总结，body 可带 `promptId?`：无任务时创建下载任务并写入 `task.prompt_id`（下载完成后自动总结使用），有任务时透传触发 | `packages/server/src/analysis/analysis.controller.ts` |
+| POST /api/knowledge/backfill | 手动触发一次历史总结知识回填：后台批量（并发 2）把 `completed` + `raw_response` 非空 + 非 synced 的总结逐条经发布管道入库；无可回填返回 `{ total: 0 }`，否则返回 `{ message, total }` 并立即返回（fire-and-forget）；运行中重复触发返回 409 | `packages/server/src/knowledge/knowledge-backfill.controller.ts` |
+| GET /api/knowledge/backfill | 查询回填批次进度：`{ running, total, synced, skipped, failed, failures[{ summaryTaskId, error }] }`；批次完成后回到 idle 且计数保留到下次触发 | `packages/server/src/knowledge/knowledge-backfill.controller.ts` |
 | GET /summary-files/* | 摘要文档根目录（`cwd/summaryDir`）静态挂载，供前端预览 md 内相对插图；本地 dev 由 Vite 代理 `/summary-files` 转发，容器内与前端同源 | `packages/server/src/main.ts` |
 | POST /api/download | 创建下载任务，body 可带 `promptId?` 写入 `task.prompt_id`；必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts` |
 

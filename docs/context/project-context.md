@@ -16,9 +16,9 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `none`（Prisma 改造已闭合：`docs/requirements/2026-09-01-prisma-orm-introduction.md`；下一活跃：knowledge-backfill（串行约束解除）、其后 knowledge-vector-search Phase 2）
+- Active requirement: `docs/requirements/2026-09-01-knowledge-vector-search.md`（Phase 2 向量化与检索 API；前置 knowledge-backfill 已实现——真实 89 条回填由用户部署镜像后手动触发）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `none`（Prisma 渐进改造总 plan 已闭合：`docs/plans/2026-09-01-prisma-introduction-master-plan.md`，P0–P4 全部完成；最近关闭：P4 部署接线 `docs/plans/2026-09-02-prisma-p4-cleanup-deployment-plan.md`）
+- Active plan: `none`（Prisma 渐进改造总 plan 与 knowledge-backfill plan 均已闭合；下一步：为 Phase 2 向量化出 plan）
 - Active backlog item: 无（回填需求已定稿，见 Active requirement；待出 plan）
 - Active backlog item: 无（最近完成项：移除前端 BaseURL 配置、测试连接改用原生端点；此前：视觉代理密钥改为 DB 来源 + 请求透传、移除多模态直连分支与 chatCompletion 死代码、环境变量清理、提取 Python 视觉代理为独立子包、Docker 拆分视觉代理为独立容器）
 - AI autonomy: `plan-first`（2026-08-04 已切换到方案 B，更新后的计划需重新审计后再实施）

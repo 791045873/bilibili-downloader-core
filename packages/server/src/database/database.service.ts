@@ -897,6 +897,24 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     return row ? this.mapAiSummaryTaskRow(row) : undefined;
   }
 
+  /** 待知识回填清单：completed + raw_response 非空 + 非 synced（NULL 视为未发布） */
+  async listAiSummaryTasksForKnowledgeBackfill(): Promise<AiSummaryTaskRecord[]> {
+    const rows = await this.prismaDb.orm.public.AiSummaryTask
+      .where((m) =>
+        and(
+          m.status.eq("completed"),
+          m.rawResponse.isNotNull(),
+          or(
+            m.knowledgeStatus.isNull(),
+            m.knowledgeStatus.notIn(["synced"]),
+          ),
+        ),
+      )
+      .orderBy((m) => m.id.asc())
+      .all();
+    return rows.map((row) => this.mapAiSummaryTaskRow(row));
+  }
+
   /** 删除 AI 总结任务记录（仅删 DB，不删磁盘；进行中记录条件拒绝，避免删后被管道以新 id 复活） */
   async deleteAiSummaryTask(id: number): Promise<boolean> {
     const result = await this.prismaDb.orm.public.AiSummaryTask
