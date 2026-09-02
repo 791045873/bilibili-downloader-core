@@ -5,7 +5,9 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { Pool, types as pgTypes } from "pg";
+import { Temporal } from "temporal-polyfill";
 import { createLogMessage } from "../logging/server-log.util.js";
+import { PrismaService, createPrismaClient } from "./prisma.service.js";
 import {
   BUILTIN_AI_PROMPT_CONTENT,
   BUILTIN_AI_PROMPT_NAME,
@@ -133,8 +135,10 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   private readonly pool: Pool;
   private readonly databaseUrl: string;
   private readonly progressBuckets = new Map<number, number>();
+  private readonly prismaDb: ReturnType<typeof createPrismaClient>;
+  private readonly ownsPrismaClient: boolean;
 
-  constructor() {
+  constructor(prisma?: PrismaService) {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
       throw new Error(
@@ -147,6 +151,8 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       max: 10,
       connectionTimeoutMillis: 10_000,
     });
+    this.ownsPrismaClient = !prisma;
+    this.prismaDb = prisma?.db ?? createPrismaClient();
     this.logger.log(
       createLogMessage("PostgreSQL pool created", {
         sourceType: "postgres",
@@ -161,6 +167,9 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
 
   async onApplicationShutdown(): Promise<void> {
     await this.pool.end();
+    if (this.ownsPrismaClient) {
+      await this.prismaDb.close();
+    }
   }
 
   private async connectWithRetry(maxAttempts = 10): Promise<void> {
@@ -835,14 +844,12 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   /** 批量读取应用设置，返回 key → value（缺失的 key 不含在结果中） */
   async getSettings(keys: string[]): Promise<Record<string, string>> {
     if (keys.length === 0) return {};
-    const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
-    const { rows } = await this.pool.query(
-      `SELECT key, value FROM app_settings WHERE key IN (${placeholders})`,
-      keys,
-    );
+    const rows = await this.prismaDb.orm.public.AppSettings
+      .where((m) => m.key.in(keys))
+      .all();
     const result: Record<string, string> = {};
-    for (const row of rows as { key: string; value: string }[]) {
-      result[row.key] = row.value;
+    for (const row of rows) {
+      result[row.key] = row.value as string;
     }
     return result;
   }
@@ -851,13 +858,13 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   async setSettings(entries: Record<string, string>): Promise<void> {
     for (const [key, value] of Object.entries(entries)) {
       if (value === "") {
-        await this.pool.query(`DELETE FROM app_settings WHERE key = $1`, [key]);
+        await this.prismaDb.orm.public.AppSettings.where({ key }).delete();
       } else {
-        await this.pool.query(
-          `INSERT INTO app_settings (key, value) VALUES ($1, $2)
-           ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value`,
-          [key, value],
-        );
+        await this.prismaDb.orm.public.AppSettings.upsert({
+          create: { key, value },
+          update: { value },
+          conflictOn: { key },
+        });
       }
     }
   }
@@ -1325,18 +1332,34 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
 
   /** 提示词列表：内置排前，其余按创建时间升序 */
   async listAiPrompts(): Promise<AiPromptRecord[]> {
-    const { rows } = await this.pool.query(
-      `${this.aiPromptSelectSql} ORDER BY is_system DESC, created_at ASC`,
-    );
-    return rows as AiPromptRecord[];
+    const rows = await this.prismaDb.orm.public.AiPrompt
+      .orderBy([(m) => m.isSystem.desc(), (m) => m.createdAt.asc()])
+      .all();
+    return rows.map((row) => ({
+      id: bigintToNumber(row.id),
+      name: row.name,
+      content: row.content,
+      isSystem: row.isSystem ?? undefined,
+      isDefault: row.isDefault ?? undefined,
+      createdAt: toIsoString(row.createdAt),
+      updatedAt: toIsoString(row.updatedAt),
+    }));
   }
 
   async getAiPromptById(id: number): Promise<AiPromptRecord | undefined> {
-    const { rows } = await this.pool.query(
-      `${this.aiPromptSelectSql} WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] as AiPromptRecord | undefined;
+    const row = await this.prismaDb.orm.public.AiPrompt
+      .where({ id: BigInt(id) })
+      .first();
+    if (!row) return undefined;
+    return {
+      id: bigintToNumber(row.id),
+      name: row.name,
+      content: row.content,
+      isSystem: row.isSystem ?? undefined,
+      isDefault: row.isDefault ?? undefined,
+      createdAt: toIsoString(row.createdAt),
+      updatedAt: toIsoString(row.updatedAt),
+    };
   }
 
   async insertAiPrompt(record: {
@@ -1345,20 +1368,16 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     isSystem?: number;
     isDefault?: number;
   }): Promise<AiPromptRecord> {
-    const now = new Date().toISOString();
-    const { rows } = await this.pool.query(
-      `INSERT INTO ai_prompt (name, content, is_system, is_default, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $5)
-       RETURNING id`,
-      [
-        record.name,
-        record.content,
-        record.isSystem ?? 0,
-        record.isDefault ?? 0,
-        now,
-      ],
-    );
-    const id = Number(rows[0].id);
+    const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+    const created = await this.prismaDb.orm.public.AiPrompt.create({
+      name: record.name,
+      content: record.content,
+      isSystem: record.isSystem ?? 0,
+      isDefault: record.isDefault ?? 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const id = bigintToNumber(created.id)!;
     this.logger.log(
       createLogMessage("Persisted AI summary prompt", {
         promptId: id,
@@ -1377,25 +1396,17 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     id: number,
     fields: { name?: string; content?: string },
   ): Promise<AiPromptRecord | undefined> {
-    const now = new Date().toISOString();
-    const parts: string[] = [];
-    const values: unknown[] = [];
-    const add = (clause: string, value: unknown) => {
-      parts.push(clause.replace("?", `$${values.length + 1}`));
-      values.push(value);
-    };
-    add(`updated_at = ?`, now);
-    if (fields.name !== undefined) add("name = ?", fields.name);
-    if (fields.content !== undefined) add("content = ?", fields.content);
-    await this.pool.query(
-      `UPDATE ai_prompt SET ${parts.join(", ")} WHERE id = $${values.length + 1}`,
-      [...values, id],
-    );
+    const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+    await this.prismaDb.orm.public.AiPrompt.where({ id: BigInt(id) }).update({
+      updatedAt: now,
+      ...(fields.name !== undefined ? { name: fields.name } : {}),
+      ...(fields.content !== undefined ? { content: fields.content } : {}),
+    });
     return this.getAiPromptById(id);
   }
 
   async deleteAiPrompt(id: number): Promise<void> {
-    await this.pool.query(`DELETE FROM ai_prompt WHERE id = $1`, [id]);
+    await this.prismaDb.orm.public.AiPrompt.where({ id: BigInt(id) }).delete();
     this.logger.log(
       createLogMessage("Deleted AI summary prompt", {
         promptId: id,
@@ -1404,40 +1415,41 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   }
 
   async clearAiPromptDefault(): Promise<void> {
-    await this.pool.query(`UPDATE ai_prompt SET is_default = 0`);
+    await this.prismaDb.orm.public.AiPrompt
+      .where((m) => m.id.isNotNull())
+      .updateAll({ isDefault: 0 });
   }
 
   async setAiPromptDefault(id: number): Promise<void> {
-    await this.pool.query(
-      `UPDATE ai_prompt SET is_default = 1, updated_at = $1 WHERE id = $2`,
-      [new Date().toISOString(), id],
-    );
+    await this.prismaDb.orm.public.AiPrompt.where({ id: BigInt(id) }).update({
+      isDefault: 1,
+      updatedAt: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+    });
   }
 
   async getDefaultAiPromptId(): Promise<number | undefined> {
-    const { rows } = await this.pool.query(
-      `SELECT id FROM ai_prompt WHERE is_default = 1 LIMIT 1`,
-    );
-    const row = rows[0] as { id: number } | undefined;
-    return row?.id;
+    const row = await this.prismaDb.orm.public.AiPrompt
+      .where({ isDefault: 1 })
+      .first();
+    return bigintToNumber(row?.id);
   }
 
   async getCreatorBindingByMid(
     mid: number,
   ): Promise<{ mid: number; promptId: number } | undefined> {
-    const { rows } = await this.pool.query(
-      `SELECT mid, prompt_id AS "promptId" FROM ai_prompt_creator WHERE mid = $1 LIMIT 1`,
-      [mid],
-    );
-    return rows[0] as { mid: number; promptId: number } | undefined;
+    const row = await this.prismaDb.orm.public.AiPromptCreator
+      .where({ mid: BigInt(mid) })
+      .first();
+    if (!row) return undefined;
+    return { mid: bigintToNumber(row.mid)!, promptId: bigintToNumber(row.promptId)! };
   }
 
   async upsertCreatorBinding(mid: number, promptId: number): Promise<void> {
-    await this.pool.query(
-      `INSERT INTO ai_prompt_creator (mid, prompt_id) VALUES ($1, $2)
-       ON CONFLICT(mid) DO UPDATE SET prompt_id = EXCLUDED.prompt_id`,
-      [mid, promptId],
-    );
+    await this.prismaDb.orm.public.AiPromptCreator.upsert({
+      create: { mid: BigInt(mid), promptId: BigInt(promptId) },
+      update: { promptId: BigInt(promptId) },
+      conflictOn: { mid: BigInt(mid) },
+    });
     this.logger.log(
       createLogMessage("Persisted AI prompt creator binding", {
         mid,
@@ -1447,9 +1459,9 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   }
 
   async deleteCreatorBinding(mid: number): Promise<void> {
-    await this.pool.query(`DELETE FROM ai_prompt_creator WHERE mid = $1`, [
-      mid,
-    ]);
+    await this.prismaDb.orm.public.AiPromptCreator
+      .where({ mid: BigInt(mid) })
+      .delete();
     this.logger.log(
       createLogMessage("Deleted AI prompt creator binding", {
         mid,
@@ -1555,6 +1567,21 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
 
 function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (m) => `\\${m}`);
+}
+
+function bigintToNumber(value: bigint | number | null | undefined): number | undefined {
+  return value == null ? undefined : Number(value);
+}
+
+function toIsoString(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && "epochMilliseconds" in (value as object)) {
+    return new Date(
+      (value as { epochMilliseconds: number }).epochMilliseconds,
+    ).toISOString();
+  }
+  return new Date(value as Date).toISOString();
 }
 
 function toIsoTimestamp(value: string): string {

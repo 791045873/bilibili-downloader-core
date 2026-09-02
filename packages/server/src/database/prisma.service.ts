@@ -11,18 +11,22 @@ if (!(globalThis as { Temporal?: unknown }).Temporal) {
   (globalThis as unknown as { Temporal: typeof Temporal }).Temporal = Temporal;
 }
 
+export function createPrismaClient() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error(
+      "DATABASE_URL is required. Set it to a PostgreSQL connection string.",
+    );
+  }
+  return postgres<Contract>({ contractJson, url: databaseUrl });
+}
+
 @Injectable()
 export class PrismaService implements OnApplicationShutdown {
   readonly db;
 
   constructor() {
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) {
-      throw new Error(
-        "DATABASE_URL is required. Set it to a PostgreSQL connection string.",
-      );
-    }
-    this.db = postgres<Contract>({ contractJson, url: databaseUrl });
+    this.db = createPrismaClient();
   }
 
   async onApplicationShutdown(): Promise<void> {

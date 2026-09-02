@@ -39,6 +39,12 @@ describe("ai_prompt", () => {
     expect(prompts.map((p) => p.name)).toEqual(["穿搭分析（系统内置）", "custom-2", "custom-1"]);
   });
 
+  it("update / delete / default 对不存在 id 静默 no-op", async () => {
+    expect(await db.updateAiPrompt(99999, { name: "x" })).toBeUndefined();
+    await expect(db.deleteAiPrompt(99999)).resolves.toBeUndefined();
+    await expect(db.setAiPromptDefault(99999)).resolves.toBeUndefined();
+  });
+
   it("update / delete", async () => {
     const created = await db.insertAiPrompt({ name: "a", content: "old" });
     const updated = await db.updateAiPrompt(created.id!, { name: "b", content: "new" });

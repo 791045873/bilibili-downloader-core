@@ -18,7 +18,7 @@ Update it in place. Do not create dated copies.
 
 - Active requirement: `docs/requirements/2026-09-01-prisma-orm-introduction.md`（Prisma 8 渐进式改造数据访问层；其后依次：knowledge-backfill、knowledge-vector-search Phase 2。约束：knowledge-backfill 不得与 Prisma 阶段并行修改 `database.service.ts`，串行执行）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-09-01-prisma-introduction-master-plan.md`（P0、P1 已完成闭合；下一步：P2a 域迁移子 plan；2026-09-01 已通过 subagent plan 审计，见 `docs/audits/2026-09-01-plan-audit-prisma-introduction-master-plan.md`）
+- Active plan: `docs/plans/2026-09-01-prisma-introduction-master-plan.md`（P0、P1、P2a 已完成闭合；下一步：P2b 域迁移子 plan；2026-09-01 已通过 subagent plan 审计，见 `docs/audits/2026-09-01-plan-audit-prisma-introduction-master-plan.md`）
 - Active backlog item: 无（回填需求已定稿，见 Active requirement；待出 plan）
 - Active backlog item: 无（最近完成项：移除前端 BaseURL 配置、测试连接改用原生端点；此前：视觉代理密钥改为 DB 来源 + 请求透传、移除多模态直连分支与 chatCompletion 死代码、环境变量清理、提取 Python 视觉代理为独立子包、Docker 拆分视觉代理为独立容器）
 - AI autonomy: `plan-first`（2026-08-04 已切换到方案 B，更新后的计划需重新审计后再实施）
