@@ -54,7 +54,7 @@ describe("PrismaService", () => {
     }
   });
 
-  it("惰性连接：构造成功但不发查询不建连（指向不可达端口）", async () => {
+  it("惰性连接：不可达端口下构造成功，查询才失败", async () => {
     const original = process.env.DATABASE_URL;
     process.env.DATABASE_URL = "postgres://postgres:postgres@localhost:59999/none";
     const lazy = new PrismaService();
@@ -64,6 +64,15 @@ describe("PrismaService", () => {
       ).rejects.toThrow();
     } finally {
       process.env.DATABASE_URL = original;
+      await lazy.onApplicationShutdown();
     }
+  });
+
+  it("从未发查询的实例 shutdown 不报错（close 对未连接 client 为 no-op）", async () => {
+    const original = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = "postgres://postgres:postgres@localhost:59999/none";
+    const neverQueried = new PrismaService();
+    process.env.DATABASE_URL = original;
+    await expect(neverQueried.onApplicationShutdown()).resolves.toBeUndefined();
   });
 });

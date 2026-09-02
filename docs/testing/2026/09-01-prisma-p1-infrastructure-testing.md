@@ -22,6 +22,8 @@
 3. **contract PSL 不支持索引排序方向**：`updatedAt(sort: Desc)` 被 PSL 解析器拒绝（`PSL_INVALID_ATTRIBUTE_SYNTAX`）；`idx_ai_summary_task_updated_at` 的 `DESC` 维持记录在案（emit storageHash 与 P0 基线一致：`85d08401…`），P3 migrate 比对时人工核对。
 4. **tsc 自动 emit 验证**：被 import 的 `contract.json` 在 rootDir src 下自动复制到 `dist/prisma/contract.json`（无需 nest-cli.json，审计预判正确）；tsconfig 需显式 include 该 json（composite 项目 TS6307）。
 5. dotenv 排除验证通过：`prisma contract emit` 仅凭 process env 成功。
+6. `contract.json`/`contract.d.ts` 内嵌 storageHash `85d08401…2826f`；与 P0 基线的"一致"结论由 `.prisma` 源逐字节相同 + emit 确定性推断（P0 未提交 baseline contract.json，无独立可比哈希），闭合审计已确认该推断成立。
+7. shutdown 安全性：应用启动即急事实例化 `PrismaService` 但从不发查询；经 runtime 源码核验 `close()` 对未连接 client 为 no-op，已补测试覆盖（never-queried shutdown resolves）。
 
 ## 测试
 
