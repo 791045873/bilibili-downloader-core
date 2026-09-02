@@ -6,6 +6,9 @@ import {
 } from "@nestjs/common";
 import { Pool, types as pgTypes } from "pg";
 import { Temporal } from "temporal-polyfill";
+import { and } from "@prisma/orm-postgres/orm-client";
+import type { ModelAccessor } from "@prisma/orm-postgres/orm-client";
+import type { Contract } from "../prisma/contract.d";
 import { createLogMessage } from "../logging/server-log.util.js";
 import { PrismaService, createPrismaClient } from "./prisma.service.js";
 import {
@@ -998,17 +1001,56 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     return rows as AnalysisSubTaskRecord[];
   }
 
+  private mapAiSummaryTaskRow(row: {
+    id: bigint;
+    bvid: string;
+    cid: bigint;
+    title: string | null;
+    sourceTaskId: bigint | null;
+    promptId: number | null;
+    status: string;
+    summaryOutput: string | null;
+    errorMessage: string | null;
+    executionTiming: string | null;
+    rawResponse: string | null;
+    modelName: string | null;
+    knowledgeStatus: string | null;
+    knowledgeError: string | null;
+    createdAt: unknown;
+    updatedAt: unknown;
+    lastTriggeredAt: unknown;
+    lastCompletedAt: unknown;
+  }): AiSummaryTaskRecord {
+    return {
+      id: Number(row.id),
+      bvid: row.bvid,
+      cid: Number(row.cid),
+      title: row.title,
+      sourceTaskId: row.sourceTaskId == null ? null : Number(row.sourceTaskId),
+      promptId: row.promptId,
+      status: row.status,
+      summaryOutput: row.summaryOutput,
+      errorMessage: row.errorMessage,
+      executionTiming: row.executionTiming,
+      rawResponse: row.rawResponse,
+      modelName: row.modelName,
+      knowledgeStatus: row.knowledgeStatus,
+      knowledgeError: row.knowledgeError,
+      createdAt: toIsoString(row.createdAt),
+      updatedAt: toIsoString(row.updatedAt),
+      lastTriggeredAt: toIsoString(row.lastTriggeredAt),
+      lastCompletedAt: toIsoString(row.lastCompletedAt),
+    } as AiSummaryTaskRecord;
+  }
+
   async getAiSummaryTaskByResource(
     bvid: string,
     cid: number,
   ): Promise<AiSummaryTaskRecord | undefined> {
-    const { rows } = await this.pool.query(
-      `${this.aiSummaryTaskSelectSql}
-       WHERE bvid = $1 AND cid = $2
-       LIMIT 1`,
-      [bvid, cid],
-    );
-    return rows[0] as AiSummaryTaskRecord | undefined;
+    const row = await this.prismaDb.orm.public.AiSummaryTask
+      .where({ bvid, cid: BigInt(cid) })
+      .first();
+    return row ? this.mapAiSummaryTaskRow(row) : undefined;
   }
 
   async listAiSummaryTasksPaginated(params: {
@@ -1018,46 +1060,44 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   }): Promise<PaginatedAiSummaryTaskResult> {
     const { page, pageSize, filter } = params;
     const offset = (page - 1) * pageSize;
-    const { whereClause, queryParams } = this.buildAiSummaryTaskFilter(filter);
-    const totalRow = await this.pool.query(
-      `SELECT COUNT(*) AS total FROM ai_summary_task ${whereClause}`,
-      queryParams,
-    );
-    const total = Number(totalRow.rows[0].total);
-    const items = await this.pool.query(
-      `${this.aiSummaryTaskSelectSql}
-       ${whereClause}
-       ORDER BY updated_at DESC
-       LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`,
-      [...queryParams, pageSize, offset],
-    );
+    const where = this.aiSummaryTaskWhere(filter);
+    const counted = await this.prismaDb.orm.public.AiSummaryTask
+      .where(where)
+      .aggregate((f) => ({ count: f.count() }));
+    const total = counted.count;
+    const rows = await this.prismaDb.orm.public.AiSummaryTask
+      .where(where)
+      .orderBy((m) => m.updatedAt.desc())
+      .limit(pageSize)
+      .offset(offset)
+      .all();
 
     return {
-      items: items.rows as AiSummaryTaskRecord[],
+      items: rows.map((row) => this.mapAiSummaryTaskRow(row)),
       page,
       pageSize,
       total,
-      hasMore: offset + items.rows.length < total,
+      hasMore: offset + rows.length < total,
     };
   }
 
   async getAiSummaryTaskById(
     id: number,
   ): Promise<AiSummaryTaskRecord | undefined> {
-    const { rows } = await this.pool.query(
-      `${this.aiSummaryTaskSelectSql} WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] as AiSummaryTaskRecord | undefined;
+    const row = await this.prismaDb.orm.public.AiSummaryTask
+      .where({ id: BigInt(id) })
+      .first();
+    return row ? this.mapAiSummaryTaskRow(row) : undefined;
   }
 
   /** 删除 AI 总结任务记录（仅删 DB，不删磁盘；进行中记录条件拒绝，避免删后被管道以新 id 复活） */
   async deleteAiSummaryTask(id: number): Promise<boolean> {
-    const result = await this.pool.query(
-      `DELETE FROM ai_summary_task WHERE id = $1 AND status NOT IN ('pending', 'analyzing')`,
-      [id],
-    );
-    if ((result.rowCount ?? 0) > 0) {
+    const result = await this.prismaDb.orm.public.AiSummaryTask
+      .where({ id: BigInt(id) })
+      .where((m) => m.status.notIn(["pending", "analyzing"]))
+      .delete();
+    const deleted = Array.isArray(result) ? result.length > 0 : result != null;
+    if (deleted) {
       this.logger.log(
         createLogMessage("Deleted ai_summary_task row from database", {
           summaryTaskId: id,
@@ -1066,6 +1106,24 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       return true;
     }
     return false;
+  }
+
+  private aiSummaryTaskWhere(filter?: AiSummaryTaskListFilter) {
+    return (m: ModelAccessor<Contract, "AiSummaryTask">) =>
+      and(
+        ...(filter?.status && filter.status.length > 0
+          ? [m.status.in(filter.status)]
+          : []),
+        ...(filter?.search
+          ? [m.title.ilike(`%${escapeLikePattern(filter.search)}%`)]
+          : []),
+        ...(filter?.updatedFrom
+          ? [m.updatedAt.gte(toInstant(filter.updatedFrom))]
+          : []),
+        ...(filter?.updatedTo
+          ? [m.updatedAt.lte(toInstant(filter.updatedTo))]
+          : []),
+      );
   }
 
   private buildTaskStatusFilter(statusGroups: TaskStatusGroup[]): {
@@ -1131,9 +1189,9 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     };
   }
 
-  /**
-   * 原子认领 AI 总结：pending/analyzing 时拒绝认领，否则置为 pending。
+  /** 原子认领 AI 总结：pending/analyzing 时拒绝认领，否则置为 pending。
    * 单语句 INSERT ... ON CONFLICT DO UPDATE WHERE，PostgreSQL 保证互斥，防并发双跑。
+   * 守卫语义无 Prisma 等价表达，保留 raw SQL（master plan 既定约束）。
    */
   async claimAiSummaryTask(record: {
     bvid: string;
@@ -1199,14 +1257,18 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       [lowResMsg, now],
     );
 
-    const sumRes = await this.pool.query(
-      `UPDATE ai_summary_task SET status = 'failed', error_message = $1, updated_at = $2, last_completed_at = $2 WHERE status IN ('pending', 'analyzing')`,
-      [summaryMsg, now],
-    );
+    const sumRes = await this.prismaDb.orm.public.AiSummaryTask
+      .where((m) => m.status.in(["pending", "analyzing"]))
+      .updateAll({
+        status: "failed",
+        errorMessage: summaryMsg,
+        updatedAt: toInstant(now),
+        lastCompletedAt: toInstant(now),
+      });
 
     return {
       failedSubTasks: subRes.rowCount ?? 0,
-      failedSummaryTasks: sumRes.rowCount ?? 0,
+      failedSummaryTasks: sumRes.length,
     };
   }
 
@@ -1239,61 +1301,40 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       record.modelName !== undefined
         ? record.modelName
         : (existing?.modelName ?? null);
-    await this.pool.query(
-      `
-        INSERT INTO ai_summary_task (
-          bvid,
-          cid,
-          title,
-          source_task_id,
-          prompt_id,
-          status,
-          summary_output,
-          error_message,
-          execution_timing,
-          raw_response,
-          model_name,
-          created_at,
-          updated_at,
-          last_triggered_at,
-          last_completed_at
-        )
-        VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-          $12, $13, $14, $15
-        )
-        ON CONFLICT (bvid, cid) DO UPDATE SET
-          title = EXCLUDED.title,
-          source_task_id = EXCLUDED.source_task_id,
-          prompt_id = EXCLUDED.prompt_id,
-          status = EXCLUDED.status,
-          summary_output = EXCLUDED.summary_output,
-          error_message = EXCLUDED.error_message,
-          execution_timing = EXCLUDED.execution_timing,
-          raw_response = EXCLUDED.raw_response,
-          model_name = EXCLUDED.model_name,
-          updated_at = EXCLUDED.updated_at,
-          last_triggered_at = EXCLUDED.last_triggered_at,
-          last_completed_at = EXCLUDED.last_completed_at
-      `,
-      [
-        record.bvid,
-        record.cid,
-        record.title ?? null,
-        record.sourceTaskId ?? null,
-        promptId,
-        record.status,
-        record.summaryOutput ?? null,
-        record.errorMessage ?? null,
+    await this.prismaDb.orm.public.AiSummaryTask.upsert({
+      create: {
+        bvid: record.bvid,
+        cid: BigInt(record.cid),
+        title: record.title ?? null,
+        sourceTaskId: record.sourceTaskId != null ? BigInt(record.sourceTaskId) : null,
+        promptId: promptId ?? null,
+        status: record.status,
+        summaryOutput: record.summaryOutput ?? null,
+        errorMessage: record.errorMessage ?? null,
         executionTiming,
         rawResponse,
         modelName,
-        createdAt,
-        record.updatedAt ?? now,
-        record.lastTriggeredAt ?? null,
-        record.lastCompletedAt ?? null,
-      ],
-    );
+        createdAt: toInstant(createdAt)!,
+        updatedAt: toInstant(record.updatedAt ?? now)!,
+        lastTriggeredAt: toInstant(record.lastTriggeredAt),
+        lastCompletedAt: toInstant(record.lastCompletedAt),
+      },
+      update: {
+        title: record.title ?? null,
+        sourceTaskId: record.sourceTaskId != null ? BigInt(record.sourceTaskId) : null,
+        promptId: promptId ?? null,
+        status: record.status,
+        summaryOutput: record.summaryOutput ?? null,
+        errorMessage: record.errorMessage ?? null,
+        executionTiming,
+        rawResponse,
+        modelName,
+        updatedAt: toInstant(record.updatedAt ?? now)!,
+        lastTriggeredAt: toInstant(record.lastTriggeredAt),
+        lastCompletedAt: toInstant(record.lastCompletedAt),
+      },
+      conflictOn: { bvid: record.bvid, cid: BigInt(record.cid) },
+    });
 
     const persisted = await this.getAiSummaryTaskByResource(
       record.bvid,
@@ -1341,8 +1382,8 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       content: row.content,
       isSystem: row.isSystem ?? undefined,
       isDefault: row.isDefault ?? undefined,
-      createdAt: toIsoString(row.createdAt),
-      updatedAt: toIsoString(row.updatedAt),
+      createdAt: toIsoString(row.createdAt) ?? undefined,
+      updatedAt: toIsoString(row.updatedAt) ?? undefined,
     }));
   }
 
@@ -1357,8 +1398,8 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       content: row.content,
       isSystem: row.isSystem ?? undefined,
       isDefault: row.isDefault ?? undefined,
-      createdAt: toIsoString(row.createdAt),
-      updatedAt: toIsoString(row.updatedAt),
+      createdAt: toIsoString(row.createdAt) ?? undefined,
+      updatedAt: toIsoString(row.updatedAt) ?? undefined,
     };
   }
 
@@ -1548,12 +1589,13 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     status: string,
     error?: string,
   ): Promise<void> {
-    await this.pool.query(
-      `UPDATE ai_summary_task
-       SET knowledge_status = $1, knowledge_error = $2, updated_at = $3
-       WHERE bvid = $4 AND cid = $5`,
-      [status, error ?? null, new Date().toISOString(), bvid, cid],
-    );
+    await this.prismaDb.orm.public.AiSummaryTask
+      .where({ bvid, cid: BigInt(cid) })
+      .update({
+        knowledgeStatus: status,
+        knowledgeError: error ?? null,
+        updatedAt: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+      });
   }
 }
 
@@ -1565,8 +1607,8 @@ function bigintToNumber(value: bigint | number | null | undefined): number | und
   return value == null ? undefined : Number(value);
 }
 
-function toIsoString(value: unknown): string | undefined {
-  if (value == null) return undefined;
+function toIsoString(value: unknown): string | null {
+  if (value == null) return null;
   if (typeof value === "string") return value;
   if (typeof value === "object" && "epochMilliseconds" in (value as object)) {
     return new Date(
@@ -1574,6 +1616,17 @@ function toIsoString(value: unknown): string | undefined {
     ).toISOString();
   }
   return new Date(value as Date).toISOString();
+}
+
+function toInstant(
+  value: string | Date | Temporal.Instant | null | undefined,
+): Temporal.Instant | null {
+  if (value == null) return null;
+  if (typeof value === "string") return Temporal.Instant.from(value);
+  if (value instanceof Date) {
+    return Temporal.Instant.fromEpochMilliseconds(value.getTime());
+  }
+  return value;
 }
 
 function toIsoTimestamp(value: string): string {

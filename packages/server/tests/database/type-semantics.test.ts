@@ -40,6 +40,16 @@ describe("类型语义（pg type parser 契约）", () => {
     expect(binding!.mid).toBe(12345678901);
   });
 
+  it("ai_summary_task 大 cid（int8）→ number", async () => {
+    await db.upsertAiSummaryTask({
+      bvid: "BV9",
+      cid: 99999999999,
+      status: "completed",
+    });
+    const row = await db.getAiSummaryTaskByResource("BV9", 99999999999);
+    expect(row!.cid).toBe(99999999999);
+  });
+
   it("analysis_sub_task.cid（int8）→ number", async () => {
     const taskId = await db.insertTask({ status: "success" } as any);
     await db.insertAnalysisSubTask({
