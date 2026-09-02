@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   initTestDb,
-  internals,
   truncateAll,
   type DatabaseService,
 } from "../helpers/db.js";
@@ -72,37 +71,5 @@ describe("analysis_sub_task", () => {
     expect(await db.getAnalysisSubTasks("BV1", 1)).toHaveLength(2);
   });
 
-  it("一次性 supersede 迁移：旧活跃记录标 failed 并重建唯一索引（幂等）", async () => {
-    const taskId = await db.insertTask({ status: "success" } as any);
-    const pool = internals(db).pool;
-    await pool.query(`DROP INDEX IF EXISTS idx_analysis_sub_task_active`);
-
-    await db.insertAnalysisSubTask({
-      taskId,
-      bvid: "BV1",
-      cid: 1,
-      quality: 80,
-      status: "created",
-      createdAt: new Date().toISOString(),
-    });
-    await db.insertAnalysisSubTask({
-      taskId,
-      bvid: "BV1",
-      cid: 1,
-      quality: 80,
-      status: "created",
-      createdAt: new Date(Date.now() + 1000).toISOString(),
-    });
-
-    await (db as any).initSchema();
-    const rows = await db.getAnalysisSubTasks("BV1", 1);
-    const statuses = rows.map((r) => r.status).sort();
-    expect(statuses).toEqual(["created", "failed"]);
-    expect(
-      rows.find((r) => r.status === "failed")!.errorMessage,
-    ).toBe("superseded by newer record");
-
-    await (db as any).initSchema();
-    expect((await db.getAnalysisSubTasks("BV1", 1)).length).toBe(2);
-  });
+  // 一次性 supersede 迁移用例已随迁移归档移除（见 packages/server/scripts/one-off-migrations/README.md）。
 });

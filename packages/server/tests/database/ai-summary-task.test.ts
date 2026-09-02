@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   initTestDb,
-  internals,
   truncateAll,
   type DatabaseService,
 } from "../helpers/db.js";
@@ -253,36 +252,4 @@ describe("reconcileStaleAnalysisState", () => {
   });
 });
 
-describe("一次性状态合并迁移", () => {
-  it("task.summary_status 合并进 ai_summary_task，幂等", async () => {
-    await db.insertTask({
-      status: "success",
-      bvid: "BV1",
-      cid: 1,
-      title: "merged",
-      summaryStatus: "completed",
-      summaryOutput: "old-out",
-      completedAt: "2026-05-01T00:00:00.000Z",
-      createdAt: "2026-05-01T00:00:00.000Z",
-    } as any);
-    await db.insertTask({
-      status: "success",
-      bvid: "BV2",
-      cid: 2,
-      summaryStatus: "none",
-    } as any);
-
-    await (db as any).initSchema();
-    const merged = await db.getAiSummaryTaskByResource("BV1", 1);
-    expect(merged).toBeDefined();
-    expect(merged!.status).toBe("completed");
-    expect(merged!.summaryOutput).toBe("old-out");
-    expect(merged!.lastCompletedAt).toBe("2026-05-01T00:00:00.000Z");
-    expect(await db.getAiSummaryTaskByResource("BV2", 2)).toBeUndefined();
-
-    await (db as any).initSchema();
-    const pool = internals(db).pool;
-    const count = await pool.query(`SELECT COUNT(*)::int AS count FROM ai_summary_task`);
-    expect(count.rows[0].count).toBe(1);
-  });
-});
+// 一次性状态合并迁移用例已随迁移归档移除（见 packages/server/scripts/one-off-migrations/README.md）。

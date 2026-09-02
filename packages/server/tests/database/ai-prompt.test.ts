@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   initTestDb,
-  internals,
   truncateAll,
   type DatabaseService,
 } from "../helpers/db.js";
@@ -17,20 +16,20 @@ beforeEach(async () => {
 });
 
 describe("ai_prompt", () => {
-  it("空表播种内置提示词，重复 initSchema 不重复播种", async () => {
-    await (db as any).initSchema();
+  it("空表播种内置提示词，重复 seed 不重复播种", async () => {
+    await db.seedBuiltinPromptIfEmpty();
     const prompts = await db.listAiPrompts();
     expect(prompts).toHaveLength(1);
     expect(prompts[0].isSystem).toBe(1);
     expect(prompts[0].isDefault).toBe(1);
     expect(prompts[0].name).toBe("穿搭分析（系统内置）");
 
-    await (db as any).initSchema();
+    await db.seedBuiltinPromptIfEmpty();
     expect(await db.listAiPrompts()).toHaveLength(1);
   });
 
   it("listAiPrompts 内置优先、其余按 created_at 升序", async () => {
-    await (db as any).initSchema();
+    await db.seedBuiltinPromptIfEmpty();
     await db.insertAiPrompt({ name: "custom-1", content: "c1" });
     await new Promise((r) => setTimeout(r, 10));
     await db.insertAiPrompt({ name: "custom-2", content: "c2", isSystem: 1 });
@@ -55,7 +54,7 @@ describe("ai_prompt", () => {
   });
 
   it("default 置位不清除既有 default（现状怪癖），clearAiPromptDefault 全清", async () => {
-    await (db as any).initSchema();
+    await db.seedBuiltinPromptIfEmpty();
     const custom = await db.insertAiPrompt({ name: "custom", content: "c" });
 
     const seeded = (await db.listAiPrompts())[0];

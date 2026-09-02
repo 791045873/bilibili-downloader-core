@@ -165,7 +165,8 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
 
   async onModuleInit(): Promise<void> {
     await this.connectWithRetry();
-    await this.initSchema();
+    await verifySchemaTables((sql) => this.pool.query(sql));
+    await this.seedBuiltinPromptIfEmpty();
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -173,6 +174,29 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     if (this.ownsPrismaClient) {
       await this.prismaDb.close();
     }
+  }
+
+  /** 空表幂等播种内置提示词（schema 由 Prisma 管理，本方法只写数据） */
+  async seedBuiltinPromptIfEmpty(): Promise<void> {
+    const counted = await this.prismaDb.orm.public.AiPrompt.aggregate((f) => ({
+      count: f.count(),
+    }));
+    if (counted.count > 0) return;
+    const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+    await this.prismaDb.orm.public.AiPrompt.create({
+      name: BUILTIN_AI_PROMPT_NAME,
+      content: BUILTIN_AI_PROMPT_CONTENT,
+      isSystem: 1,
+      isDefault: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    this.logger.log(
+      createLogMessage("Seeded builtin AI summary prompt", {
+        isSystem: true,
+        isDefault: true,
+      }),
+    );
   }
 
   private async connectWithRetry(maxAttempts = 10): Promise<void> {
@@ -205,223 +229,6 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
-    }
-  }
-
-  // ==================== Schema ====================
-
-  private async initSchema(): Promise<void> {
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS task (
-        id BIGSERIAL PRIMARY KEY,
-        bvid TEXT,
-        cid BIGINT,
-        title TEXT,
-        quality INTEGER,
-        codec TEXT,
-        "fileNameTemplate" TEXT,
-        "outputPath" TEXT,
-        subtitle_lang TEXT,
-        auto_summary INTEGER DEFAULT 0,
-        summary_status TEXT DEFAULT 'none',
-        summary_output TEXT,
-        prompt_id INTEGER,
-        status TEXT NOT NULL DEFAULT 'created',
-        progress DOUBLE PRECISION DEFAULT 0,
-        speed TEXT,
-        "outputFile" TEXT,
-        "fileSize" BIGINT,
-        "errorCode" TEXT,
-        "errorMessage" TEXT,
-        "durationMs" BIGINT,
-        "createdAt" TIMESTAMPTZ NOT NULL,
-        "updatedAt" TIMESTAMPTZ NOT NULL,
-        "completedAt" TIMESTAMPTZ
-      )
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_task_status ON task(status);
-      CREATE INDEX IF NOT EXISTS idx_task_created ON task("createdAt");
-      CREATE INDEX IF NOT EXISTS idx_task_bvid_cid ON task(bvid, cid);
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS analysis_sub_task (
-        id BIGSERIAL PRIMARY KEY,
-        task_id BIGINT NOT NULL REFERENCES task(id),
-        bvid TEXT,
-        cid BIGINT,
-        quality INTEGER,
-        status TEXT NOT NULL DEFAULT 'created',
-        output_file TEXT,
-        error_message TEXT,
-        created_at TIMESTAMPTZ NOT NULL,
-        completed_at TIMESTAMPTZ
-      )
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_analysis_sub_task_task_id
-      ON analysis_sub_task(task_id);
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS ai_summary_task (
-        id BIGSERIAL PRIMARY KEY,
-        bvid TEXT NOT NULL,
-        cid BIGINT NOT NULL,
-        title TEXT,
-        source_task_id BIGINT,
-        prompt_id INTEGER,
-        status TEXT NOT NULL DEFAULT 'pending',
-        summary_output TEXT,
-        error_message TEXT,
-        execution_timing TEXT,
-        raw_response TEXT,
-        model_name TEXT,
-        created_at TIMESTAMPTZ NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL,
-        last_triggered_at TIMESTAMPTZ,
-        last_completed_at TIMESTAMPTZ,
-        knowledge_status TEXT,
-        knowledge_error TEXT,
-        UNIQUE (bvid, cid)
-      )
-    `);
-    await this.pool.query(`
-      ALTER TABLE ai_summary_task ADD COLUMN IF NOT EXISTS knowledge_status TEXT;
-      ALTER TABLE ai_summary_task ADD COLUMN IF NOT EXISTS knowledge_error TEXT;
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_ai_summary_task_updated_at
-      ON ai_summary_task(updated_at DESC);
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS app_settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
-      )
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS ai_prompt (
-        id BIGSERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        content TEXT NOT NULL,
-        is_system INTEGER DEFAULT 0,
-        is_default INTEGER DEFAULT 0,
-        created_at TIMESTAMPTZ NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL
-      )
-    `);
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS ai_prompt_creator (
-        mid BIGINT PRIMARY KEY,
-        prompt_id BIGINT NOT NULL
-      )
-    `);
-
-    // 云端知识库：一份视频总结（对应一个 bvid+cid 的 completed 总结）
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS summary (
-        id BIGSERIAL PRIMARY KEY,
-        bvid TEXT NOT NULL,
-        cid BIGINT NOT NULL,
-        video_title TEXT NOT NULL,
-        video_url TEXT,
-        model_name TEXT,
-        raw_response JSONB NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        UNIQUE (bvid, cid)
-      )
-    `);
-    // 一条技巧 = 一个 RAG chunk（embedding 列 Phase 2 再补）
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS summary_segment (
-        id BIGSERIAL PRIMARY KEY,
-        summary_id BIGINT NOT NULL REFERENCES summary(id) ON DELETE CASCADE,
-        seq INT NOT NULL,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        timestamp_seconds INT,
-        frame_description TEXT,
-        screenshot_url TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        UNIQUE (summary_id, seq)
-      )
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_summary_segment_summary_id
-      ON summary_segment(summary_id);
-    `);
-
-    // 空表播种内置提示词（幂等：仅空表执行）
-    const promptCount = await this.pool.query(
-      `SELECT COUNT(*) AS count FROM ai_prompt`,
-    );
-    if (Number(promptCount.rows[0].count) === 0) {
-      const now = new Date().toISOString();
-      await this.pool.query(
-        `INSERT INTO ai_prompt (name, content, is_system, is_default, created_at, updated_at)
-         VALUES ($1, $2, 1, 1, $3, $3)`,
-        [BUILTIN_AI_PROMPT_NAME, BUILTIN_AI_PROMPT_CONTENT, now],
-      );
-      this.logger.log(
-        createLogMessage("Seeded builtin AI summary prompt", {
-          isSystem: true,
-          isDefault: true,
-        }),
-      );
-    }
-
-    // 状态单一来源迁移：把历史 task.summary_status 合并进 ai_summary_task（幂等，仅首次建表后有数据时生效）
-    await this.pool.query(`
-      INSERT INTO ai_summary_task (
-        bvid, cid, title, status, summary_output, error_message,
-        created_at, updated_at, last_triggered_at, last_completed_at
-      )
-      SELECT
-        t.bvid, t.cid, t.title, t.summary_status, t.summary_output, NULL,
-        COALESCE(t."completedAt", t."createdAt", now()),
-        COALESCE(t."completedAt", t."createdAt", now()),
-        NULL,
-        CASE
-          WHEN t.summary_status = 'completed' THEN COALESCE(t."completedAt", t."createdAt")
-          ELSE NULL
-        END
-      FROM task t
-      WHERE t.bvid IS NOT NULL
-        AND t.cid IS NOT NULL
-        AND t.summary_status IS NOT NULL
-        AND t.summary_status != 'none'
-      ON CONFLICT (bvid, cid) DO NOTHING
-    `);
-
-    // 子任务资源级键迁移：analysis_sub_task 按 (bvid,cid,quality) 活跃唯一（幂等）
-    try {
-      await this.pool.query(`
-        UPDATE analysis_sub_task
-        SET status = 'failed',
-            error_message = COALESCE(error_message, 'superseded by newer record')
-        WHERE id NOT IN (
-          SELECT MAX(id) FROM analysis_sub_task GROUP BY bvid, cid, quality
-        )
-      `);
-      await this.pool.query(`
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_analysis_sub_task_active
-        ON analysis_sub_task(bvid, cid, quality)
-        WHERE status != 'failed'
-      `);
-    } catch (err) {
-      this.logger.warn(
-        createLogMessage(
-          "Analysis sub task unique index creation failed; continuing without hard uniqueness",
-          {
-            error: err instanceof Error ? err.message : String(err),
-          },
-        ),
-      );
     }
   }
 
@@ -478,11 +285,11 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     progress: number,
     speed?: string,
   ): Promise<void> {
-    const now = new Date().toISOString();
-    await this.pool.query(
-      `UPDATE task SET progress = $1, speed = $2, "updatedAt" = $3 WHERE id = $4`,
-      [progress, speed ?? null, now, id],
-    );
+    await this.prismaDb.orm.public.Task.where({ id: BigInt(id) }).update({
+      progress,
+      speed: speed ?? null,
+      updatedAt: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+    });
 
     const bucket = Math.floor(Math.max(0, Math.min(progress, 100)) / 10);
     if (this.progressBuckets.get(id) !== bucket || progress >= 100) {
@@ -1540,6 +1347,49 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
 
 function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (m) => `\\${m}`);
+}
+
+const EXPECTED_TABLES = [
+  "task",
+  "analysis_sub_task",
+  "ai_summary_task",
+  "app_settings",
+  "ai_prompt",
+  "ai_prompt_creator",
+  "summary",
+  "summary_segment",
+] as const;
+
+const ONE_OFF_MIGRATION_COLUMNS = ["knowledge_status", "knowledge_error"] as const;
+
+/** 启动哨兵：表 + 一次性迁移新增列存在性快检（权威校验由 prisma db verify 完成） */
+export async function verifySchemaTables(query: {
+  (sql: string): Promise<{ rows: Array<Record<string, unknown>> }>;
+}): Promise<void> {
+  const tables = await query(
+    `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
+  );
+  const existing = new Set(tables.rows.map((r) => r.name));
+  const missingTables = EXPECTED_TABLES.filter((t) => !existing.has(t));
+  if (missingTables.length > 0) {
+    throw new Error(
+      `Database schema is missing tables: ${missingTables.join(", ")}. ` +
+        `For a fresh database run: pnpm --filter @bilibili-downloader/server exec prisma db init --db <DATABASE_URL>. ` +
+        `To adopt an existing database run: pnpm --filter @bilibili-downloader/server exec prisma db sign --db <DATABASE_URL>. ` +
+        `For schema evolution see packages/server/prisma/baseline/README.md.`,
+    );
+  }
+  const columns = await query(
+    `SELECT column_name AS name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ai_summary_task'`,
+  );
+  const columnNames = new Set(columns.rows.map((r) => r.name));
+  const missingColumns = ONE_OFF_MIGRATION_COLUMNS.filter((c) => !columnNames.has(c));
+  if (missingColumns.length > 0) {
+    throw new Error(
+      `Database schema is stale: ai_summary_task is missing columns: ${missingColumns.join(", ")}. ` +
+        `Run: pnpm --filter @bilibili-downloader/server exec prisma db update --db <DATABASE_URL> then prisma db sign --db <DATABASE_URL>.`,
+    );
+  }
 }
 
 function bigintToNumber(value: bigint | number | null | undefined): number | undefined {

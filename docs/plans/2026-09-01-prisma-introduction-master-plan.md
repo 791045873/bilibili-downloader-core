@@ -80,8 +80,8 @@
 - [x] P1 完成（2026-09-01，闭合证据见 `docs/testing/2026/09-01-prisma-p1-infrastructure-testing.md`；关键输入：int8→BigInt、timestamptz→Temporal.Instant、Temporal polyfill 必需）
 - [x] P2a–P2d 子 plan 各自编写并审计（`docs/audits/2026-09-01-plan-audit-prisma-p2{a,b,c}-domain-migration-plan.md`、`docs/audits/2026-09-02-plan-audit-prisma-p2d-domain-migration-plan.md`）
 - [x] P2a–P2d 完成（P2a/P2b/P2c/P2d 全部闭合：`docs/testing/2026/09-0{1,2}-prisma-p2{a,b,c,d}-domain-migration-testing.md`；数据访问全量走 Prisma，raw SQL 仅剩 2 个守卫型 claim）
-- [ ] P3 子 plan 编写并审计 + 用户批准演练结果
-- [ ] P3 完成
+- [x] P3 子 plan 编写并审计（`docs/audits/2026-09-02-plan-audit-prisma-p3-schema-ownership-plan.md`）+ 用户批准演练结果（2026-09-02）
+- [x] P3 完成（`docs/testing/2026/09-02-prisma-p3-schema-ownership-testing.md`；subagent 闭合审计——高风险定级）
 - [ ] P4 子 plan 编写并审计 + 用户批准（ask-first）
 - [ ] P4 完成
 - [ ] 总 plan 闭合审计

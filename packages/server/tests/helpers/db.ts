@@ -25,7 +25,6 @@ export async function initTestDb(): Promise<DatabaseService> {
 
 type DbInternals = {
   pool: { query(sql: string, values?: unknown[]): Promise<{ rows: any[]; rowCount: number | null }> };
-  initSchema(): Promise<void>;
 };
 
 export function internals(db: DatabaseService): DbInternals {

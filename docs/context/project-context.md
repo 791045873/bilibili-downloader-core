@@ -18,7 +18,7 @@ Update it in place. Do not create dated copies.
 
 - Active requirement: `docs/requirements/2026-09-01-prisma-orm-introduction.md`（Prisma 8 渐进式改造数据访问层；其后依次：knowledge-backfill、knowledge-vector-search Phase 2。约束：knowledge-backfill 不得与 Prisma 阶段并行修改 `database.service.ts`，串行执行）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-09-01-prisma-introduction-master-plan.md`（P0、P1、P2a–P2d 已完成闭合，数据访问全量走 Prisma（守卫型 claim 除外）；下一步：P3 schema 所有权切换子 plan；2026-09-01 已通过 subagent plan 审计，见 `docs/audits/2026-09-01-plan-audit-prisma-introduction-master-plan.md`）
+- Active plan: `docs/plans/2026-09-01-prisma-introduction-master-plan.md`（P0–P3 已完成闭合；下一步：P4 收尾与部署子 plan——ask-first，需用户批准；2026-09-01 已通过 subagent plan 审计，见 `docs/audits/2026-09-01-plan-audit-prisma-introduction-master-plan.md`）
 - Active backlog item: 无（回填需求已定稿，见 Active requirement；待出 plan）
 - Active backlog item: 无（最近完成项：移除前端 BaseURL 配置、测试连接改用原生端点；此前：视觉代理密钥改为 DB 来源 + 请求透传、移除多模态直连分支与 chatCompletion 死代码、环境变量清理、提取 Python 视觉代理为独立子包、Docker 拆分视觉代理为独立容器）
 - AI autonomy: `plan-first`（2026-08-04 已切换到方案 B，更新后的计划需重新审计后再实施）
@@ -35,7 +35,7 @@ Rule:
 
 - Frontend stack: React 19 + Vite + TypeScript（Zustand 状态管理 + antd 组件库 + TanStack Query 服务端状态）
 - Backend stack: NestJS + TypeScript
-- Database/model source: PostgreSQL（`pg` 连接池，经 `DATABASE_URL` 连接；schema 由 `database.service.ts` 启动时建表；本地与云端统一使用，不再使用本地 SQLite）；Prisma 8 基础设施已接入（`PrismaService`/contract 见 `packages/server/src/prisma/`，尚无消费者，数据访问仍走 `DatabaseService`；运行时类型差异见 `docs/logs/2026-09-01-prisma-p1-infrastructure.md`）
+- Database/model source: PostgreSQL（schema 自 P3 起由 Prisma contract/migration 管理：`db init` fresh / `db sign` 采纳存量 / `db migrate` 演进；启动为哨兵检查 + 幂等播种，不再建表；数据访问全量 Prisma，仅 2 个守卫型 claim + 哨兵保留 raw SQL；运行时类型差异见 `docs/logs/2026-09-01-prisma-p1-infrastructure.md`）
 
 ## Verification Commands
 

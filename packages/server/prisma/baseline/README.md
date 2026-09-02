@@ -33,3 +33,15 @@ prisma db verify          # ok:true："Database marker and schema match contract
 
 - 本次 `db sign` 在测试容器库内写入了 marker；容器为一次性（`--rm`），无残留影响。正式接入（P1/P3）时对存量库是否 sign 由 P3 plan 决策。
 - 基线推断自"空表 + 测试数据"库，与生产库结构一致（同一 `initSchema()` 建库路径）。
+
+## Migration 工作流（P3 起生效，演练实证见 `docs/testing/2026/09-02-prisma-p3-schema-ownership-drill.md`）
+
+| 场景 | 命令 | 实证 |
+| --- | --- | --- |
+| 全新数据库 | `prisma db init --db <url>` | 20 个 additive 操作 + 签名（drill 步骤 5） |
+| 存量库采纳（零 DDL） | `prisma db sign --db <url>` | marker created、0 DDL（drill 步骤 2） |
+| 存量库校验 | `prisma db verify` | 分歧 schema 拒绝（exit 4，drill 步骤 4） |
+| 分歧修复 | `prisma db update --db <url>` | additive 操作修复缺列（drill 步骤 4） |
+| schema 演进（Phase 2 等） | 改 contract → `prisma contract emit` → `prisma migration plan --name <slug>` → `prisma db migrate` | drill 步骤 6 PoC 闭环 |
+
+`initSchema()` 已于 P3 移除；其一次性迁移 SQL 归档于 `scripts/one-off-migrations/`（勿重复执行）。运行时容器无 CLI：启动哨兵（表+关键列）做快检，`db verify` 做权威校验（部署接线见 P4）。
