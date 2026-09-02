@@ -1491,62 +1491,54 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       screenshotUrl?: string;
     }>;
   }): Promise<void> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      const { rows } = await client.query(
-        `INSERT INTO summary (bvid, cid, video_title, video_url, model_name, raw_response, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, now(), now())
-         ON CONFLICT (bvid, cid) DO UPDATE SET
-           video_title = EXCLUDED.video_title,
-           video_url = EXCLUDED.video_url,
-           model_name = EXCLUDED.model_name,
-           raw_response = EXCLUDED.raw_response,
-           updated_at = now()
-         RETURNING id`,
-        [
-          args.bvid,
-          args.cid,
-          args.videoTitle,
-          args.videoUrl ?? null,
-          args.modelName ?? null,
-          args.rawResponse,
-        ],
-      );
-      const summaryId = Number(rows[0].id);
-      await client.query(`DELETE FROM summary_segment WHERE summary_id = $1`, [
-        summaryId,
-      ]);
-      for (const segment of args.segments) {
-        await client.query(
-          `INSERT INTO summary_segment (summary_id, seq, title, content, timestamp_seconds, frame_description, screenshot_url)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            summaryId,
-            segment.seq,
-            segment.title,
-            segment.content,
-            segment.timestampSeconds ?? null,
-            segment.frameDescription ?? null,
-            segment.screenshotUrl ?? null,
-          ],
-        );
-      }
-      await client.query("COMMIT");
-      this.logger.log(
-        createLogMessage("Published summary knowledge to cloud", {
+    const parsedRawResponse = JSON.parse(args.rawResponse);
+    const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+    const summaryId = await this.prismaDb.transaction(async (tx) => {
+      const upserted = await tx.orm.public.Summary.upsert({
+        create: {
           bvid: args.bvid,
-          cid: args.cid,
-          summaryId,
-          segmentCount: args.segments.length,
-        }),
-      );
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+          cid: BigInt(args.cid),
+          videoTitle: args.videoTitle,
+          videoUrl: args.videoUrl ?? null,
+          modelName: args.modelName ?? null,
+          rawResponse: parsedRawResponse,
+          createdAt: now,
+          updatedAt: now,
+        },
+        update: {
+          videoTitle: args.videoTitle,
+          videoUrl: args.videoUrl ?? null,
+          modelName: args.modelName ?? null,
+          rawResponse: parsedRawResponse,
+          updatedAt: now,
+        },
+        conflictOn: { bvid: args.bvid, cid: BigInt(args.cid) },
+      });
+      const id = bigintToNumber(upserted.id)!;
+      await tx.orm.public.SummarySegment
+        .where({ summaryId: BigInt(id) })
+        .deleteAll();
+      for (const segment of args.segments) {
+        await tx.orm.public.SummarySegment.create({
+          summaryId: BigInt(id),
+          seq: segment.seq,
+          title: segment.title,
+          content: segment.content,
+          timestampSeconds: segment.timestampSeconds ?? null,
+          frameDescription: segment.frameDescription ?? null,
+          screenshotUrl: segment.screenshotUrl ?? null,
+        });
+      }
+      return id;
+    });
+    this.logger.log(
+      createLogMessage("Published summary knowledge to cloud", {
+        bvid: args.bvid,
+        cid: args.cid,
+        summaryId,
+        segmentCount: args.segments.length,
+      }),
+    );
   }
 
   /** 更新 AI 总结任务的知识发布状态 */

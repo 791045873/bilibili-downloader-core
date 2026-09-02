@@ -74,4 +74,43 @@ describe("upsertSummaryKnowledge", () => {
     expect(segments.rows).toHaveLength(1);
     expect(segments.rows[0].title).toBe("s1-new");
   });
+
+  it("事务回滚：segments 内重复 seq 导致中段失败，首写场景无残留", async () => {
+    await expect(
+      db.upsertSummaryKnowledge({
+        ...baseArgs,
+        segments: [
+          { seq: 1, title: "s1", content: "c1" },
+          { seq: 1, title: "s1-dup", content: "dup" },
+        ],
+      }),
+    ).rejects.toThrow();
+
+    const pool = internals(db).pool;
+    const summaries = await pool.query(`SELECT * FROM summary`);
+    expect(summaries.rows).toHaveLength(0);
+    const segments = await pool.query(`SELECT * FROM summary_segment`);
+    expect(segments.rows).toHaveLength(0);
+  });
+
+  it("事务回滚：重复发布失败时旧数据存活", async () => {
+    await db.upsertSummaryKnowledge({
+      ...baseArgs,
+      segments: [{ seq: 1, title: "keep", content: "c" }],
+    });
+    await expect(
+      db.upsertSummaryKnowledge({
+        ...baseArgs,
+        segments: [
+          { seq: 1, title: "s1", content: "c1" },
+          { seq: 1, title: "s1-dup", content: "dup" },
+        ],
+      }),
+    ).rejects.toThrow();
+
+    const pool = internals(db).pool;
+    const segments = await pool.query(`SELECT * FROM summary_segment`);
+    expect(segments.rows).toHaveLength(1);
+    expect(segments.rows[0].title).toBe("keep");
+  });
 });
