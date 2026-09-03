@@ -5,10 +5,14 @@
  * 避免三处重复推导 cwd/summaryDir 造成漂移。
  */
 
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-/** 摘要文档根目录：所有 AI 总结 md 与截图均落于此目录下 */
-export const SUMMARY_BASE_DIR = resolve(process.cwd(), "summaryDir");
+const DOWNLOAD_ROOT = resolve(
+  process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads"),
+);
+
+/** 摘要文档根目录：所有 AI 总结 md 与截图均落于此目录下（下载根目录内的 summary/ 子目录，随下载目录一起持久化） */
+export const SUMMARY_BASE_DIR = join(DOWNLOAD_ROOT, "summary");
 
 /** 摘要目录静态挂载前缀（同源；dev 由 Vite 代理转发，生产同源直达） */
 export const SUMMARY_STATIC_PREFIX = "/summary-files";
