@@ -22,6 +22,10 @@
       "import": "./dist/downloader/index.js",
       "types": "./dist/downloader/index.d.ts"
     },
+    "./embedding": {
+      "import": "./dist/embedding/index.js",
+      "types": "./dist/embedding/index.d.ts"
+    },
     "./ffmpeg": {
       "import": "./dist/ffmpeg/index.js",
       "types": "./dist/ffmpeg/index.d.ts"

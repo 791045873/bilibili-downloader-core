@@ -17,6 +17,7 @@ import { access, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { DatabaseService } from "../database/database.service.js";
 import { CosStoreService } from "./cos-store.service.js";
+import { EmbeddingService, normalizeEmbeddingText } from "./embedding.service.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 import { rewriteMarkdownImages } from "../analysis/summary-dir.js";
 import {
@@ -61,6 +62,7 @@ export class KnowledgePublisherService {
   constructor(
     private readonly db: DatabaseService,
     private readonly cosStore: CosStoreService,
+    private readonly embedding: EmbeddingService,
   ) {}
 
   async publish(input: KnowledgePublishInput): Promise<void> {
@@ -159,7 +161,13 @@ export class KnowledgePublisherService {
         };
       });
 
-      await this.db.upsertSummaryKnowledge({
+      // 向量复用索引必须在事务前读取（事务内删旧插新）
+      const previousSegments = await this.db.getSummarySegmentsForEmbedding(
+        bvid,
+        cid,
+      );
+
+      const summaryId = await this.db.upsertSummaryKnowledge({
         bvid,
         cid,
         videoTitle: input.videoTitle,
@@ -168,6 +176,9 @@ export class KnowledgePublisherService {
         rawResponse: input.rawResponse,
         segments,
       });
+
+      // 两段写第二段：向量生成（复用优先）+ raw 回写；失败置 failed 可重试
+      await this.writeSegmentEmbeddings(summaryId, segments, previousSegments);
 
       // 重写本地 md：相对图片链接 → COS 公网 URL（绝对 URL 原样保留）
       const rewritten = rewriteMarkdownImages(md, urlByRelPath);
@@ -182,6 +193,7 @@ export class KnowledgePublisherService {
           cid,
           segmentCount: segments.length,
           uploadedImageCount: Object.keys(urlByRelPath).length,
+          embeddedCount: segments.length,
         }),
       );
     } catch (err) {
@@ -196,6 +208,67 @@ export class KnowledgePublisherService {
       );
       throw err;
     }
+  }
+
+  /**
+   * 两段写第二段：复用未变更向量 → 补算缺失向量 → raw 回写。
+   * 缺 embedding 配置/调用失败抛错，由 publish 的 failed 语义承接（可重试）。
+   */
+  private async writeSegmentEmbeddings(
+    summaryId: number,
+    segments: Array<{
+      seq: number;
+      title: string;
+      content: string;
+    }>,
+    previousSegments: Array<{
+      seq: number;
+      title: string;
+      content: string;
+      embedding: number[] | null;
+      embeddingModel: string | null;
+    }>,
+  ): Promise<void> {
+    if (segments.length === 0) {
+      return;
+    }
+    const reuseByNormalizedText = new Map<string, number[]>();
+    for (const prev of previousSegments) {
+      if (prev.embedding && prev.embeddingModel === this.embedding.currentModel()) {
+        reuseByNormalizedText.set(
+          normalizeEmbeddingText(prev.title, prev.content),
+          prev.embedding,
+        );
+      }
+    }
+    const vectors: Array<number[] | null> = [];
+    const pending: Array<{ text: string; index: number }> = [];
+    for (const segment of segments) {
+      const text = normalizeEmbeddingText(segment.title, segment.content);
+      const reused = reuseByNormalizedText.get(text);
+      if (reused) {
+        vectors.push(reused);
+      } else {
+        pending.push({ text, index: vectors.length });
+        vectors.push(null);
+      }
+    }
+    if (pending.length > 0) {
+      const computed = await this.embedding.embedTexts(
+        pending.map((p) => p.text),
+      );
+      computed.forEach((vector, i) => {
+        vectors[pending[i].index] = vector;
+      });
+    }
+    const writes = segments
+      .map((segment, index) => ({ seq: segment.seq, embedding: vectors[index] }))
+      .filter((item): item is { seq: number; embedding: number[] } => item.embedding !== null);
+    await this.db.updateSummarySegmentEmbeddings(
+      summaryId,
+      writes,
+      this.embedding.currentModel(),
+    );
   }
 }
 

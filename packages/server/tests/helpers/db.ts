@@ -9,7 +9,7 @@ export function createTestDb(): DatabaseService {
     throw new Error(
       "TEST_DATABASE_URL is required. " +
         "Start a disposable test database, e.g.: " +
-        "docker run --rm -d --name bdl-test-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=bdl_test -p 55432:5432 postgres:17 " +
+        "docker run --rm -d --name bdl-test-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=bdl_test -p 55432:5432 pgvector/pgvector:pg17 " +
         "then set TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/bdl_test",
     );
   }

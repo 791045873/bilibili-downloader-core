@@ -96,13 +96,31 @@
 
 ## 7. Checklist
 
-- [ ] Phase A PoC + 决策（A1/A2/A3）记录
-- [ ] EmbeddingClient + 发布管道集成（复用/批量/缺配置语义）
-- [ ] 检索 API（raw SQL top-k + 错误分支）
-- [ ] 配置/env/文档 + 测试容器镜像切换
-- [ ] 自动化测试（写入流/检索流）
-- [ ] 全量回归 + 文档同步 + subagent 闭合审计
+- [x] Phase A PoC + 决策（A2 分支 + W2 两段写）记录
+- [x] EmbeddingClient + 发布管道集成（复用/批量/缺配置语义）
+- [x] 检索 API（raw SQL top-k + 错误分支）
+- [x] 配置/env/文档 + 测试容器镜像切换
+- [x] 自动化测试（写入流/检索流）
+- [x] 全量回归 + 文档同步 + subagent 闭合审计
 
-## 8. 记录区
+## 8. 记录区（2026-09-03 实施闭合）
 
-（实施时填写：PoC 决策、最终表结构、TD 状态、遗留事项。）
+### Phase A PoC 决策
+
+- **A4/A1 均不可行**：PSL v1 不支持 `Unsupported` 构造器与 `Vector` 原生类型（emit 实测 `PSL_UNSUPPORTED_FIELD_TYPE`）；contract extension authoring 学习成本过高，放弃。
+- **分支 A2 落地**：`embedding vector(1024)` 为 contract 外列（幂等 ensure 脚本创建）；**实测 `db init`/`db verify` 容忍额外列**（unclaimed 不报错）。
+- **`embedding_model` 进 contract**（普通 TEXT 列）：存量/新库由 `db init` 自动加列（additive diff）。
+- **写入机制 W2（两段写）**：Prisma 事务写 contract 列 → 事务后 raw SQL 回写 embedding + embedding_model（`updateSummarySegmentEmbeddings`）。崩溃窗口内 embedding 为 NULL → 不参与检索、重试幂等补算。
+- **容器/测试引导**：`scripts/ensure-pgvector.mjs`（CREATE EXTENSION + ADD COLUMN IF NOT EXISTS）接入容器 CMD 链与 vitest globalSetup。
+- **检索 raw SQL 往返实测**：1024 维写入 + `<=>` 余弦 + 模型过滤 + LIMIT 全通过。
+
+### 测试基座
+
+- 测试容器镜像换 `pgvector/pgvector:pg17`（pgvector 0.8.6）；镜像 tag 字符串更新于 helpers/db.ts 与 project-context 验证表。
+
+### 遗留
+
+- 语义检索真实效果（AC"小个子怎么穿显高"）→ 用户部署后用真实 API Key 验证（user-confirmed）。
+- 向量索引（HNSW/IVFFlat）未建：90 条量级无需，数据增长后评估（Phase 4 观察项）。
+- EMBEDDING_DIMENSIONS 变更的重算工具（Phase 4 既定）。
+- 偏差留痕（闭合审计 advisory）：①维度校验在 embedTexts 调用时生效（非启动期），fail-loud 语义一致；②复用键为纯归一化文本（seq tiebreaker 未实现——同文本同模型必同向量，功能等价）。

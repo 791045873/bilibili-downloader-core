@@ -128,6 +128,7 @@ model SummarySegment {
   timestampSeconds Int?        @map("timestamp_seconds")
   frameDescription String?     @map("frame_description")
   screenshotUrl    String?     @map("screenshot_url")
+  embeddingModel   String?     @map("embedding_model")
   createdAt        Timestamptz @default(now()) @map("created_at")
   summary          Summary     @relation(fields: [summaryId], references: [id], onDelete: Cascade, map: "summary_segment_summary_id_fkey")
 

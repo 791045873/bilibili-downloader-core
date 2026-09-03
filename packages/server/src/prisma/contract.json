@@ -635,6 +635,13 @@
                   "kind": "scalar"
                 }
               },
+              "embeddingModel": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "frameDescription": {
                 "nullable": true,
                 "type": {
@@ -709,6 +716,9 @@
                 },
                 "createdAt": {
                   "column": "created_at"
+                },
+                "embeddingModel": {
+                  "column": "embedding_model"
                 },
                 "frameDescription": {
                   "column": "frame_description"
@@ -1446,6 +1456,11 @@
                   "nativeType": "timestamptz",
                   "nullable": false
                 },
+                "embedding_model": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "frame_description": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -1713,7 +1728,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "85d08401cc09717bec1d9c6b81b76463878e1cda609efbff076e138a18e2826f"
+    "storageHash": "5f0ca193cdef370e6427fa4679b06826d718e461030f27ff1eb81171db43f60f"
   },
   "capabilities": {
     "postgres": {

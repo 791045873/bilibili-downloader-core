@@ -17,4 +17,9 @@ export default function globalSetup(): void {
     env: { ...process.env, DATABASE_URL: url },
     stdio: "inherit",
   });
+  execSync(`node scripts/ensure-pgvector.mjs`, {
+    cwd: packageRoot,
+    env: { ...process.env, DATABASE_URL: url },
+    stdio: "inherit",
+  });
 }

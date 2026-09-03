@@ -10,6 +10,8 @@ import { CosStoreService } from "../knowledge/cos-store.service.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
 import { KnowledgeBackfillService } from "../knowledge/knowledge-backfill.service.js";
 import { KnowledgeBackfillController } from "../knowledge/knowledge-backfill.controller.js";
+import { EmbeddingService } from "../knowledge/embedding.service.js";
+import { KnowledgeSearchController } from "../knowledge/knowledge-search.controller.js";
 
 @Module({
   imports: [DownloadModule],
@@ -18,6 +20,7 @@ import { KnowledgeBackfillController } from "../knowledge/knowledge-backfill.con
     AnalysisTaskController,
     PromptController,
     KnowledgeBackfillController,
+    KnowledgeSearchController,
   ],
   providers: [
     AnalysisVideoResolver,
@@ -26,6 +29,7 @@ import { KnowledgeBackfillController } from "../knowledge/knowledge-backfill.con
     CosStoreService,
     KnowledgePublisherService,
     KnowledgeBackfillService,
+    EmbeddingService,
   ],
   exports: [
     AnalysisTriggerService,

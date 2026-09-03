@@ -1284,7 +1284,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       frameDescription?: string;
       screenshotUrl?: string;
     }>;
-  }): Promise<void> {
+  }): Promise<number> {
     const parsedRawResponse = JSON.parse(args.rawResponse);
     const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
     const summaryId = await this.prismaDb.transaction(async (tx) => {
@@ -1333,6 +1333,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         segmentCount: args.segments.length,
       }),
     );
+    return summaryId;
   }
 
   /** 更新 AI 总结任务的知识发布状态 */
@@ -1350,10 +1351,99 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         updatedAt: Temporal.Instant.fromEpochMilliseconds(Date.now()),
       });
   }
+
+  /** 读取既有 segments 的向量复用索引（embedding 以文本取出，解析为数值数组） */
+  async getSummarySegmentsForEmbedding(
+    bvid: string,
+    cid: number,
+  ): Promise<
+    Array<{
+      seq: number;
+      title: string;
+      content: string;
+      embedding: number[] | null;
+      embeddingModel: string | null;
+    }>
+  > {
+    const { rows } = await this.pool.query(
+      `SELECT ss.seq, ss.title, ss.content, ss.embedding::text AS embedding, ss.embedding_model AS "embeddingModel"
+       FROM summary s JOIN summary_segment ss ON ss.summary_id = s.id
+       WHERE s.bvid = $1 AND s.cid = $2
+       ORDER BY ss.seq ASC`,
+      [bvid, cid],
+    );
+    return rows.map((row) => ({
+      seq: Number(row.seq),
+      title: row.title,
+      content: row.content,
+      embedding: row.embedding ? (JSON.parse(row.embedding) as number[]) : null,
+      embeddingModel: row.embeddingModel ?? null,
+    }));
+  }
+
+  /** 两段写的第二段：按 (summaryId, seq) 写回向量与生成模型（raw SQL，vector 列在 contract 外） */
+  async updateSummarySegmentEmbeddings(
+    summaryId: number,
+    items: Array<{ seq: number; embedding: number[] }>,
+    model: string,
+  ): Promise<void> {
+    for (const item of items) {
+      await this.pool.query(
+        `UPDATE summary_segment SET embedding = $2::vector, embedding_model = $3 WHERE summary_id = $1 AND seq = $4`,
+        [summaryId, toVectorText(item.embedding), model, item.seq],
+      );
+    }
+  }
+
+  /** pgvector 余弦 top-k 检索（仅模型一致且已向量化的 segment 参与） */
+  async searchKnowledgeSegments(
+    queryVector: number[],
+    model: string,
+    k: number,
+  ): Promise<
+    Array<{
+      segmentId: number;
+      title: string;
+      content: string;
+      score: number;
+      screenshotUrl: string | null;
+      frameDescription: string | null;
+      timestampSeconds: number | null;
+      videoTitle: string;
+      videoUrl: string | null;
+    }>
+  > {
+    const { rows } = await this.pool.query(
+      `SELECT ss.id, ss.title, ss.content, 1 - (ss.embedding <=> $1::vector) AS score,
+              ss.screenshot_url AS "screenshotUrl", ss.frame_description AS "frameDescription",
+              ss.timestamp_seconds AS "timestampSeconds",
+              s.video_title AS "videoTitle", s.video_url AS "videoUrl"
+       FROM summary_segment ss JOIN summary s ON s.id = ss.summary_id
+       WHERE ss.embedding_model = $2 AND ss.embedding IS NOT NULL
+       ORDER BY ss.embedding <=> $1::vector
+       LIMIT $3`,
+      [toVectorText(queryVector), model, k],
+    );
+    return rows.map((row) => ({
+      segmentId: Number(row.id),
+      title: row.title,
+      content: row.content,
+      score: Number(row.score),
+      screenshotUrl: row.screenshotUrl ?? null,
+      frameDescription: row.frameDescription ?? null,
+      timestampSeconds: row.timestampSeconds == null ? null : Number(row.timestampSeconds),
+      videoTitle: row.videoTitle,
+      videoUrl: row.videoUrl ?? null,
+    }));
+  }
 }
 
 function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (m) => `\\${m}`);
+}
+
+function toVectorText(values: number[]): string {
+  return `[${values.join(",")}]`;
 }
 
 const EXPECTED_TABLES = [

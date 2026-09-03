@@ -42,5 +42,8 @@ services:
       TENCENT_COS_REGION: ${TENCENT_COS_REGION:-}
       TENCENT_COS_BUCKET: ${TENCENT_COS_BUCKET:-}
       TENCENT_COS_PUBLIC_URL_PREFIX: ${TENCENT_COS_PUBLIC_URL_PREFIX:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-qwen3.7-text-embedding}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
     volumes:
       - "${DOWNLOAD_HOST_PATH:-${HOME:-$USERPROFILE}/Downloads/bilibili_download}:/download"

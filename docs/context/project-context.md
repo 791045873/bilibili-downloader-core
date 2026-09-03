@@ -16,9 +16,9 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `docs/requirements/2026-09-01-knowledge-vector-search.md`（Phase 2 向量化与检索 API；前置 knowledge-backfill 已实现——真实 89 条回填由用户部署镜像后手动触发）
+- Active requirement: `none`（Phase 2 向量化与检索 API 已实现闭合：`docs/plans/2026-09-02-knowledge-vector-search-plan.md`；语义检索真实效果由用户部署后确认）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `none`（Prisma 渐进改造总 plan 与 knowledge-backfill plan 均已闭合；下一步：为 Phase 2 向量化出 plan）
+- Active plan: `none`（knowledge-vector-search plan 已闭合；下一步候选：Phase 3 RAG 问答 / Phase 4 重算工具，需求未定稿）
 - Active backlog item: 无（回填需求已定稿，见 Active requirement；待出 plan）
 - Active backlog item: 无（最近完成项：移除前端 BaseURL 配置、测试连接改用原生端点；此前：视觉代理密钥改为 DB 来源 + 请求透传、移除多模态直连分支与 chatCompletion 死代码、环境变量清理、提取 Python 视觉代理为独立子包、Docker 拆分视觉代理为独立容器）
 - AI autonomy: `plan-first`（2026-08-04 已切换到方案 B，更新后的计划需重新审计后再实施）
@@ -48,7 +48,7 @@ Rule:
 | Typecheck / compile check  | `pnpm typecheck`                                      |
 | Build                      | `pnpm build`                                          |
 | Lint / static check        | `none`                                                |
-| Unit tests (server 数据层) | `pnpm --filter @bilibili-downloader/server test`（需测试库：`TEST_DATABASE_URL`，推荐 `docker run --rm -d --name bdl-test-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=bdl_test -p 55432:5432 postgres:17`；SDK 包测试：`pnpm --filter bilibili-api-sdk test`） |
+| Unit tests (server 数据层) | `pnpm --filter @bilibili-downloader/server test`（需测试库：`TEST_DATABASE_URL`，推荐 `docker run --rm -d --name bdl-test-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=bdl_test -p 55432:5432 pgvector/pgvector:pg17`；SDK 包测试：`pnpm --filter bilibili-api-sdk test`） |
 | E2E / integration tests    | `none`                                                |
 | Docker build               | `pnpm docker:build`                                   |
 

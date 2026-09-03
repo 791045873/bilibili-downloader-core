@@ -33,7 +33,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'85d08401cc09717bec1d9c6b81b76463878e1cda609efbff076e138a18e2826f'>;
+  StorageHashBase<'5f0ca193cdef370e6427fa4679b06826d718e461030f27ff1eb81171db43f60f'>;
 export type ExecutionHash = ExecutionHashBase<string>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
@@ -309,6 +309,7 @@ export type FieldOutputTypes = {
       readonly timestampSeconds: CodecTypes['pg/int4@1']['output'] | null;
       readonly frameDescription: CodecTypes['pg/text@1']['output'] | null;
       readonly screenshotUrl: CodecTypes['pg/text@1']['output'] | null;
+      readonly embeddingModel: CodecTypes['pg/text@1']['output'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
     };
     readonly Task: {
@@ -410,6 +411,7 @@ export type FieldInputTypes = {
       readonly timestampSeconds: CodecTypes['pg/int4@1']['input'] | null;
       readonly frameDescription: CodecTypes['pg/text@1']['input'] | null;
       readonly screenshotUrl: CodecTypes['pg/text@1']['input'] | null;
+      readonly embeddingModel: CodecTypes['pg/text@1']['input'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['input'];
     };
     readonly Task: {
@@ -505,6 +507,7 @@ export type StorageColumnTypes = {
     readonly summary_segment: {
       readonly content: CodecTypes['pg/text@1']['output'];
       readonly created_at: CodecTypes['pg/timestamptz-temporal@1']['output'];
+      readonly embedding_model: CodecTypes['pg/text@1']['output'] | null;
       readonly frame_description: CodecTypes['pg/text@1']['output'] | null;
       readonly id: CodecTypes['pg/int8@1']['output'];
       readonly screenshot_url: CodecTypes['pg/text@1']['output'] | null;
@@ -606,6 +609,7 @@ export type StorageColumnInputTypes = {
     readonly summary_segment: {
       readonly content: CodecTypes['pg/text@1']['input'];
       readonly created_at: CodecTypes['pg/timestamptz-temporal@1']['input'];
+      readonly embedding_model: CodecTypes['pg/text@1']['input'] | null;
       readonly frame_description: CodecTypes['pg/text@1']['input'] | null;
       readonly id: CodecTypes['pg/int8@1']['input'];
       readonly screenshot_url: CodecTypes['pg/text@1']['input'] | null;
@@ -1078,6 +1082,11 @@ type ContractBase = Omit<
                   readonly nullable: true;
                 };
                 readonly screenshot_url: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly embedding_model: {
                   readonly nativeType: 'text';
                   readonly codecId: 'pg/text@1';
                   readonly nullable: true;
@@ -1716,6 +1725,10 @@ type ContractBase = Omit<
                 readonly nullable: true;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
               };
+              readonly embeddingModel: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
               readonly createdAt: {
                 readonly nullable: false;
                 readonly type: {
@@ -1749,6 +1762,7 @@ type ContractBase = Omit<
                 readonly timestampSeconds: { readonly column: 'timestamp_seconds' };
                 readonly frameDescription: { readonly column: 'frame_description' };
                 readonly screenshotUrl: { readonly column: 'screenshot_url' };
+                readonly embeddingModel: { readonly column: 'embedding_model' };
                 readonly createdAt: { readonly column: 'created_at' };
               };
             };

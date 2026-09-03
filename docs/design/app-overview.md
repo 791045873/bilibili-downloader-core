@@ -77,6 +77,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | POST /api/analysis/trigger | 对 bvid/cid 触发 AI 总结，body 可带 `promptId?`：无任务时创建下载任务并写入 `task.prompt_id`（下载完成后自动总结使用），有任务时透传触发 | `packages/server/src/analysis/analysis.controller.ts` |
 | POST /api/knowledge/backfill | 手动触发一次历史总结知识回填：后台批量（并发 2）把 `completed` + `raw_response` 非空 + 非 synced 的总结逐条经发布管道入库；无可回填返回 `{ total: 0 }`，否则返回 `{ message, total }` 并立即返回（fire-and-forget）；运行中重复触发返回 409 | `packages/server/src/knowledge/knowledge-backfill.controller.ts` |
 | GET /api/knowledge/backfill | 查询回填批次进度：`{ running, total, synced, skipped, failed, failures[{ summaryTaskId, error }] }`；批次完成后回到 idle 且计数保留到下次触发 | `packages/server/src/knowledge/knowledge-backfill.controller.ts` |
+| GET /api/knowledge/search?q=&k= | 向量检索：q 归一化后经 DashScope embedding，pgvector 余弦 top-k（k 缺省 10、限 1–50）；返回 `[{ segmentId, title, content, score, screenshotUrl, frameDescription, videoTitle, videoUrl, timestampSeconds }]`；q 空或 k 非法返回 400，缺 embedding 配置/调用失败返回 503（不降级关键词搜索）；仅 `embedding_model` 与当前配置一致的 segment 参与 | `packages/server/src/knowledge/knowledge-search.controller.ts` |
 | GET /summary-files/* | 摘要文档根目录（`cwd/summaryDir`）静态挂载，供前端预览 md 内相对插图；本地 dev 由 Vite 代理 `/summary-files` 转发，容器内与前端同源 | `packages/server/src/main.ts` |
 | POST /api/download | 创建下载任务，body 可带 `promptId?` 写入 `task.prompt_id`；必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts` |
 
