@@ -2,6 +2,8 @@ import { useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import * as api from "../api";
+import { useParseHistoryStore } from "../stores/parseHistory";
+import type { ParseHistoryEntry } from "../stores/parseHistory";
 import type {
   ParseLinkResult,
   UserSpaceResult,
@@ -61,9 +63,75 @@ function toSeasonIdFromVideo(result: ParseLinkResult): number | undefined {
   return videoData.ugcSeason?.seasonId;
 }
 
+function toHistoryEntry(result: ParseLinkResult): ParseHistoryEntry {
+  const parsedAt = Date.now();
+  if (result.type === "user-space") {
+    const userSpace = result.data as UserSpaceResult;
+    return {
+      key: `user-videos-${userSpace.mid}`,
+      type: "user-videos" as const,
+      title: userSpace.name || `用户空间 ${userSpace.mid}`,
+      coverUrl: userSpace.face,
+      params: { type: "user-videos", mid: String(userSpace.mid) },
+      parsedAt,
+    };
+  }
+  if (result.type === "ugc-season") {
+    const seasonData = result.data as { seasonId: number; title?: string; cover?: string };
+    return {
+      key: `ugc-season-${seasonData.seasonId}`,
+      type: "ugc-season" as const,
+      title: seasonData.title || `合集 ${seasonData.seasonId}`,
+      coverUrl: seasonData.cover,
+      params: { type: "ugc-season", seasonId: String(seasonData.seasonId) },
+      parsedAt,
+    };
+  }
+  if (result.type === "favorites") {
+    const favData = result.data as { mediaId: number; title?: string; cover?: string };
+    return {
+      key: `favorites-${favData.mediaId}`,
+      type: "favorites" as const,
+      title: favData.title || `收藏夹 ${favData.mediaId}`,
+      coverUrl: favData.cover,
+      params: { type: "favorites", mediaId: String(favData.mediaId) },
+      parsedAt,
+    };
+  }
+  const videoData = result.data as {
+    bvid: string;
+    title?: string;
+    coverUrl?: string;
+    ugcSeason?: { seasonId: number; title?: string; cover?: string };
+  };
+  if (videoData.ugcSeason?.seasonId) {
+    return {
+      key: `ugc-season-${videoData.ugcSeason.seasonId}`,
+      type: "ugc-season" as const,
+      title: videoData.ugcSeason.title || videoData.title || `合集 ${videoData.ugcSeason.seasonId}`,
+      coverUrl: videoData.ugcSeason.cover || videoData.coverUrl,
+      params: {
+        type: "ugc-season",
+        seasonId: String(videoData.ugcSeason.seasonId),
+        currentBvid: videoData.bvid,
+      },
+      parsedAt,
+    };
+  }
+  return {
+    key: `video-${videoData.bvid}`,
+    type: "video" as const,
+    title: videoData.title || videoData.bvid,
+    coverUrl: videoData.coverUrl,
+    params: { type: "video", bvid: videoData.bvid },
+    parsedAt,
+  };
+}
+
 export function Component() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const record = useParseHistoryStore((s) => s.record);
   const input = (searchParams.get("input") ?? "").trim();
 
   const { data, isLoading, isError, error } = useQuery({
@@ -75,7 +143,13 @@ export function Component() {
 
   useEffect(() => {
     if (!data) return;
-    if (data.type === "user-space") return;
+
+    if (data.type === "user-space") {
+      record(toHistoryEntry(data));
+      return;
+    }
+
+    record(toHistoryEntry(data));
 
     if (data.type === "ugc-season") {
       const seasonData = data.data as { seasonId: number };
@@ -108,7 +182,7 @@ export function Component() {
     void navigate(`/parse-result/list?type=video&bvid=${videoData.bvid}`, {
       replace: true,
     });
-  }, [data, navigate]);
+  }, [data, navigate, record]);
 
   const userSpace = useMemo(
     () =>
