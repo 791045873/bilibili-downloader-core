@@ -19,7 +19,7 @@ import { NotificationService } from "../notification/notification.service.js";
 import { sanitizeFileName } from "../download/file-naming.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 import { PromptService } from "./prompt.service.js";
-import { SUMMARY_BASE_DIR } from "./summary-dir.js";
+import { ANALYSIS_LLM_VIDEO_DIR, SUMMARY_BASE_DIR } from "../paths.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
 
 /** AI 总结任务执行耗时明细 */
@@ -66,12 +66,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     private readonly promptService: PromptService,
     private readonly knowledgePublisher: KnowledgePublisherService,
   ) {
-    this.llmVideoDir = process.env.ANALYSIS_LLM_VIDEO_DIR
-      ? resolve(process.env.ANALYSIS_LLM_VIDEO_DIR)
-      : join(
-          resolve(process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads")),
-          ".analysis-llm",
-        );
+    this.llmVideoDir = ANALYSIS_LLM_VIDEO_DIR;
   }
 
   async onModuleInit(): Promise<void> {

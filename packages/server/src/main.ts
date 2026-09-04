@@ -4,10 +4,8 @@ import { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import {
-  SUMMARY_BASE_DIR,
-  SUMMARY_STATIC_PREFIX,
-} from "./analysis/summary-dir.js";
+import { DOWNLOAD_ROOT, SUMMARY_BASE_DIR } from "./paths.js";
+import { SUMMARY_STATIC_PREFIX } from "./analysis/summary-dir.js";
 import { createLogMessage } from "./logging/server-log.util.js";
 import { FileConsoleLogger } from "./logging/file-logger.js";
 
@@ -32,7 +30,7 @@ async function bootstrap() {
   logger.log(
     createLogMessage("Bilibili 下载器后端已启动 (NestJS)", {
       route: `http://localhost:${PORT}`,
-      outputPath: process.env.OUTPUT_DIR ?? "./downloads",
+      outputPath: DOWNLOAD_ROOT,
     }),
   );
   logger.log(

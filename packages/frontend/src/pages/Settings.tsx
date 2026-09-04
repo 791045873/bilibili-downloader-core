@@ -158,9 +158,6 @@ export function Component() {
                   <span className="text-sm text-zinc-700">
                     服务端下载根目录
                   </span>
-                  <span className="rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-600">
-                    {downloadConfig.source === "env" ? "环境变量" : "默认目录"}
-                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <code className="min-w-0 flex-1 break-all rounded bg-zinc-100 px-3 py-2 text-xs text-zinc-700">

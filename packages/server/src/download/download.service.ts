@@ -18,7 +18,13 @@ import type { VideoInfo, UserInfo } from "@bilibili-downloader/core/ports";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { DownloadEventType } from "@bilibili-downloader/core/events";
 import type { ResolvedVideo } from "@bilibili-downloader/core/domain";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import {
+  ANALYSIS_LLM_VIDEO_DIR,
+  BILI_API_CACHE_DIR,
+  COOKIE_FILE_PATH,
+  DOWNLOAD_ROOT,
+} from "../paths.js";
 import {
   DatabaseService,
   type PaginatedTaskResult,
@@ -85,15 +91,13 @@ export class DownloadService implements OnModuleInit {
   onTaskFinished?: (taskId: number) => void;
 
   constructor(private readonly db: DatabaseService) {
-    this.outputDir = process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads");
-    this.cookieFile =
-      process.env.COOKIE_FILE || join(this.outputDir, ".cookies.json");
+    this.outputDir = DOWNLOAD_ROOT;
+    this.cookieFile = COOKIE_FILE_PATH;
   }
 
-  getDownloadConfig(): { outputDir: string; source: "env" | "default" } {
+  getDownloadConfig(): { outputDir: string } {
     return {
-      outputDir: resolve(this.outputDir),
-      source: process.env.OUTPUT_DIR ? "env" : "default",
+      outputDir: this.outputDir,
     };
   }
 
@@ -102,7 +106,7 @@ export class DownloadService implements OnModuleInit {
       ? await this.loadCookieString(this.cookieFile)
       : undefined;
     this.biliClient = createBilibiliSdkClient(cookieString, {
-      cacheStore: new FileCacheStore(join(this.outputDir, "bili-api-cache")),
+      cacheStore: new FileCacheStore(BILI_API_CACHE_DIR),
     });
     this.fileStore = new NodeFileStore();
     this.merger = new FfmpegMerger();
@@ -307,9 +311,7 @@ export class DownloadService implements OnModuleInit {
       throw new Error("低清晰度下载失败：缺少可用音频流");
     }
 
-    const llmDir = process.env.ANALYSIS_LLM_VIDEO_DIR
-      ? resolve(process.env.ANALYSIS_LLM_VIDEO_DIR)
-      : join(this.outputDir, ".analysis-llm");
+    const llmDir = ANALYSIS_LLM_VIDEO_DIR;
     await this.fileStore.ensureOutputDir(llmDir);
 
     const fileName = buildOutputFileName({
@@ -725,8 +727,7 @@ autoSummary: dto.autoSummary,
 
   async confirmLogin(callbackUrl: string) {
     const cookies = this.authProvider.extractCookies(callbackUrl);
-    const cookieFile = join(this.outputDir, ".cookies.json");
-    await this.authProvider.saveCookies(cookies, cookieFile);
+    await this.authProvider.saveCookies(cookies, COOKIE_FILE_PATH);
     const cookieString = this.authProvider.toCookieString(cookies);
     this.biliClient.setCookieString(cookieString);
     return { message: "登录成功" };

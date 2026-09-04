@@ -148,7 +148,6 @@ export interface ParseLinkResult {
 /** 服务端任务记录 */
 export interface DownloadConfig {
   outputDir: string;
-  source: "env" | "default";
 }
 
 export interface TaskEntry {

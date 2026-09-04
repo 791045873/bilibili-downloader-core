@@ -1,18 +1,12 @@
 /**
- * 摘要文档根目录共享常量
+ * Markdown 总结文档工具：frontmatter 解析、图片链接重写
  *
- * 静态挂载、AnalysisTriggerService.resolveSummaryDir、markdown 查看端点共用，
- * 避免三处重复推导 cwd/summaryDir 造成漂移。
+ * 摘要根目录常量（SUMMARY_BASE_DIR）已收敛至 src/paths.ts，此处仅消费。
  */
 
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative } from "node:path";
 
-const DOWNLOAD_ROOT = resolve(
-  process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads"),
-);
-
-/** 摘要文档根目录：所有 AI 总结 md 与截图均落于此目录下（下载根目录内的 summary/ 子目录，随下载目录一起持久化） */
-export const SUMMARY_BASE_DIR = join(DOWNLOAD_ROOT, "summary");
+import { SUMMARY_BASE_DIR } from "../paths.js";
 
 /** 摘要目录静态挂载前缀（同源；dev 由 Vite 代理转发，生产同源直达） */
 export const SUMMARY_STATIC_PREFIX = "/summary-files";
