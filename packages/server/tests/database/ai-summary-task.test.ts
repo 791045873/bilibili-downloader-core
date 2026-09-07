@@ -1,9 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { join } from "node:path";
 import {
   initTestDb,
   truncateAll,
   type DatabaseService,
 } from "../helpers/db.js";
+import { PathsService } from "../../src/paths/paths.service.js";
+import {
+  resolveSummaryOutputPath,
+  toRelativeSummaryOutputPath,
+} from "../../src/analysis/summary-dir.js";
 
 const db: DatabaseService = await initTestDb();
 
@@ -268,3 +274,87 @@ describe("listAiSummaryTasksForKnowledgeBackfill", () => {
 });
 
 // 一次性状态合并迁移用例已随迁移归档移除（见 packages/server/scripts/one-off-migrations/README.md）。
+
+describe("summary_output 相对路径化", () => {
+  it("upsert 咽喉点：根下绝对路径转相对；根外绝对值与已有相对值原样保留；空串清空语义不变", async () => {
+    const underRoot = join(
+      new PathsService().DOWNLOAD_ROOT,
+      "summary",
+      "t-BV1-1",
+      "t-summary.md",
+    );
+    const row = await db.upsertAiSummaryTask({
+      bvid: "BV1",
+      cid: 1,
+      status: "completed",
+      summaryOutput: underRoot,
+    });
+    expect(row.summaryOutput).toBe("summary/t-BV1-1/t-summary.md");
+
+    const legacyPath = join(new PathsService().DOWNLOAD_ROOT, "..", "legacy", "x-summary.md");
+    const outside = await db.upsertAiSummaryTask({
+      bvid: "BV2",
+      cid: 2,
+      status: "completed",
+      summaryOutput: legacyPath,
+    });
+    expect(outside.summaryOutput).toBe(legacyPath);
+
+    const alreadyRel = await db.upsertAiSummaryTask({
+      bvid: "BV3",
+      cid: 3,
+      status: "completed",
+      summaryOutput: "summary/keep/a-summary.md",
+    });
+    expect(alreadyRel.summaryOutput).toBe("summary/keep/a-summary.md");
+  });
+});
+
+// 存量数据修正按用户决策改为一次性 SQL 手动执行（one-off-migrations/003），启动迁移已移除。
+
+describe("summary path helpers", () => {
+  const root = "C:\\base\\downloads";
+
+  it("toRelative: 大小写不敏感判定归属但保留原 case；越界/相对值/等于根返回 null", () => {
+    expect(
+      toRelativeSummaryOutputPath(
+        "C:\\BASE\\DOWNLOADS\\summary\\a\\x-summary.md",
+        root,
+      ),
+    ).toBe("summary/a/x-summary.md");
+    expect(
+      toRelativeSummaryOutputPath("D:\\elsewhere\\x-summary.md", root),
+    ).toBeNull();
+    expect(toRelativeSummaryOutputPath("summary/a.md", root)).toBeNull();
+    expect(toRelativeSummaryOutputPath(root, root)).toBeNull();
+    expect(
+      toRelativeSummaryOutputPath("C:\\base\\downloads-other\\x.md", root),
+    ).toBeNull();
+  });
+
+  it("resolve: 相对值拼接 downloadRoot，绝对值原样透传", () => {
+    expect(resolveSummaryOutputPath("summary/a.md", root)).toBe(
+      "C:\\base\\downloads\\summary\\a.md",
+    );
+    expect(
+      resolveSummaryOutputPath("C:\\dl\\summary\\a.md", root),
+    ).toBe("C:\\dl\\summary\\a.md");
+    expect(resolveSummaryOutputPath("", root)).toBe("");
+  });
+});
+
+describe("PathsService", () => {
+  it("派生路径均落在 DOWNLOAD_ROOT 之内且组合关系正确", () => {
+    const paths = new PathsService();
+    expect(paths.SUMMARY_BASE_DIR).toBe(join(paths.DOWNLOAD_ROOT, "summary"));
+    expect(paths.ANALYSIS_LLM_VIDEO_DIR).toBe(
+      join(paths.DOWNLOAD_ROOT, ".analysis-llm"),
+    );
+    expect(paths.BILI_API_CACHE_DIR).toBe(
+      join(paths.DOWNLOAD_ROOT, "bili-api-cache"),
+    );
+    expect(paths.COOKIE_FILE_PATH).toBe(
+      join(paths.DOWNLOAD_ROOT, ".cookies.json"),
+    );
+  });
+});

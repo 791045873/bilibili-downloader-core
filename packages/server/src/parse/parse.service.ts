@@ -24,11 +24,7 @@ import {
   type UgcSeasonResult,
   type UserSpaceResult,
 } from "@bilibili-downloader/core/ports";
-import {
-  BILI_API_CACHE_DIR,
-  COOKIE_FILE_PATH,
-  DOWNLOAD_ROOT,
-} from "../paths.js";
+import { PathsService } from "../paths/paths.service.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 
 @Injectable()
@@ -46,9 +42,9 @@ export class ParseService implements OnModuleInit {
 
   private cookieString?: string;
 
-  constructor() {
-    this.outputDir = DOWNLOAD_ROOT;
-    this.cookieFile = COOKIE_FILE_PATH;
+  constructor(private readonly paths: PathsService) {
+    this.outputDir = paths.DOWNLOAD_ROOT;
+    this.cookieFile = paths.COOKIE_FILE_PATH;
   }
 
   async onModuleInit(): Promise<void> {
@@ -56,7 +52,7 @@ export class ParseService implements OnModuleInit {
     this.cookieString = await this.loadCookieString(this.cookieFile);
 
     const biliClient = createBilibiliSdkClient(this.cookieString, {
-      cacheStore: new FileCacheStore(BILI_API_CACHE_DIR),
+      cacheStore: new FileCacheStore(this.paths.BILI_API_CACHE_DIR),
     });
     this.resourceParser = new BilibiliResourceParser();
     this.streamProvider = new BilibiliStreamProvider(biliClient);

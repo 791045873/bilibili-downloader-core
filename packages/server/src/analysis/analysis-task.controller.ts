@@ -20,8 +20,10 @@ import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
 import {
   extractSummaryMeta,
+  resolveSummaryOutputPath,
   rewriteMarkdownImageUrls,
 } from "./summary-dir.js";
+import { PathsService } from "../paths/paths.service.js";
 
 @Controller("api")
 export class AnalysisTaskController {
@@ -32,6 +34,7 @@ export class AnalysisTaskController {
     private readonly databaseService: DatabaseService,
     private readonly downloadService: DownloadService,
     private readonly knowledgePublisher: KnowledgePublisherService,
+    private readonly paths: PathsService,
   ) {}
 
   @Post("/tasks/:id/summary")
@@ -153,11 +156,15 @@ export class AnalysisTaskController {
     }
 
     let content: string;
+    const mdAbsPath = resolveSummaryOutputPath(
+      record.summaryOutput,
+      this.paths.DOWNLOAD_ROOT,
+    );
     try {
-      content = await readFile(record.summaryOutput, "utf-8");
+      content = await readFile(mdAbsPath, "utf-8");
     } catch (err) {
       this.logger.warn(
-        `Get ai summary task markdown rejected because file is missing: ${summaryTaskId} ${record.summaryOutput}`,
+        `Get ai summary task markdown rejected because file is missing: ${summaryTaskId} ${mdAbsPath}`,
         err instanceof Error ? err.stack : undefined,
       );
       throw new NotFoundException("总结文档不存在或已被删除");
@@ -165,7 +172,7 @@ export class AnalysisTaskController {
 
     const { meta, body } = extractSummaryMeta(content);
     return {
-      content: rewriteMarkdownImageUrls(body, record.summaryOutput),
+      content: rewriteMarkdownImageUrls(body, mdAbsPath, this.paths.SUMMARY_BASE_DIR),
       meta,
     };
   }
@@ -344,7 +351,10 @@ export class AnalysisTaskController {
         videoUrl: `https://www.bilibili.com/video/${record.bvid}`,
         modelName: record.modelName,
         rawResponse: record.rawResponse,
-        summaryPath: record.summaryOutput,
+        summaryPath: resolveSummaryOutputPath(
+          record.summaryOutput,
+          this.paths.DOWNLOAD_ROOT,
+        ),
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);

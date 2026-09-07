@@ -19,12 +19,7 @@ import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { DownloadEventType } from "@bilibili-downloader/core/events";
 import type { ResolvedVideo } from "@bilibili-downloader/core/domain";
 import { join } from "node:path";
-import {
-  ANALYSIS_LLM_VIDEO_DIR,
-  BILI_API_CACHE_DIR,
-  COOKIE_FILE_PATH,
-  DOWNLOAD_ROOT,
-} from "../paths.js";
+import { PathsService } from "../paths/paths.service.js";
 import {
   DatabaseService,
   type PaginatedTaskResult,
@@ -90,9 +85,12 @@ export class DownloadService implements OnModuleInit {
   // 下载执行完成后的回调（由 Scheduler 设置）
   onTaskFinished?: (taskId: number) => void;
 
-  constructor(private readonly db: DatabaseService) {
-    this.outputDir = DOWNLOAD_ROOT;
-    this.cookieFile = COOKIE_FILE_PATH;
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly paths: PathsService,
+  ) {
+    this.outputDir = paths.DOWNLOAD_ROOT;
+    this.cookieFile = paths.COOKIE_FILE_PATH;
   }
 
   getDownloadConfig(): { outputDir: string } {
@@ -106,7 +104,7 @@ export class DownloadService implements OnModuleInit {
       ? await this.loadCookieString(this.cookieFile)
       : undefined;
     this.biliClient = createBilibiliSdkClient(cookieString, {
-      cacheStore: new FileCacheStore(BILI_API_CACHE_DIR),
+      cacheStore: new FileCacheStore(this.paths.BILI_API_CACHE_DIR),
     });
     this.fileStore = new NodeFileStore();
     this.merger = new FfmpegMerger();
@@ -311,7 +309,7 @@ export class DownloadService implements OnModuleInit {
       throw new Error("低清晰度下载失败：缺少可用音频流");
     }
 
-    const llmDir = ANALYSIS_LLM_VIDEO_DIR;
+    const llmDir = this.paths.ANALYSIS_LLM_VIDEO_DIR;
     await this.fileStore.ensureOutputDir(llmDir);
 
     const fileName = buildOutputFileName({
@@ -727,7 +725,7 @@ autoSummary: dto.autoSummary,
 
   async confirmLogin(callbackUrl: string) {
     const cookies = this.authProvider.extractCookies(callbackUrl);
-    await this.authProvider.saveCookies(cookies, COOKIE_FILE_PATH);
+    await this.authProvider.saveCookies(cookies, this.paths.COOKIE_FILE_PATH);
     const cookieString = this.authProvider.toCookieString(cookies);
     this.biliClient.setCookieString(cookieString);
     return { message: "登录成功" };

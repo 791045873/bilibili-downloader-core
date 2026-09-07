@@ -4,7 +4,7 @@ import { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { DOWNLOAD_ROOT, SUMMARY_BASE_DIR } from "./paths.js";
+import { PathsService } from "./paths/paths.service.js";
 import { SUMMARY_STATIC_PREFIX } from "./analysis/summary-dir.js";
 import { createLogMessage } from "./logging/server-log.util.js";
 import { FileConsoleLogger } from "./logging/file-logger.js";
@@ -22,21 +22,22 @@ async function bootstrap() {
   }
 
   // 摘要文档目录：确保存在后以受控前缀挂载，供前端预览 md 内相对插图
-  mkdirSync(SUMMARY_BASE_DIR, { recursive: true });
-  app.useStaticAssets(SUMMARY_BASE_DIR, { prefix: `${SUMMARY_STATIC_PREFIX}/` });
+  const paths = app.get(PathsService);
+  mkdirSync(paths.SUMMARY_BASE_DIR, { recursive: true });
+  app.useStaticAssets(paths.SUMMARY_BASE_DIR, { prefix: `${SUMMARY_STATIC_PREFIX}/` });
 
   await app.listen(PORT);
 
   logger.log(
     createLogMessage("Bilibili 下载器后端已启动 (NestJS)", {
       route: `http://localhost:${PORT}`,
-      outputPath: DOWNLOAD_ROOT,
+      outputPath: paths.DOWNLOAD_ROOT,
     }),
   );
   logger.log(
     createLogMessage("摘要文档静态目录已挂载", {
       route: `${SUMMARY_STATIC_PREFIX}/`,
-      outputPath: SUMMARY_BASE_DIR,
+      outputPath: paths.SUMMARY_BASE_DIR,
       sourceType: "static-assets",
     }),
   );

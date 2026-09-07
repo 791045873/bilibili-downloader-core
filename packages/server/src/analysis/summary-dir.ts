@@ -1,15 +1,61 @@
 /**
  * Markdown 总结文档工具：frontmatter 解析、图片链接重写
  *
- * 摘要根目录常量（SUMMARY_BASE_DIR）已收敛至 src/paths.ts，此处仅消费。
+ * 纯函数层：不读 env、不依赖 Nest；摘要根目录由调用方传入。
  */
 
-import { dirname, isAbsolute, relative } from "node:path";
-
-import { SUMMARY_BASE_DIR } from "../paths.js";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 /** 摘要目录静态挂载前缀（同源；dev 由 Vite 代理转发，生产同源直达） */
 export const SUMMARY_STATIC_PREFIX = "/summary-files";
+
+function isAbsoluteSummaryPath(value: string): boolean {
+  return isAbsolute(value) || /^[a-zA-Z]:[\\/]/.test(value);
+}
+
+/**
+ * 写侧：把 summary_output 绝对路径转为相对 downloadRoot 的相对路径（POSIX 分隔符）。
+ * 仅当值位于 downloadRoot 之下时转换；遗留根外值（如旧 cwd/summaryDir）返回 null 表示不改写。
+ * 大小写：归属判定仅用于比较，relative() 用原始大小写计算，保留原段 case（云端 Linux 大小写敏感）。
+ */
+export function toRelativeSummaryOutputPath(
+  value: string,
+  downloadRoot: string,
+): string | null {
+  if (!value || isAbsoluteSummaryPath(value) === false) {
+    return null;
+  }
+  const absValue = resolve(value);
+  const absRoot = resolve(downloadRoot);
+  const rel = relative(absRoot, absValue);
+  if (
+    rel === "" ||
+    isAbsolute(rel) ||
+    rel.startsWith("..") ||
+    rel.startsWith(`..${sepOf(rel)}`)
+  ) {
+    return null;
+  }
+  return rel.replaceAll("\\", "/");
+}
+
+function sepOf(value: string): string {
+  return value.includes("/") ? "/" : "\\";
+}
+
+/**
+ * 读侧：把 DB 中的 summary_output 解析为当前环境的绝对路径。
+ * 相对值按 join(downloadRoot, value) 拼接；绝对值（迁移前遗留）原样透传。
+ */
+export function resolveSummaryOutputPath(
+  value: string,
+  downloadRoot: string,
+): string {
+  if (!value || isAbsoluteSummaryPath(value)) {
+    return value;
+  }
+  return join(downloadRoot, value);
+}
 
 /** Markdown 图片语法：![alt](url)（当前生成器仅产出该语法，url 不含空格/括号） */
 const MARKDOWN_IMAGE_RE = /!\[([^\]]*)\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/g;
@@ -112,13 +158,15 @@ export function extractSummaryMeta(content: string): {
  *
  * @param content md 全文（通常已剥离 frontmatter）
  * @param mdFileAbsPath md 文件的绝对路径（用于计算相对摘要根目录的基准）
+ * @param summaryBaseDir 摘要根目录（由调用方从 PathsService 传入）
  */
 export function rewriteMarkdownImageUrls(
   content: string,
   mdFileAbsPath: string,
+  summaryBaseDir: string,
 ): string {
   const mdDir = dirname(mdFileAbsPath);
-  let relDir = relative(SUMMARY_BASE_DIR, mdDir).replaceAll("\\", "/");
+  let relDir = relative(summaryBaseDir, mdDir).replaceAll("\\", "/");
   if (relDir === ".") {
     relDir = "";
   }

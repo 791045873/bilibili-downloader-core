@@ -6,8 +6,9 @@
 | --- | --- | --- |
 | `001-summary-status-merge.sql` | 历史 task.summary_status 合并进 ai_summary_task | 已随 0.0.x 在全部存量库执行过 |
 | `002-analysis-sub-task-supersede.sql` | 旧活跃子任务标 failed + partial unique index 重建 | 已随 0.0.x 在全部存量库执行过 |
+| `003-summary-output-relative.sql` | ai_summary_task.summary_output 绝对路径改写为相对下载根目录的相对路径 | **按环境手动执行、幂等可重复**：修改脚本内 root 字面量为当前环境下载根目录后执行（本地与 Docker 各执行一次）；server 不会自动执行 |
 
-**勿在任何库重复执行。** 若存在未执行过它们的异常库（理论上不存在），人工核对后单独执行。
+**001/002 勿在任何库重复执行。** 若存在未执行过它们的异常库（理论上不存在），人工核对后单独执行。003 例外：幂等设计，可安全重复执行。
 
 ## 对应测试去向
 

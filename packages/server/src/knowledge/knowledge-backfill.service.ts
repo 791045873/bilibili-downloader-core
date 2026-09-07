@@ -2,6 +2,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import type { AiSummaryTaskRecord } from "../database/database.service.js";
 import { KnowledgePublisherService } from "./knowledge-publisher.service.js";
+import { resolveSummaryOutputPath } from "../analysis/summary-dir.js";
+import { PathsService } from "../paths/paths.service.js";
 
 export interface BackfillFailure {
   summaryTaskId: number;
@@ -33,6 +35,7 @@ export class KnowledgeBackfillService {
   constructor(
     private readonly db: DatabaseService,
     private readonly publisher: KnowledgePublisherService,
+    private readonly paths: PathsService,
   ) {}
 
   async start(): Promise<{ started: boolean; total: number }> {
@@ -111,7 +114,10 @@ export class KnowledgeBackfillService {
         videoUrl: `https://www.bilibili.com/video/${current.bvid}`,
         modelName: current.modelName,
         rawResponse: current.rawResponse!,
-        summaryPath: current.summaryOutput!,
+        summaryPath: resolveSummaryOutputPath(
+          current.summaryOutput!,
+          this.paths.DOWNLOAD_ROOT,
+        ),
       });
       const after = await this.db.getAiSummaryTaskById(current.id!);
       if (after?.knowledgeStatus === "synced") {

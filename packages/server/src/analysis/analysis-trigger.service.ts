@@ -19,7 +19,7 @@ import { NotificationService } from "../notification/notification.service.js";
 import { sanitizeFileName } from "../download/file-naming.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 import { PromptService } from "./prompt.service.js";
-import { ANALYSIS_LLM_VIDEO_DIR, SUMMARY_BASE_DIR } from "../paths.js";
+import { PathsService } from "../paths/paths.service.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
 
 /** AI 总结任务执行耗时明细 */
@@ -65,8 +65,9 @@ export class AnalysisTriggerService implements OnModuleInit {
     private readonly analysisVideoResolver: AnalysisVideoResolver,
     private readonly promptService: PromptService,
     private readonly knowledgePublisher: KnowledgePublisherService,
+    private readonly paths: PathsService,
   ) {
-    this.llmVideoDir = ANALYSIS_LLM_VIDEO_DIR;
+    this.llmVideoDir = paths.ANALYSIS_LLM_VIDEO_DIR;
   }
 
   async onModuleInit(): Promise<void> {
@@ -621,7 +622,7 @@ export class AnalysisTriggerService implements OnModuleInit {
   }
 
   private resolveSummaryDir(task: TaskRecord): string {
-    const base = SUMMARY_BASE_DIR;
+    const base = this.paths.SUMMARY_BASE_DIR;
     const bvid = task.bvid;
     const cid = task.cid;
     if (!bvid || typeof cid !== "number") {

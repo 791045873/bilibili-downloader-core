@@ -15,6 +15,10 @@ import {
   BUILTIN_AI_PROMPT_CONTENT,
   BUILTIN_AI_PROMPT_NAME,
 } from "../analysis/prompt-template.js";
+import {
+  toRelativeSummaryOutputPath,
+} from "../analysis/summary-dir.js";
+import { PathsService } from "../paths/paths.service.js";
 
 pgTypes.setTypeParser(20, (value: string) => Number(value));
 pgTypes.setTypeParser(1114, (value: string) => toIsoTimestamp(value));
@@ -140,8 +144,10 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   private readonly progressBuckets = new Map<number, number>();
   private readonly prismaDb: ReturnType<typeof createPrismaClient>;
   private readonly ownsPrismaClient: boolean;
+  private readonly paths: PathsService;
 
-  constructor(prisma?: PrismaService) {
+  constructor(prisma?: PrismaService, paths?: PathsService) {
+    this.paths = paths ?? new PathsService();
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
       throw new Error(
@@ -1066,6 +1072,11 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       record.modelName !== undefined
         ? record.modelName
         : (existing?.modelName ?? null);
+    // summary_output 统一存相对 DOWNLOAD_ROOT 的相对路径；根外遗留绝对值原样保留
+    const summaryOutput = record.summaryOutput
+      ? (toRelativeSummaryOutputPath(record.summaryOutput, this.paths.DOWNLOAD_ROOT) ??
+        record.summaryOutput)
+      : (record.summaryOutput ?? null);
     await this.prismaDb.orm.public.AiSummaryTask.upsert({
       create: {
         bvid: record.bvid,
@@ -1074,7 +1085,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         sourceTaskId: record.sourceTaskId != null ? BigInt(record.sourceTaskId) : null,
         promptId: promptId ?? null,
         status: record.status,
-        summaryOutput: record.summaryOutput ?? null,
+        summaryOutput,
         errorMessage: record.errorMessage ?? null,
         executionTiming,
         rawResponse,
@@ -1089,7 +1100,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         sourceTaskId: record.sourceTaskId != null ? BigInt(record.sourceTaskId) : null,
         promptId: promptId ?? null,
         status: record.status,
-        summaryOutput: record.summaryOutput ?? null,
+        summaryOutput,
         errorMessage: record.errorMessage ?? null,
         executionTiming,
         rawResponse,
