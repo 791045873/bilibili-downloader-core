@@ -201,6 +201,9 @@ export interface AiSummaryTaskEntry {
   modelName?: string | null;
   knowledgeStatus?: string | null;
   knowledgeError?: string | null;
+  integrityStatus?: string | null;
+  integrityDetail?: string | null;
+  integrityCheckedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
   lastTriggeredAt?: string;

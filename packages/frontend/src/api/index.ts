@@ -262,6 +262,14 @@ export async function publishAiSummaryTask(
   return request(`/summary-tasks/${id}/publish`, { method: "POST" });
 }
 
+export async function startIntegrityCheck(): Promise<{ message: string }> {
+  return request("/summary-tasks/integrity-check", { method: "POST" });
+}
+
+export async function getIntegrityCheckStatus(): Promise<{ running: boolean }> {
+  return request("/summary-tasks/integrity-check/status");
+}
+
 // ==================== LLM 配置 ====================
 
 export interface AnalysisLlmConfig {

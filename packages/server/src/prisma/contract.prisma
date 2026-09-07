@@ -39,6 +39,9 @@ model AiSummaryTask {
   lastCompletedAt Timestamptz? @map("last_completed_at")
   knowledgeStatus String?      @map("knowledge_status")
   knowledgeError  String?      @map("knowledge_error")
+  integrityStatus String?      @map("integrity_status")
+  integrityDetail String?      @map("integrity_detail")
+  integrityCheckedAt Timestamptz? @map("integrity_checked_at")
 
   @@unique([bvid, cid], map: "ai_summary_task_bvid_cid_key")
   @@index([updatedAt], map: "idx_ai_summary_task_updated_at")

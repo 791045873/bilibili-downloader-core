@@ -98,6 +98,12 @@ export interface AiSummaryTaskRecord {
   knowledgeStatus?: string;
   /** 知识发布失败信息 */
   knowledgeError?: string;
+  /** 本地原始内容完整性（complete / missing / NULL=未检查；仅手动检查写入） */
+  integrityStatus?: string;
+  /** 完整性缺失明细（缺失文件相对路径列表，截断存储） */
+  integrityDetail?: string;
+  /** 最近一次完整性检查时间 */
+  integrityCheckedAt?: string;
   createdAt?: string;
   updatedAt?: string;
   lastTriggeredAt?: string;
@@ -829,6 +835,9 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     modelName: string | null;
     knowledgeStatus: string | null;
     knowledgeError: string | null;
+    integrityStatus: string | null;
+    integrityDetail: string | null;
+    integrityCheckedAt: unknown;
     createdAt: unknown;
     updatedAt: unknown;
     lastTriggeredAt: unknown;
@@ -849,6 +858,9 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       modelName: row.modelName,
       knowledgeStatus: row.knowledgeStatus,
       knowledgeError: row.knowledgeError,
+      integrityStatus: row.integrityStatus,
+      integrityDetail: row.integrityDetail,
+      integrityCheckedAt: toIsoString(row.integrityCheckedAt),
       createdAt: toIsoString(row.createdAt),
       updatedAt: toIsoString(row.updatedAt),
       lastTriggeredAt: toIsoString(row.lastTriggeredAt),
@@ -921,6 +933,46 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     return rows.map((row) => this.mapAiSummaryTaskRow(row));
   }
 
+  /** 完整性检查清单：全部 completed 记录（含 summary_output 为空的异常记录） */
+  async listCompletedAiSummaryTasks(): Promise<AiSummaryTaskRecord[]> {
+    const rows = await this.prismaDb.orm.public.AiSummaryTask
+      .where((m) => m.status.eq("completed"))
+      .orderBy((m) => m.id.asc())
+      .all();
+    return rows.map((row) => this.mapAiSummaryTaskRow(row));
+  }
+
+  /** 写入完整性检查结果；不触碰 updated_at（时间语义由 integrityCheckedAt 单独承载） */
+  async updateAiSummaryTaskIntegrity(
+    items: Array<{
+      id: number;
+      status: string;
+      detail: string | null;
+      checkedAt: Date;
+    }>,
+  ): Promise<void> {
+    for (const item of items) {
+      await this.prismaDb.orm.public.AiSummaryTask
+        .where({ id: BigInt(item.id) })
+        .updateAll({
+          integrityStatus: item.status,
+          integrityDetail: item.detail,
+          integrityCheckedAt: toInstant(item.checkedAt.toISOString()),
+        });
+    }
+  }
+
+  /** 单条重置完整性字段（rebuild 等绕过 claim 的执行链路在写终态前调用） */
+  async resetAiSummaryTaskIntegrity(id: number): Promise<void> {
+    await this.prismaDb.orm.public.AiSummaryTask
+      .where({ id: BigInt(id) })
+      .updateAll({
+        integrityStatus: null,
+        integrityDetail: null,
+        integrityCheckedAt: null,
+      });
+  }
+
   /** 删除 AI 总结任务记录（仅删 DB，不删磁盘；进行中记录条件拒绝，避免删后被管道以新 id 复活） */
   async deleteAiSummaryTask(id: number): Promise<boolean> {
     const result = await this.prismaDb.orm.public.AiSummaryTask
@@ -987,6 +1039,9 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
           execution_timing = NULL,
           raw_response = NULL,
           model_name = NULL,
+          integrity_status = NULL,
+          integrity_detail = NULL,
+          integrity_checked_at = NULL,
           updated_at = EXCLUDED.updated_at,
           last_triggered_at = EXCLUDED.last_triggered_at
         WHERE ai_summary_task.status NOT IN ('pending', 'analyzing')
@@ -1108,6 +1163,14 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         updatedAt: toInstant(record.updatedAt ?? now)!,
         lastTriggeredAt: toInstant(record.lastTriggeredAt),
         lastCompletedAt: toInstant(record.lastCompletedAt),
+        // 新一次执行开始（pending/analyzing）即重置完整性结果；终态更新保留原值不覆盖
+        ...(record.status === "pending" || record.status === "analyzing"
+          ? {
+              integrityStatus: null,
+              integrityDetail: null,
+              integrityCheckedAt: null,
+            }
+          : {}),
       },
       conflictOn: { bvid: record.bvid, cid: BigInt(record.cid) },
     });

@@ -33,7 +33,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'5f0ca193cdef370e6427fa4679b06826d718e461030f27ff1eb81171db43f60f'>;
+  StorageHashBase<'248ea3a2807cee34f62921eb6d3fb9924b40295bcb43680843b78e2b945115d4'>;
 export type ExecutionHash = ExecutionHashBase<string>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
@@ -272,6 +272,9 @@ export type FieldOutputTypes = {
       readonly lastCompletedAt: CodecTypes['pg/timestamptz-temporal@1']['output'] | null;
       readonly knowledgeStatus: CodecTypes['pg/text@1']['output'] | null;
       readonly knowledgeError: CodecTypes['pg/text@1']['output'] | null;
+      readonly integrityStatus: CodecTypes['pg/text@1']['output'] | null;
+      readonly integrityDetail: CodecTypes['pg/text@1']['output'] | null;
+      readonly integrityCheckedAt: CodecTypes['pg/timestamptz-temporal@1']['output'] | null;
     };
     readonly AnalysisSubTask: {
       readonly id: CodecTypes['pg/int8@1']['output'];
@@ -374,6 +377,9 @@ export type FieldInputTypes = {
       readonly lastCompletedAt: CodecTypes['pg/timestamptz-temporal@1']['input'] | null;
       readonly knowledgeStatus: CodecTypes['pg/text@1']['input'] | null;
       readonly knowledgeError: CodecTypes['pg/text@1']['input'] | null;
+      readonly integrityStatus: CodecTypes['pg/text@1']['input'] | null;
+      readonly integrityDetail: CodecTypes['pg/text@1']['input'] | null;
+      readonly integrityCheckedAt: CodecTypes['pg/timestamptz-temporal@1']['input'] | null;
     };
     readonly AnalysisSubTask: {
       readonly id: CodecTypes['pg/int8@1']['input'];
@@ -464,6 +470,9 @@ export type StorageColumnTypes = {
       readonly error_message: CodecTypes['pg/text@1']['output'] | null;
       readonly execution_timing: CodecTypes['pg/text@1']['output'] | null;
       readonly id: CodecTypes['pg/int8@1']['output'];
+      readonly integrity_checked_at: CodecTypes['pg/timestamptz-temporal@1']['output'] | null;
+      readonly integrity_detail: CodecTypes['pg/text@1']['output'] | null;
+      readonly integrity_status: CodecTypes['pg/text@1']['output'] | null;
       readonly knowledge_error: CodecTypes['pg/text@1']['output'] | null;
       readonly knowledge_status: CodecTypes['pg/text@1']['output'] | null;
       readonly last_completed_at: CodecTypes['pg/timestamptz-temporal@1']['output'] | null;
@@ -566,6 +575,9 @@ export type StorageColumnInputTypes = {
       readonly error_message: CodecTypes['pg/text@1']['input'] | null;
       readonly execution_timing: CodecTypes['pg/text@1']['input'] | null;
       readonly id: CodecTypes['pg/int8@1']['input'];
+      readonly integrity_checked_at: CodecTypes['pg/timestamptz-temporal@1']['input'] | null;
+      readonly integrity_detail: CodecTypes['pg/text@1']['input'] | null;
+      readonly integrity_status: CodecTypes['pg/text@1']['input'] | null;
       readonly knowledge_error: CodecTypes['pg/text@1']['input'] | null;
       readonly knowledge_status: CodecTypes['pg/text@1']['input'] | null;
       readonly last_completed_at: CodecTypes['pg/timestamptz-temporal@1']['input'] | null;
@@ -838,6 +850,21 @@ type ContractBase = Omit<
                 readonly knowledge_error: {
                   readonly nativeType: 'text';
                   readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly integrity_status: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly integrity_detail: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly integrity_checked_at: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-temporal@1';
                   readonly nullable: true;
                 };
               };
@@ -1493,6 +1520,21 @@ type ContractBase = Omit<
                 readonly nullable: true;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
               };
+              readonly integrityStatus: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly integrityDetail: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly integrityCheckedAt: {
+                readonly nullable: true;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-temporal@1';
+                };
+              };
             };
             readonly relations: Record<string, never>;
             readonly storage: {
@@ -1517,6 +1559,9 @@ type ContractBase = Omit<
                 readonly lastCompletedAt: { readonly column: 'last_completed_at' };
                 readonly knowledgeStatus: { readonly column: 'knowledge_status' };
                 readonly knowledgeError: { readonly column: 'knowledge_error' };
+                readonly integrityStatus: { readonly column: 'integrity_status' };
+                readonly integrityDetail: { readonly column: 'integrity_detail' };
+                readonly integrityCheckedAt: { readonly column: 'integrity_checked_at' };
               };
             };
           };

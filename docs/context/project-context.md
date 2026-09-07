@@ -16,12 +16,11 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `none`（Phase 2 向量化与检索 API 已实现闭合：`docs/plans/2026-09-02-knowledge-vector-search-plan.md`；语义检索真实效果由用户部署后确认）
+- Active requirement: `none`（AI 总结本地原始内容完整性检查已实现闭合：`docs/plans/2026-09-07-summary-integrity-check-plan.md`；前端交互观感与真实部署效果由用户部署后确认）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `none`（knowledge-vector-search plan 已闭合；下一步候选：Phase 3 RAG 问答 / Phase 4 重算工具，需求未定稿）
-- Active backlog item: 无（回填需求已定稿，见 Active requirement；待出 plan）
-- Active backlog item: 无（最近完成项：移除前端 BaseURL 配置、测试连接改用原生端点；此前：视觉代理密钥改为 DB 来源 + 请求透传、移除多模态直连分支与 chatCompletion 死代码、环境变量清理、提取 Python 视觉代理为独立子包、Docker 拆分视觉代理为独立容器）
-- AI autonomy: `plan-first`（2026-08-04 已切换到方案 B，更新后的计划需重新审计后再实施）
+- Active plan: `none`（summary-integrity-check plan 已闭合；下一步候选：Phase 3 RAG 问答 / Phase 4 重算工具，需求未定稿）
+- Active backlog item: 无（最近完成项：AI 总结完整性检查；此前：下载队列页表格化 + 两张任务表格列宽可调、Prisma P0-P4、知识回填与 Phase 2 向量检索、2026-09-04 输出目录/paths service/相对路径批次）
+- AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Current blocker: `none`
 
 Rule:

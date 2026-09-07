@@ -825,6 +825,9 @@ export class AnalysisTriggerService implements OnModuleInit {
         record.modelName ?? "",
       );
 
+      // rebuild 不经 claim、无开始态 upsert，写终态前显式重置完整性结果（重新生成即失效）
+      await this.db.resetAiSummaryTaskIntegrity(id);
+
       await this.upsertAiSummaryTask(task, {
         status: "completed",
         summaryOutput: result.summaryPath,

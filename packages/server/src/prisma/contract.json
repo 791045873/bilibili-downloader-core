@@ -197,6 +197,27 @@
                   "kind": "scalar"
                 }
               },
+              "integrityCheckedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-temporal@1",
+                  "kind": "scalar"
+                }
+              },
+              "integrityDetail": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "integrityStatus": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "knowledgeError": {
                 "nullable": true,
                 "type": {
@@ -302,6 +323,15 @@
                 },
                 "id": {
                   "column": "id"
+                },
+                "integrityCheckedAt": {
+                  "column": "integrity_checked_at"
+                },
+                "integrityDetail": {
+                  "column": "integrity_detail"
+                },
+                "integrityStatus": {
+                  "column": "integrity_status"
                 },
                 "knowledgeError": {
                   "column": "knowledge_error"
@@ -1141,6 +1171,21 @@
                   "nativeType": "int8",
                   "nullable": false
                 },
+                "integrity_checked_at": {
+                  "codecId": "pg/timestamptz-temporal@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
+                "integrity_detail": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "integrity_status": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "knowledge_error": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -1728,7 +1773,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "5f0ca193cdef370e6427fa4679b06826d718e461030f27ff1eb81171db43f60f"
+    "storageHash": "248ea3a2807cee34f62921eb6d3fb9924b40295bcb43680843b78e2b945115d4"
   },
   "capabilities": {
     "postgres": {

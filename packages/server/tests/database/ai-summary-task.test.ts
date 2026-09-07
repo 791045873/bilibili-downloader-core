@@ -343,6 +343,83 @@ describe("summary path helpers", () => {
   });
 });
 
+describe("ai_summary_task 完整性字段", () => {
+  const checkedAt = new Date("2026-09-07T08:00:00.000Z");
+
+  async function seedCompletedWithIntegrity(bvid: string, cid: number) {
+    await db.upsertAiSummaryTask({
+      bvid,
+      cid,
+      status: "completed",
+      summaryOutput: `summary/x/${bvid}.md`,
+      updatedAt: "2026-09-01T00:00:00.000Z",
+    });
+    const row = (await db.getAiSummaryTaskByResource(bvid, cid))!;
+    await db.updateAiSummaryTaskIntegrity([
+      { id: row.id!, status: "missing", detail: "screenshots/segment-0.jpg", checkedAt },
+    ]);
+    return db.getAiSummaryTaskByResource(bvid, cid)!;
+  }
+
+  it("写入完整性结果并透出；不改写 updated_at", async () => {
+    const row = await seedCompletedWithIntegrity("BV1", 1);
+    expect(row.integrityStatus).toBe("missing");
+    expect(row.integrityDetail).toBe("screenshots/segment-0.jpg");
+    expect(row.integrityCheckedAt).toBe("2026-09-07T08:00:00.000Z");
+    expect(row.updatedAt).toBe("2026-09-01T00:00:00.000Z");
+
+    const listed = await db.listAiSummaryTasksPaginated({ page: 1, pageSize: 10 });
+    expect(listed.items[0].integrityStatus).toBe("missing");
+  });
+
+  it("claim 认领后完整性字段重置为 NULL", async () => {
+    await seedCompletedWithIntegrity("BV1", 1);
+    const { claimed, record } = await db.claimAiSummaryTask({ bvid: "BV1", cid: 1 });
+    expect(claimed).toBe(true);
+    expect(record!.integrityStatus).toBeNull();
+    expect(record!.integrityDetail).toBeNull();
+    expect(record!.integrityCheckedAt).toBeNull();
+  });
+
+  it("upsert 以 pending/analyzing 写入时重置；终态更新保留原值", async () => {
+    await seedCompletedWithIntegrity("BV1", 1);
+    const analyzing = await db.upsertAiSummaryTask({
+      bvid: "BV1",
+      cid: 1,
+      status: "analyzing",
+    });
+    expect(analyzing.integrityStatus).toBeNull();
+
+    const seeded2 = await seedCompletedWithIntegrity("BV2", 2);
+    const terminal = await db.upsertAiSummaryTask({
+      bvid: "BV2",
+      cid: 2,
+      status: "completed",
+      summaryOutput: "summary/x/new.md",
+    });
+    expect(terminal.integrityStatus).toBe("missing");
+    expect(seeded2.integrityStatus).toBe("missing");
+  });
+
+  it("resetAiSummaryTaskIntegrity 单条重置", async () => {
+    const row = await seedCompletedWithIntegrity("BV1", 1);
+    await db.resetAiSummaryTaskIntegrity(row.id!);
+    const after = await db.getAiSummaryTaskByResource("BV1", 1);
+    expect(after!.integrityStatus).toBeNull();
+    expect(after!.integrityDetail).toBeNull();
+    expect(after!.integrityCheckedAt).toBeNull();
+  });
+
+  it("listCompletedAiSummaryTasks 仅含 completed，含无输出记录", async () => {
+    await db.upsertAiSummaryTask({ bvid: "BV1", cid: 1, status: "completed" });
+    await db.upsertAiSummaryTask({ bvid: "BV2", cid: 2, status: "failed" });
+    await db.claimAiSummaryTask({ bvid: "BV3", cid: 3 });
+    const rows = await db.listCompletedAiSummaryTasks();
+    expect(rows.map((r) => r.bvid)).toEqual(["BV1"]);
+    expect(rows[0].integrityStatus).toBeNull();
+  });
+});
+
 describe("PathsService", () => {
   it("派生路径均落在 DOWNLOAD_ROOT 之内且组合关系正确", () => {
     const paths = new PathsService();

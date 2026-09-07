@@ -220,3 +220,23 @@ export function rewriteMarkdownImages(
     },
   );
 }
+
+/**
+ * 列出 md 中本地相对图片引用（相对 md 所在目录，如 screenshots/segment-0.jpg）。
+ * 绝对地址/根相对/锚点/`..` 越界排除；供完整性检查等消费方使用。
+ * matchAll 不会共享 MARKDOWN_IMAGE_RE 的 lastIndex，可安全复用。
+ */
+export function listLocalImageRefs(content: string): string[] {
+  const refs: string[] = [];
+  for (const match of content.matchAll(MARKDOWN_IMAGE_RE)) {
+    const url = match[2].trim();
+    if (isAlreadyResolvable(url)) {
+      continue;
+    }
+    const rel = normalizeRelUrl(url);
+    if (rel !== undefined) {
+      refs.push(rel);
+    }
+  }
+  return refs;
+}

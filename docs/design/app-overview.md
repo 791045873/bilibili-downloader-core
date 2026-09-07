@@ -42,6 +42,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 - 页面支持按下载状态过滤现有任务，并移除了“清空已完成”这种本地隐藏语义。
 - 页面轮询仅覆盖当前页中的非终态任务；翻页、切换过滤和切换每页条数时会释放旧轮询集合。
 - 删除语义：`DELETE /api/tasks/:id` 删除下载任务及其下载子任务记录；`DELETE /api/summary-tasks/:id` 删除 AI 总结记录。两者都只删数据库记录、不删除磁盘上的媒体文件/总结输出文件，且互不联动；AI 总结记录处于 `pending`/`analyzing` 时禁止删除（返回 409）。
+- AI 总结记录的本地原始内容完整性（`integrity_status`: `complete`/`missing`、`integrity_detail`、`integrity_checked_at`，NULL=未检查）仅由用户手动触发的一键检查（`POST /api/summary-tasks/integrity-check`）写入：只读磁盘判定 md 与相对截图是否存在于当前环境，只读不改文件；记录被重新触发/重新构建总结后重置为未检查。AI 总结任务表格展示"本地文件"列（完整/缺失/未检查，缺失 tooltip 含明细与检查时间），检查进行中按钮禁用，结束后刷新列表可见最新结果。
 
 ## Key Domain Objects
 
@@ -71,6 +72,8 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | POST /api/summary-tasks/:id/rebuild | 对已完成的 AI 总结记录用已存储的大模型返回内容（`raw_response`）重建总结报告与截图，**不调用 LLM**；仅 `completed` 且 `raw_response` 非空可触发，非法 id 返回 400，不存在返回 404，非 completed 返回 409，raw 为空返回 409，并发重建返回 409；异步执行，失败不改写记录状态 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | GET /api/summary-tasks/:id/markdown | 按 id 读取该记录 `summary_output` 指向的 Markdown 总结文档并返回 `{ content, meta }`；`summary_output` 存相对下载根目录（`DOWNLOAD_ROOT`）的相对路径（POSIX 分隔符；2026-09-04 前遗留绝对值原样容错读取），读取时按当前环境根目录拼接：`content` 为剥离 YAML frontmatter 后的正文，相对图片链接已统一重写为 `/summary-files/…` 同源静态路径（绝对链接/根相对/锚点原样保留，`../` 越界不重写，HTML `<img>` 不处理）；`meta` 含 `title/videoUrl/model/createdAt`（frontmatter 缺失或畸形时为空对象，正文原样透传）；非法 id 返回 400，不存在返回 404，非 `completed` 或 `summary_output` 为空返回 409，文件缺失返回 404 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | DELETE /api/summary-tasks/:id | 删除 AI 总结任务记录（仅删数据库、不动磁盘）；非法 id 返回 400，不存在返回 404，`pending`/`analyzing` 返回 409 | `packages/server/src/analysis/analysis-task.controller.ts` |
+| POST /api/summary-tasks/integrity-check | 手动触发一键本地原始内容完整性检查：遍历全部 `completed` 的 AI 总结记录，逐条判定 `summary_output` 指向的 md 与 md 内引用的本地相对截图是否存在于当前环境磁盘，结果（`integrity_status`：`complete`/`missing`、`integrity_detail`：缺失明细（>40 项截断并保留总计数）、`integrity_checked_at`）逐条写回 `ai_summary_task`（不触碰 `updated_at`）；进程内全局互斥，运行中重复触发返回 409；异步执行，仅手动触发、无自动/定时路径；只读磁盘不改文件 | `packages/server/src/analysis/analysis-task.controller.ts`、`packages/server/src/analysis/summary-integrity.service.ts` |
+| GET /api/summary-tasks/integrity-check/status | 查询完整性检查运行状态 `{ running: boolean }`（供前端轮询） | `packages/server/src/analysis/analysis-task.controller.ts` |
 | POST /api/analysis/run | 视频内容分析正式接口，接收 `AnalysisRequest`（videoPath、subtitlePath?、videoTitle、metadata、screenshotVideoPath?、promptId?），按 metadata.type 校验，调用 AnalysisEngine 生成总结文档；未传 promptId 时按系统默认提示词解析 | `packages/server/src/analysis/analysis.controller.ts` |
 | GET/POST/PUT/DELETE /api/analysis/prompts | AI 总结提示词管理：列表（内置排首）、创建、编辑、删除；系统内置不可编辑/删除（409），删除默认（非内置）后默认自动回落内置；`PUT /:id/default` 设为系统默认 | `packages/server/src/analysis/prompt.controller.ts` |
 | GET /api/analysis/prompts/format-snippet | 返回 JSON 格式要求片段 `{ snippet }`（服务端单一来源，前端编辑提示词时"一键插入"） | `packages/server/src/analysis/prompt.controller.ts` |

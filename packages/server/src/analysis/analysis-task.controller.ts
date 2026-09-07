@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import { DatabaseService } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
+import { SummaryIntegrityService } from "./summary-integrity.service.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
 import {
   extractSummaryMeta,
@@ -34,6 +35,7 @@ export class AnalysisTaskController {
     private readonly databaseService: DatabaseService,
     private readonly downloadService: DownloadService,
     private readonly knowledgePublisher: KnowledgePublisherService,
+    private readonly summaryIntegrityService: SummaryIntegrityService,
     private readonly paths: PathsService,
   ) {}
 
@@ -86,6 +88,27 @@ export class AnalysisTaskController {
       });
 
     return { message: "AI 总结触发中" };
+  }
+
+  @Post("/summary-tasks/integrity-check")
+  @HttpCode(HttpStatus.OK)
+  startIntegrityCheck() {
+    if (!this.summaryIntegrityService.tryStart()) {
+      throw new ConflictException("完整性检查进行中");
+    }
+    void this.summaryIntegrityService.run().catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Summary integrity check failed: ${message}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+    });
+    return { message: "完整性检查已开始" };
+  }
+
+  @Get("/summary-tasks/integrity-check/status")
+  getIntegrityCheckStatus() {
+    return { running: this.summaryIntegrityService.isRunning() };
   }
 
   @Get("/summary-tasks")

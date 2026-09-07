@@ -12,6 +12,7 @@ import {
   Select,
   Table,
   Tag,
+  Tooltip,
 } from "antd";
 import type { TableProps } from "antd";
 import * as api from "../api";
@@ -173,6 +174,7 @@ export function Component() {
   const [pageSize, setPageSize] = useState(20);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [integrityChecking, setIntegrityChecking] = useState(false);
 
   const [rawOpen, setRawOpen] = useState(false);
   const [rawLoading, setRawLoading] = useState(false);
@@ -232,6 +234,29 @@ export function Component() {
       await query.refetch();
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function handleIntegrityCheck() {
+    setError("");
+    try {
+      await api.startIntegrityCheck();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "触发完整性检查失败");
+      return;
+    }
+    setIntegrityChecking(true);
+    try {
+      for (let i = 0; i < 150; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const status = await api.getIntegrityCheckStatus();
+        if (!status.running) break;
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "查询完整性检查进度失败");
+    } finally {
+      setIntegrityChecking(false);
+      await query.refetch();
     }
   }
 
@@ -421,8 +446,35 @@ export function Component() {
       ),
     },
     {
+      title: "本地文件",
+      width: 120,
+      render: (_, task) => {
+        if (task.status !== "completed" || !task.integrityStatus) {
+          return <Tag>未检查</Tag>;
+        }
+        if (task.integrityStatus === "complete") {
+          return <Tag color="green">完整</Tag>;
+        }
+        return (
+          <Tooltip
+            title={
+              <div className="whitespace-pre-wrap break-all">
+                {task.integrityDetail || "缺失"}
+                {task.integrityCheckedAt && (
+                  <div className="mt-1 text-zinc-400">
+                    检查于 {formatTime(task.integrityCheckedAt)}
+                  </div>
+                )}
+              </div>
+            }
+          >
+            <Tag color="red">缺失</Tag>
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: "操作",
-      fixed: "right",
       key: "actions",
       width: 380,
       render: (_, task) => (
@@ -490,16 +542,25 @@ export function Component() {
             AI 总结任务
           </h1>
           <p className="mt-1 text-sm text-zinc-600">
-            仅在点击按钮时刷新当前任务状态，不做自动刷新。
+            任务列表仅在点击按钮时刷新；"检查本地文件"期间自动轮询检查进度，结束后刷新结果。
           </p>
         </div>
-        <Button
-          loading={refreshing}
-          disabled={refreshing}
-          onClick={() => void refreshTasks()}
-        >
-          {refreshing ? "刷新中..." : "刷新任务状态"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            loading={integrityChecking}
+            disabled={integrityChecking}
+            onClick={() => void handleIntegrityCheck()}
+          >
+            {integrityChecking ? "检查中..." : "检查本地文件"}
+          </Button>
+          <Button
+            loading={refreshing}
+            disabled={refreshing}
+            onClick={() => void refreshTasks()}
+          >
+            {refreshing ? "刷新中..." : "刷新任务状态"}
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3">
