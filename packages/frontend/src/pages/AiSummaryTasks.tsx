@@ -15,6 +15,7 @@ import {
 } from "antd";
 import type { TableProps } from "antd";
 import * as api from "../api";
+import { useResizableColumns } from "../components/useResizableColumns";
 import type { AiSummaryTaskEntry, AiSummaryTaskStatus } from "../types";
 
 const statusOptions = [
@@ -375,11 +376,10 @@ export function Component() {
     },
     {
       title: "模型",
-      width: 100,
       render: (_, task) =>
         task.modelName ? (
           <span
-            className="block max-w-[80px] truncate text-zinc-700"
+            className="block truncate text-zinc-700"
             title={task.modelName}
           >
             {task.modelName}
@@ -422,6 +422,8 @@ export function Component() {
     },
     {
       title: "操作",
+      fixed: "right",
+      key: "actions",
       width: 380,
       render: (_, task) => (
         <div className="flex items-center gap-2">
@@ -474,6 +476,11 @@ export function Component() {
       ),
     },
   ];
+
+  const { columns: tableColumns, components } =
+    useResizableColumns<AiSummaryTaskEntry>(columns, {
+      fixedKeys: ["actions"],
+    });
 
   return (
     <div className="space-y-6">
@@ -572,7 +579,8 @@ export function Component() {
               rowKey="id"
               size="small"
               pagination={false}
-              columns={columns}
+              columns={tableColumns}
+              components={components}
               dataSource={tasks}
             />
           </div>

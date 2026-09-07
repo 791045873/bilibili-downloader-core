@@ -1,8 +1,19 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Checkbox, Modal, Progress, Select, Pagination } from "antd";
+import {
+  Button,
+  Checkbox,
+  Modal,
+  Progress,
+  Select,
+  Pagination,
+  Table,
+  Tag,
+} from "antd";
+import type { TableProps } from "antd";
 import * as api from "../api";
+import { useResizableColumns } from "../components/useResizableColumns";
 import type {
   AiPrompt,
   PromptCreatorBinding,
@@ -42,22 +53,13 @@ function statusLabel(status: string): string {
   }
 }
 
-function statusTagClass(status: string): string {
-  switch (status) {
-    case "downloading":
-      return "bg-blue-600";
-    case "success":
-      return "bg-emerald-600";
-    case "failed":
-      return "bg-red-600";
-    case "created":
-      return "bg-amber-600";
-    case "stopped":
-      return "bg-zinc-500";
-    default:
-      return "bg-zinc-500";
-  }
-}
+const statusTagColor: Record<string, string> = {
+  downloading: "blue",
+  success: "green",
+  failed: "red",
+  created: "gold",
+  stopped: "default",
+};
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -97,138 +99,6 @@ function aiSummaryButtonLabel(task: TaskEntry): string {
   return "立刻 AI 总结";
 }
 
-interface TaskRowProps {
-  task: TaskEntry;
-  onStop: (id: number) => void;
-  onResume: (id: number) => void;
-  onDelete: (id: number) => void;
-  onTriggerSummary: (id: number) => void;
-}
-
-function TaskRow({
-  task: initial,
-  onStop,
-  onResume,
-  onDelete,
-  onTriggerSummary,
-}: TaskRowProps) {
-  // 非终态任务每 3s 轮询一次详情，终态自动停止
-  const { data: task } = useQuery({
-    queryKey: ["task", initial.id],
-    queryFn: () => api.getTaskById(initial.id),
-    initialData: initial,
-    refetchInterval: (query) => {
-      const t = query.state.data;
-      if (!t) return false;
-      return isActiveTask(t) ? 3000 : false;
-    },
-  });
-
-  const canTrigger = task.status === "success" && !isSummaryRunning(task.summaryStatus);
-
-  return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <span
-              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white ${statusTagClass(task.status)}`}
-            >
-              {statusLabel(task.status)}
-            </span>
-            <span className="text-sm text-zinc-800 truncate">
-              {task.title || "(无标题)"}
-            </span>
-          </div>
-          {task.outputFile && (
-            <div className="mt-2 text-xs text-zinc-500">
-              <span className="text-zinc-400">输出文件：</span>
-              <code className="break-all text-zinc-600">
-                {task.outputFile}
-              </code>
-            </div>
-          )}
-          {task.status === "success" && (
-            <div className="mt-2 text-xs text-zinc-500">
-              <span className="text-zinc-400">AI 总结：</span>
-              <span className="text-zinc-700">
-                {summaryStatusLabel(task.summaryStatus)}
-              </span>
-            </div>
-          )}
-          {task.status === "downloading" && (
-            <div className="mt-2">
-              <Progress percent={task.progress ?? 0} size="small" />
-            </div>
-          )}
-          {task.status === "success" && task.fileSize ? (
-            <div className="text-xs text-zinc-500 mt-1">
-              {formatBytes(task.fileSize)}
-            </div>
-          ) : null}
-          {task.status === "failed" && task.errorMessage && (
-            <div className="text-xs text-red-600 mt-1">
-              {task.errorMessage}
-            </div>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {task.status === "created" && (
-            <button
-              type="button"
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-amber-600 hover:text-amber-500 hover:border-amber-500 transition-colors"
-              onClick={() => onStop(task.id)}
-            >
-              暂停
-            </button>
-          )}
-          {task.status === "stopped" && (
-            <button
-              type="button"
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-emerald-600 hover:text-emerald-500 hover:border-emerald-500 transition-colors"
-              onClick={() => onResume(task.id)}
-            >
-              恢复
-            </button>
-          )}
-          {task.status === "downloading" && (
-            <button
-              type="button"
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:text-red-600 hover:border-red-400 transition-colors"
-              onClick={() => onDelete(task.id)}
-            >
-              取消
-            </button>
-          )}
-          {task.status === "success" && (
-            <button
-              type="button"
-              className={`rounded-md border border-zinc-300 px-3 py-1.5 text-xs transition-colors ${
-                canTrigger
-                  ? "text-rose-600 hover:text-rose-500 hover:border-rose-400"
-                  : "cursor-not-allowed text-zinc-500"
-              }`}
-              disabled={!canTrigger}
-              onClick={() => onTriggerSummary(task.id)}
-            >
-              {aiSummaryButtonLabel(task)}
-            </button>
-          )}
-          {task.status !== "downloading" && (
-            <button
-              type="button"
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-red-600 hover:border-red-400 hover:text-red-500 transition-colors"
-              onClick={() => onDelete(task.id)}
-            >
-              删除
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function Component() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -258,9 +128,14 @@ export function Component() {
     queryFn: () => api.getPrompts(),
   });
 
+  // 页内存在非终态任务时每 3s 轮询一次列表，全部终态自动停止
   const listQuery = useQuery({
     queryKey: ["tasks", page, pageSize, statusGroup],
     queryFn: () => api.getTasks({ page, pageSize, statusGroup }),
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? [];
+      return items.some(isActiveTask) ? 3000 : false;
+    },
   });
 
   const tasks = listQuery.data?.items ?? [];
@@ -270,10 +145,6 @@ export function Component() {
   const activeCount = tasks.filter(isActiveTask).length;
   const successCount = tasks.filter((t) => t.status === "success").length;
   const failedCount = tasks.filter((t) => t.status === "failed").length;
-
-  function refreshTask(id: number) {
-    return queryClient.invalidateQueries({ queryKey: ["task", id] });
-  }
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -302,7 +173,7 @@ export function Component() {
     setActionError("");
     try {
       await api.stopTask(id);
-      await refreshTask(id);
+      await listQuery.refetch();
     } catch (e: unknown) {
       setActionError(e instanceof Error ? e.message : "暂停任务失败");
     }
@@ -312,7 +183,7 @@ export function Component() {
     setActionError("");
     try {
       await api.resumeTask(id);
-      await refreshTask(id);
+      await listQuery.refetch();
     } catch (e: unknown) {
       setActionError(e instanceof Error ? e.message : "恢复任务失败");
     }
@@ -402,7 +273,7 @@ export function Component() {
       }
       await api.triggerTaskAiSummary(summaryTask.id, summaryPromptId);
       setSummaryOpen(false);
-      await refreshTask(summaryTask.id);
+      await listQuery.refetch();
       await queryClient.invalidateQueries({ queryKey: ["prompts"] });
     } catch (e: unknown) {
       setSummaryError(e instanceof Error ? e.message : "触发 AI 总结失败");
@@ -418,6 +289,151 @@ export function Component() {
     )?.name;
     return name || `#${summaryBinding.promptId}`;
   }
+
+  const columns: TableProps<TaskEntry>["columns"] = [
+    {
+      title: "任务",
+      render: (_, task) => (
+        <div>
+          <div
+            className="max-w-[280px] truncate font-medium text-zinc-900"
+            title={task.title || ""}
+          >
+            {task.title || "(无标题)"}
+          </div>
+          {task.outputFile && (
+            <code
+              className="mt-0.5 block max-w-[280px] truncate text-xs text-zinc-500"
+              title={task.outputFile}
+            >
+              {task.outputFile}
+            </code>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: "状态",
+      width: 110,
+      render: (_, task) => (
+        <div>
+          <Tag color={statusTagColor[task.status] ?? "default"}>
+            {statusLabel(task.status)}
+          </Tag>
+          {task.status === "failed" && task.errorMessage && (
+            <div
+              className="mt-1 max-w-[220px] break-all text-xs text-red-600"
+              title={task.errorMessage}
+            >
+              {task.errorMessage}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: "进度",
+      width: 160,
+      render: (_, task) =>
+        task.status === "downloading" ? (
+          <Progress
+            percent={task.progress ?? 0}
+            size="small"
+            style={{ maxWidth: 140 }}
+          />
+        ) : (
+          <span className="text-zinc-400">—</span>
+        ),
+    },
+    {
+      title: "大小",
+      width: 90,
+      render: (_, task) =>
+        task.status === "success" && task.fileSize ? (
+          <span className="whitespace-nowrap text-zinc-700">
+            {formatBytes(task.fileSize)}
+          </span>
+        ) : (
+          <span className="text-zinc-400">—</span>
+        ),
+    },
+    {
+      title: "AI 总结",
+      width: 100,
+      render: (_, task) =>
+        task.status === "success" ? (
+          <span className="text-zinc-700">
+            {summaryStatusLabel(task.summaryStatus)}
+          </span>
+        ) : (
+          <span className="text-zinc-400">—</span>
+        ),
+    },
+    {
+      title: "操作",
+      key: "actions",
+      width: 250,
+      render: (_, task) => {
+        const canTrigger =
+          task.status === "success" && !isSummaryRunning(task.summaryStatus);
+        return (
+          <div className="flex items-center gap-2">
+            {task.status === "created" && (
+              <Button size="small" onClick={() => void handleStop(task.id)}>
+                暂停
+              </Button>
+            )}
+            {task.status === "stopped" && (
+              <Button
+                size="small"
+                color="green"
+                variant="outlined"
+                onClick={() => void handleResume(task.id)}
+              >
+                恢复
+              </Button>
+            )}
+            {task.status === "downloading" && (
+              <Button
+                size="small"
+                color="red"
+                variant="outlined"
+                onClick={() => void handleDelete(task.id)}
+              >
+                取消
+              </Button>
+            )}
+            {task.status === "success" && (
+              <Button
+                size="small"
+                color="red"
+                variant="outlined"
+                disabled={!canTrigger}
+                onClick={() => void handleTriggerAiSummary(task.id)}
+              >
+                {aiSummaryButtonLabel(task)}
+              </Button>
+            )}
+            {task.status !== "downloading" && (
+              <Button
+                size="small"
+                color="red"
+                variant="solid"
+                onClick={() => void handleDelete(task.id)}
+              >
+                删除
+              </Button>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
+  const { columns: tableColumns, components } = useResizableColumns<TaskEntry>(
+    columns,
+    { fixedKeys: ["actions"] },
+  );
 
   return (
     <div className="space-y-6">
@@ -490,16 +506,17 @@ export function Component() {
 
       {tasks.length > 0 && (
         <div className="space-y-3">
-          {tasks.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              onStop={(id) => void handleStop(id)}
-              onResume={(id) => void handleResume(id)}
-              onDelete={(id) => void handleDelete(id)}
-              onTriggerSummary={(id) => void handleTriggerAiSummary(id)}
+          <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+            <Table<TaskEntry>
+              rowKey="id"
+              size="small"
+              pagination={false}
+              columns={tableColumns}
+              components={components}
+              dataSource={tasks}
+              loading={loading}
             />
-          ))}
+          </div>
 
           <div className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3">
             <span className="text-sm text-zinc-600">
