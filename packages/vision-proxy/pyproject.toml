@@ -4,6 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bilibili-downloader-vision-proxy"
+# version 仅承载 Python 打包语义；Docker 镜像 tag 来源为同目录 package.json 的 version
 version = "0.0.1"
 description = "Qwen 视觉薄代理：本地媒体路径转 DashScope 多模态请求"
 requires-python = ">=3.10"

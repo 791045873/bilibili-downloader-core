@@ -25,7 +25,7 @@
 
 server 是下载器的后端代码，front 部分是下载器的前端代码。
 
-Docker 是将下载器打包为镜像的构建配置：两个独立 Dockerfile（`packages/docker/Dockerfile.server` 与 `packages/docker/Dockerfile.vision-proxy`）分别构建两个相互独立的镜像（`bilibili-downloader-server` 与 `bilibili-downloader-vision-proxy`）+ docker compose 编排（`packages/docker/docker-compose.yml`），`docker:build` / `docker:run` 命令内部已改用 compose。镜像 tag 取对应包 version（server 取 `packages/server/package.json`、vision-proxy 取 `packages/vision-proxy/pyproject.toml` 的 version），由 `packages/docker/compose.mjs` 自动推导，升包版本号即换镜像 tag，每次构建/启动都携带显式版本；如需临时覆盖（如发测试 tag）可设置 `SERVER_VERSION` / `VISION_PROXY_VERSION` 环境变量。
+Docker 是将下载器打包为镜像的构建配置：两个独立 Dockerfile（`packages/docker/Dockerfile.server` 与 `packages/docker/Dockerfile.vision-proxy`）分别构建两个相互独立的镜像（`bilibili-downloader-server` 与 `bilibili-downloader-vision-proxy`）+ docker compose 编排（`packages/docker/docker-compose.yml`），`docker:build` / `docker:run` 命令内部已改用 compose。镜像 tag 取对应包 version（server 取 `packages/server/package.json`、vision-proxy 取 `packages/vision-proxy/package.json` 的 version），由 `packages/docker/compose.mjs` 自动推导，升包版本号即换镜像 tag，每次构建/启动都携带显式版本；如需临时覆盖（如发测试 tag）可设置 `SERVER_VERSION` / `VISION_PROXY_VERSION` 环境变量。
 
 如果想要通过源码进行本地调试，先执行 `pnpm install`，再运行 `pnpm dev:server`。该命令会先安装所有 Node 工作区依赖，并在检测到本机 Python 可用时自动创建 `packages/vision-proxy/.venv` 并安装 `packages/vision-proxy/pyproject.toml` 中锁定的视觉代理依赖；随后同时启动后端开发服务（3000）和前端开发服务（5173）。启动后直接访问 `http://localhost:5173` 即可。
 

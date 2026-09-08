@@ -55,7 +55,7 @@ packages/
 - pnpm workspace（monorepo 管理）
 - Vite（Frontend 打包）
 - tsc（Core/Adapters/Server 编译）
-- Docker（两个独立 Dockerfile：`packages/docker/Dockerfile.server` 构建 `bilibili-downloader-server` = Node 服务 + 前端静态资源 + FFmpeg + tini；`packages/docker/Dockerfile.vision-proxy` 构建 `bilibili-downloader-vision-proxy` = Python venv 视觉代理 + tini；两镜像相互独立、无共享构建阶段，经 `packages/docker/docker-compose.yml` 编排为两个独立容器。镜像 tag = 对应包 version：`bilibili-downloader-server:<packages/server/package.json 的 version>`、`bilibili-downloader-vision-proxy:<packages/vision-proxy/pyproject.toml 的 version>`，由 `packages/docker/compose.mjs` 推导并同步到本目录 `.env`，`SERVER_VERSION` / `VISION_PROXY_VERSION` 环境变量可覆盖；compose 层以 `${VAR:?}` 必填插值保证每次构建/启动版本显式、缺失即报错）
+- Docker（两个独立 Dockerfile：`packages/docker/Dockerfile.server` 构建 `bilibili-downloader-server` = Node 服务 + 前端静态资源 + FFmpeg + tini；`packages/docker/Dockerfile.vision-proxy` 构建 `bilibili-downloader-vision-proxy` = Python venv 视觉代理 + tini；两镜像相互独立、无共享构建阶段，经 `packages/docker/docker-compose.yml` 编排为两个独立容器。镜像 tag = 对应包 package.json 的 version：`bilibili-downloader-server:<packages/server/package.json 的 version>`、`bilibili-downloader-vision-proxy:<packages/vision-proxy/package.json 的 version>`，由 `packages/docker/compose.mjs` 推导并同步到本目录 `.env`，`SERVER_VERSION` / `VISION_PROXY_VERSION` 环境变量可覆盖；compose 层以 `${VAR:?}` 必填插值保证每次构建/启动版本显式、缺失即报错）
 
 ## Deployment Shape
 

@@ -17,14 +17,12 @@ function readServerVersion() {
 }
 
 function readVisionProxyVersion() {
-  const pyproject = readFileSync(
-    join(root, "packages/vision-proxy/pyproject.toml"),
-    "utf8",
+  const pkg = JSON.parse(
+    readFileSync(join(root, "packages/vision-proxy/package.json"), "utf8"),
   );
-  const m = pyproject.match(/^version\s*=\s*"([^"]+)"/m);
-  if (!m)
-    throw new Error("packages/vision-proxy/pyproject.toml 缺少 version 字段");
-  return m[1];
+  if (!pkg.version)
+    throw new Error("packages/vision-proxy/package.json 缺少 version 字段");
+  return pkg.version;
 }
 
 const versions = {
