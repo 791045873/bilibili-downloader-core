@@ -31,6 +31,10 @@ const versions = {
     process.env.VISION_PROXY_VERSION ?? readVisionProxyVersion(),
 };
 
+// 统一仓库命名：server 用版本号作 tag，vision-proxy 用 vision-proxy-<版本> 作 tag
+const serverImage = `bilibili-downloader:${versions.SERVER_VERSION}`;
+const visionProxyImage = `bilibili-downloader:vision-proxy-${versions.VISION_PROXY_VERSION}`;
+
 const TAG_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
 for (const [name, value] of Object.entries(versions)) {
   if (!TAG_RE.test(value)) {
@@ -95,7 +99,7 @@ if (cmd === "build-server" || cmd === "build-vision-proxy") {
     "-f",
     `Dockerfile.${target}`,
     "-t",
-    `bilibili-downloader-${target}:${versions[target === "server" ? "SERVER_VERSION" : "VISION_PROXY_VERSION"]}`,
+    target === "server" ? serverImage : visionProxyImage,
     "../..",
   ]);
 } else if (
@@ -105,13 +109,8 @@ if (cmd === "build-server" || cmd === "build-vision-proxy") {
 ) {
   const images =
     cmd === "save"
-      ? [
-          `bilibili-downloader-server:${versions.SERVER_VERSION}`,
-          `bilibili-downloader-vision-proxy:${versions.VISION_PROXY_VERSION}`,
-        ]
-      : [
-          `bilibili-downloader-${cmd.replace("save-", "")}:${versions[cmd === "save-server" ? "SERVER_VERSION" : "VISION_PROXY_VERSION"]}`,
-        ];
+      ? [serverImage, visionProxyImage]
+      : [cmd === "save-server" ? serverImage : visionProxyImage];
   const outDir =
     cmd === "save" ? join(root, "dist") : join(root, "dist", "docker");
   const outFile =

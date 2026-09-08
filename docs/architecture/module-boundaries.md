@@ -53,7 +53,7 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 
 ### `packages/docker/`
 
-- Responsibility: 两个独立 Dockerfile 和构建脚本（`Dockerfile.server` / `Dockerfile.vision-proxy`），分别将 Server + Frontend 与 Vision Proxy（Python）打包为两个相互独立的镜像（`bilibili-downloader-server` / `bilibili-downloader-vision-proxy`），并编排 compose 双容器
+- Responsibility: 两个独立 Dockerfile 和构建脚本（`Dockerfile.server` / `Dockerfile.vision-proxy`），分别将 Server + Frontend 与 Vision Proxy（Python）打包为两个相互独立的镜像（`bilibili-downloader:{version}` / `bilibili-downloader:vision-proxy-{version}`），并编排 compose 双容器
 - Allowed dependencies: `packages/server/`, `packages/frontend/`, `packages/vision-proxy/`（仅通过构建流程，不通过代码导入）
 - Forbidden dependencies: 不包含业务代码
 - Owner docs: `docs/architecture/system-baseline.md`
