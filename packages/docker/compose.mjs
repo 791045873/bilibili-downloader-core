@@ -89,6 +89,9 @@ if (cmd === "build-server" || cmd === "build-vision-proxy") {
   const target = cmd.replace("build-", "");
   run([
     "build",
+    // 镜像面向 amd64 NAS 部署，跨架构机器（如 Apple Silicon）构建时固定平台
+    "--platform",
+    "linux/amd64",
     "-f",
     `Dockerfile.${target}`,
     "-t",

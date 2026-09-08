@@ -2,6 +2,7 @@ name: bilibili-downloader
 
 services:
   vision-proxy:
+    platform: linux/amd64
     build:
       context: ../..
       dockerfile: packages/docker/Dockerfile.vision-proxy
@@ -17,6 +18,7 @@ services:
       - "${DOWNLOAD_HOST_PATH:-${HOME:-$USERPROFILE}/Downloads/bilibili_download}:/download"
 
   server:
+    platform: linux/amd64
     depends_on:
       vision-proxy:
         condition: service_healthy
