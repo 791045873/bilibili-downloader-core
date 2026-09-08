@@ -7,6 +7,13 @@ import { join, resolve } from "node:path";
  * 全部 server 侧磁盘路径集中于此，禁止各消费方自行推导
  * `process.env.OUTPUT_DIR`，防止默认值或 resolve 语义漂移。
  *
+ * DB 相对路径锚点约定（无例外）：DB 中所有磁盘相对路径
+ * （`task.outputFile`、`ai_summary_task.summary_output` 等）
+ * 一律相对 DOWNLOAD_ROOT 存储，读取时 join(DOWNLOAD_ROOT, value)；
+ * 写入时由相应 helper 归一化为该锚点的 POSIX 相对路径。
+ * `SUMMARY_BASE_DIR` 等派生目录仅用于运行时定位/挂载，不出现在 DB 值的锚点语义中
+ * （summary_output 值自带 `summary/` 段，即由此派生目录位于下载根之下所致）。
+ *
  * getter 每次访问时求值、不做缓存：对 ConfigModule 何时装载 .env
  * 零假设（env 进程内不可变，重复求值无语义代价），任何初始化顺序下都正确。
  * 测试/脚本直连实例化：`new PathsService()` 即可用，无需 DI 容器。
