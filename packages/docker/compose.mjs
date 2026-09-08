@@ -1,4 +1,4 @@
-// 镜像版本解析与 docker 命令派发：镜像 tag = 对应包 version，每次构建显式指定。
+// 镜像版本解析与 docker 命令派发：镜像 tag = 对应包 package.json 的 version（server/vision-proxy 各取自身包），每次构建显式指定。
 // SERVER_VERSION / VISION_PROXY_VERSION 环境变量可覆盖包版本（如发测试 tag）。
 // 版本同步写入本目录 .env（保留用户其他配置行），使直接 docker compose 命令也可用。
 import { spawnSync } from "node:child_process";
