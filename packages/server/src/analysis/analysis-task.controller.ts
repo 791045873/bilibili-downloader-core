@@ -18,6 +18,7 @@ import { DatabaseService } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 import { SummaryIntegrityService } from "./summary-integrity.service.js";
+import { SummaryRepairService } from "./summary-repair.service.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
 import {
   extractSummaryMeta,
@@ -36,6 +37,7 @@ export class AnalysisTaskController {
     private readonly downloadService: DownloadService,
     private readonly knowledgePublisher: KnowledgePublisherService,
     private readonly summaryIntegrityService: SummaryIntegrityService,
+    private readonly summaryRepairService: SummaryRepairService,
     private readonly paths: PathsService,
   ) {}
 
@@ -109,6 +111,33 @@ export class AnalysisTaskController {
   @Get("/summary-tasks/integrity-check/status")
   getIntegrityCheckStatus() {
     return { running: this.summaryIntegrityService.isRunning() };
+  }
+
+  /** 同步修复本地 AI 总结文件并返回报告；视频缺失项仅在末段入队重下（deferred） */
+  @Post("/summary-tasks/repair")
+  @HttpCode(HttpStatus.OK)
+  async repairSummaryTasks() {
+    if (!this.summaryRepairService.tryStart()) {
+      throw new ConflictException("修复流程进行中");
+    }
+    try {
+      const report = await this.summaryRepairService.run();
+      const queuedCount = report.deferred.filter(
+        (d) => typeof d.queuedTaskId === "number",
+      ).length;
+      const message =
+        queuedCount > 0
+          ? `修复完成；${queuedCount} 个任务已入队重新下载，待下载完成后可重新触发本接口`
+          : "修复完成";
+      return { message, report };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Summary repair failed: ${message}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+      throw err;
+    }
   }
 
   @Get("/summary-tasks")
