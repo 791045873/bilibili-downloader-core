@@ -16,10 +16,10 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `none`（task.outputFile / analysis_sub_task.output_file 相对 DOWNLOAD_ROOT 锚点改造已实现闭合：`docs/plans/2026-09-09-outputfile-relative-anchor-plan.md`；存量库 004 迁移脚本与部署后前端展示目测待用户执行）
+- Active requirement: `none`（下载入队创建层去重已实现闭合：`docs/plans/2026-09-09-download-create-dedup-plan.md`；前端 409 提示的运行级人工目测待用户部署后确认）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `none`（outputfile 相对锚点 plan 已闭合；下一步候选：Phase 3 RAG 问答 / Phase 4 重算工具，需求未定稿）
-- Active backlog item: 无（最近完成项：task.outputFile / analysis_sub_task.output_file 相对锚点改造；此前：AI 总结完整性检查、下载队列页表格化 + 两张任务表格列宽可调、Prisma P0-P4、知识回填与 Phase 2 向量检索、2026-09-04 输出目录/paths service/相对路径批次）
+- Active plan: `none`（download-create-dedup plan 已闭合；下一步候选：Phase 3 RAG 问答 / Phase 4 重算工具，需求未定稿）
+- Active backlog item: 无（最近完成项：下载入队创建层去重；此前：task.outputFile / analysis_sub_task.output_file 相对锚点改造、AI 总结完整性检查、Prisma P0-P4 等）
 - AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Current blocker: `none`
 

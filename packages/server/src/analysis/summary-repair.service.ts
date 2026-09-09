@@ -309,7 +309,7 @@ export class SummaryRepairService {
           });
           continue;
         }
-        const { id } = await this.downloadScheduler.createDownload({
+        const enqueued = await this.downloadScheduler.createDownload({
           bvid: task.bvid!,
           cid: task.cid!,
           title: task.title ?? `${task.bvid}-${task.cid}`,
@@ -320,17 +320,24 @@ export class SummaryRepairService {
           subtitleLang: task.subtitleLang,
           autoSummary: false,
         });
+        if (!enqueued.created) {
+          report.deferred.push({
+            ...item,
+            reason: enqueued.message,
+          });
+          continue;
+        }
         report.deferred.push({
           ...item,
           reason: "视频缺失，已按原任务画质入队重新下载",
-          queuedTaskId: id,
+          queuedTaskId: enqueued.id,
         });
         this.logger.log(
           createLogMessage("Summary repair queued video re-download", {
             id: record.id,
             bvid: record.bvid,
             cid: record.cid,
-            queuedTaskId: id,
+            queuedTaskId: enqueued.id,
             quality: task.quality,
           }),
         );

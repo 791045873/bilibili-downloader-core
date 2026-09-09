@@ -62,7 +62,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | PostgreSQL | 下载任务、AI 总结、设置、提示词持久化（经 `DATABASE_URL` 连接，本地与云端统一使用）；知识库 `summary`/`summary_segment` 同库 | `packages/server/src/database/database.service.ts` |
 | 腾讯云 COS | AI 总结截图对象存储（知识发布管道上传，公网 URL 供 md 预览；经 `TENCENT_COS_*` 配置） | `packages/server/src/knowledge/cos-store.service.ts` |
 | POST /api/tasks/check | 按 bvid + cid 批量查询任务状态（入队去重） | `packages/server/src/download/download.controller.ts` |
-| POST /api/download | 创建下载任务，必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts` |
+| POST /api/download | 创建下载任务，必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；同 (bvid,cid) 存在排队中/下载中任务或已成功下载且磁盘文件存在时拒绝创建并返回 HTTP 409（ConflictException，中文提示，不落库；2026-09-09 创建层去重，有意推翻 2026-08-10"创建层不去重"决策）；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts`、`packages/server/src/download/create-dedup.ts` |
 | GET /api/download/config | 返回当前服务端下载根目录及来源（环境变量或默认目录） | `packages/server/src/download/download.controller.ts` |
 | GET /api/tasks | 返回服务端分页下载任务列表，支持 `page`、`pageSize`、`statusGroup` 查询参数 | `packages/server/src/download/download.controller.ts` |
 | DELETE /api/tasks/:id | 删除下载任务记录（含 `analysis_sub_task`）；仅删数据库、不动磁盘、不联动删 AI 总结记录 | `packages/server/src/download/download.controller.ts` |
@@ -84,7 +84,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | GET /api/knowledge/backfill | 查询回填批次进度：`{ running, total, synced, skipped, failed, failures[{ summaryTaskId, error }] }`；批次完成后回到 idle 且计数保留到下次触发 | `packages/server/src/knowledge/knowledge-backfill.controller.ts` |
 | GET /api/knowledge/search?q=&k= | 向量检索：q 归一化后经 DashScope embedding，pgvector 余弦 top-k（k 缺省 10、限 1–50）；返回 `[{ segmentId, title, content, score, screenshotUrl, frameDescription, videoTitle, videoUrl, timestampSeconds }]`；q 空或 k 非法返回 400，缺 embedding 配置/调用失败返回 503（不降级关键词搜索）；仅 `embedding_model` 与当前配置一致的 segment 参与 | `packages/server/src/knowledge/knowledge-search.controller.ts` |
 | GET /summary-files/* | 摘要文档根目录（下载根目录 `OUTPUT_DIR` 下的 `summary/` 子目录，随下载目录一起持久化）静态挂载，供前端预览 md 内相对插图；本地 dev 由 Vite 代理 `/summary-files` 转发，容器内与前端同源 | `packages/server/src/main.ts` |
-| POST /api/download | 创建下载任务，body 可带 `promptId?` 写入 `task.prompt_id`；必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts` |
+| POST /api/download | 创建下载任务，body 可带 `promptId?` 写入 `task.prompt_id`；必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；同 (bvid,cid) 已有排队中/下载中任务或已下载且磁盘文件存在时返回 HTTP 409；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts` |
 
 ## Rule
 

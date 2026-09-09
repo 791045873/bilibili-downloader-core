@@ -374,6 +374,10 @@ export class AnalysisController {
         promptId,
       });
 
+      if (!created.created) {
+        throw new ConflictException(created.message);
+      }
+
       if (
         lowestQuality &&
         parsed.videoQualityList.length > 1 &&

@@ -267,12 +267,15 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
       }
     }
     const title = `${bvid}-${cid}-analysis-screenshot`;
-    const task = await this.downloadService.createTask({
-      bvid,
-      cid,
-      title,
-      quality: bestStream.quality,
-    });
+    const task = await this.downloadService.createTask(
+      {
+        bvid,
+        cid,
+        title,
+        quality: bestStream.quality,
+      },
+      { skipDedup: true },
+    );
 
     this.logger.log(
       createLogMessage("Created fallback screenshot download task", {

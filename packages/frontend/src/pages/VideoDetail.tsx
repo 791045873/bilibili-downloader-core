@@ -332,12 +332,22 @@ export function Component() {
 
     try {
       const responses = await Promise.all(
-        tasks.map((t) => t.catch(() => ({ id: -1, message: "" }))),
+        tasks.map((t) =>
+          t.catch((e: unknown) => ({
+            id: -1,
+            message: e instanceof Error ? e.message : "加入队列失败",
+          })),
+        ),
       );
       const successIds = responses
         .filter((r) => r.id !== -1)
         .map((r) => r.id);
       addTaskIds(successIds);
+
+      const skipped = responses.filter((r) => r.id === -1 && r.message);
+      if (skipped.length > 0) {
+        setErrorMsg(skipped.map((s) => s.message).join("；"));
+      }
 
       setSelectedKeys((prev) => {
         const next = new Set(prev);

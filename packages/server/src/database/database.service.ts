@@ -692,6 +692,26 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     return merged;
   }
 
+  /** 查询某个视频分P最新的排队中/下载中任务（入队创建层去重用） */
+  async findActiveTaskByBvidAndCid(
+    bvid: string,
+    cid: number,
+  ): Promise<TaskRecord | undefined> {
+    const row = await this.prismaDb.orm.public.Task
+      .where((m) =>
+        and(
+          m.bvid.eq(bvid),
+          m.cid.eq(BigInt(cid)),
+          m.status.in(["created", "downloading"]),
+        ),
+      )
+      .orderBy((m) => m.createdAt.desc())
+      .first();
+    if (!row) return undefined;
+    const [merged] = await this.mergeSummaryMirror([this.mapTaskRow(row)]);
+    return merged;
+  }
+
   // ==================== 应用设置（键值） ====================
 
   /** 批量读取应用设置，返回 key → value（缺失的 key 不含在结果中） */

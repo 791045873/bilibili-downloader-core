@@ -28,12 +28,18 @@ import {
 } from "../database/database.service.js";
 import type { DownloadDto } from "./download.dto.js";
 import { buildOutputFileName } from "./file-naming.js";
+import { decideCreateDedupVerdict } from "./create-dedup.js";
+import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 
 interface LowResDownloadResult {
   outputFile: string;
   quality: number;
 }
+
+export type CreateTaskResult =
+  | { created: true; id: number; message: string }
+  | { created: false; message: string };
 
 // ---------- 公开类型（旧前端兼容） ----------
 
@@ -364,8 +370,35 @@ export class DownloadService implements OnModuleInit {
 
   // ==================== 下载任务 ====================
 
-  /** 创建下载任务（仅落库，不执行，由 Scheduler 调度） */
-  async createTask(dto: DownloadDto): Promise<{ id: number; message: string }> {
+  /** 创建下载任务（仅落库，不执行，由 Scheduler 调度）。
+   * 默认按 (bvid,cid) 去重：存在排队中/下载中任务，或已成功下载且磁盘文件存在时拒绝创建。
+   * skipDedup 供内部链路（截图回退同步下载）豁免。 */
+  async createTask(
+    dto: DownloadDto,
+    opts: { skipDedup: true },
+  ): Promise<{ created: true; id: number; message: string }>;
+  async createTask(
+    dto: DownloadDto,
+    opts?: { skipDedup?: boolean },
+  ): Promise<CreateTaskResult>;
+  async createTask(
+    dto: DownloadDto,
+    opts?: { skipDedup?: boolean },
+  ): Promise<CreateTaskResult> {
+    if (!opts?.skipDedup && dto.bvid && typeof dto.cid === "number") {
+      const verdict = await this.evaluateCreateDedup(dto.bvid, dto.cid);
+      if (verdict.block) {
+        this.logger.log(
+          createLogMessage("Download task creation blocked by dedup gate", {
+            bvid: dto.bvid,
+            cid: dto.cid,
+            reason: verdict.message,
+          }),
+        );
+        return { created: false, message: verdict.message ?? "重复任务已拦截" };
+      }
+    }
+
     const now = new Date().toISOString();
     const id = await this.db.insertTask({
       bvid: dto.bvid,
@@ -402,7 +435,35 @@ autoSummary: dto.autoSummary,
       }),
     );
 
-    return { id, message: "任务已创建" };
+    return { created: true, id, message: "任务已创建" };
+  }
+
+  /** 入队去重判定：active 任务存在，或 success 任务 outputFile 在磁盘真实存在 */
+  private async evaluateCreateDedup(
+    bvid: string,
+    cid: number,
+  ): Promise<{ block: boolean; message?: string }> {
+    const active = await this.db.findActiveTaskByBvidAndCid(bvid, cid);
+    let completedOutputFile: string | null | undefined;
+    let completedFileExists = false;
+    if (!active) {
+      const completed = await this.db.findCompletedTaskByBvidAndCid(bvid, cid);
+      completedOutputFile = completed?.outputFile;
+      if (completedOutputFile) {
+        const abs = resolveFromDownloadRoot(
+          completedOutputFile,
+          this.paths.DOWNLOAD_ROOT,
+        );
+        completedFileExists = abs
+          ? await this.fileExists(abs)
+          : false;
+      }
+    }
+    return decideCreateDedupVerdict({
+      activeTaskExists: Boolean(active),
+      completedOutputFile,
+      fileExists: completedFileExists,
+    });
   }
 
   /** 执行下载任务（由 Scheduler 调用） */

@@ -210,6 +210,27 @@ describe("task queries", () => {
     expect(latest!.status).toBe("created");
     expect(await db.findCompletedTaskByBvidAndCid("BV1", 1)).toBeUndefined();
   });
+
+  it("findActiveTaskByBvidAndCid 只命中 created/downloading", async () => {
+    const id = await db.insertTask({ status: "created", bvid: "BV1", cid: 1 } as TaskRecord);
+    const active = await db.findActiveTaskByBvidAndCid("BV1", 1);
+    expect(active!.id).toBe(id);
+
+    await db.updateTaskProgress(id, 10, "1MB/s");
+    await db.updateTaskStatus(id, { status: "downloading" });
+    expect((await db.findActiveTaskByBvidAndCid("BV1", 1))!.id).toBe(id);
+
+    await db.updateTaskStatus(id, {
+      status: "success",
+      outputFile: "sub/a.mp4",
+    });
+    expect(await db.findActiveTaskByBvidAndCid("BV1", 1)).toBeUndefined();
+
+    await db.updateTaskStatus(id, { status: "failed" });
+    expect(await db.findActiveTaskByBvidAndCid("BV1", 1)).toBeUndefined();
+
+    expect(await db.findActiveTaskByBvidAndCid("BV1", 2)).toBeUndefined();
+  });
 });
 
 describe("task deletion contracts", () => {

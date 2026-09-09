@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   BadRequestException,
+  ConflictException,
   Logger,
 } from "@nestjs/common";
 import { DownloadScheduler } from "./download-scheduler.js";
@@ -34,14 +35,18 @@ export class DownloadController {
   }
 
   @Post("/download")
-  createDownload(@Body() dto: DownloadDto) {
+  async createDownload(@Body() dto: DownloadDto) {
     if (!dto.bvid || !dto.cid || !dto.title) {
       throw new BadRequestException("缺少 bvid / cid / title 参数");
     }
     if (!dto.outputPath || !dto.outputPath.trim()) {
       throw new BadRequestException("outputPath 不能为空");
     }
-    return this.scheduler.createDownload(dto);
+    const result = await this.scheduler.createDownload(dto);
+    if (!result.created) {
+      throw new ConflictException(result.message);
+    }
+    return { id: result.id, message: result.message };
   }
 
   @Post("/tasks/:id/stop")

@@ -92,23 +92,28 @@ export class DownloadScheduler implements OnModuleInit {
     );
   }
 
-  /** 创建下载任务 + 触发调度 */
+  /** 创建下载任务 + 触发调度（created=false 表示被去重门拒绝，未落库） */
   async createDownload(
     dto: DownloadDto,
-  ): Promise<{ id: number; message: string }> {
+  ): Promise<
+    | { created: true; id: number; message: string }
+    | { created: false; message: string }
+  > {
     const result = await this.downloadService.createTask(dto);
-    this.logger.log(
-      createLogMessage("Download task queued for scheduling", {
-        taskId: result.id,
-        bvid: dto.bvid,
-        cid: dto.cid,
-        quality: dto.quality,
-        codec: dto.codec,
-        autoSummary: dto.autoSummary,
-        hasOutputPath: Boolean(dto.outputPath),
-      }),
-    );
-    await this.tryScheduleNext();
+    if (result.created) {
+      this.logger.log(
+        createLogMessage("Download task queued for scheduling", {
+          taskId: result.id,
+          bvid: dto.bvid,
+          cid: dto.cid,
+          quality: dto.quality,
+          codec: dto.codec,
+          autoSummary: dto.autoSummary,
+          hasOutputPath: Boolean(dto.outputPath),
+        }),
+      );
+      await this.tryScheduleNext();
+    }
     return result;
   }
 
