@@ -4,43 +4,25 @@
  * 纯函数层：不读 env、不依赖 Nest；摘要根目录由调用方传入。
  */
 
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative } from "node:path";
+import {
+  resolveFromDownloadRoot,
+  toRelativeDownloadRootPath,
+} from "../paths/path-anchor.js";
 
 /** 摘要目录静态挂载前缀（同源；dev 由 Vite 代理转发，生产同源直达） */
 export const SUMMARY_STATIC_PREFIX = "/summary-files";
 
-function isAbsoluteSummaryPath(value: string): boolean {
-  return isAbsolute(value) || /^[a-zA-Z]:[\\/]/.test(value);
-}
-
 /**
  * 写侧：把 summary_output 绝对路径转为相对 downloadRoot 的相对路径（POSIX 分隔符）。
  * 仅当值位于 downloadRoot 之下时转换；遗留根外值（如旧 cwd/summaryDir）返回 null 表示不改写。
- * 大小写：归属判定仅用于比较，relative() 用原始大小写计算，保留原段 case（云端 Linux 大小写敏感）。
+ * 委托通用锚点模块（paths/path-anchor.ts），行为见其文档。
  */
 export function toRelativeSummaryOutputPath(
   value: string,
   downloadRoot: string,
 ): string | null {
-  if (!value || isAbsoluteSummaryPath(value) === false) {
-    return null;
-  }
-  const absValue = resolve(value);
-  const absRoot = resolve(downloadRoot);
-  const rel = relative(absRoot, absValue);
-  if (
-    rel === "" ||
-    isAbsolute(rel) ||
-    rel.startsWith("..") ||
-    rel.startsWith(`..${sepOf(rel)}`)
-  ) {
-    return null;
-  }
-  return rel.replaceAll("\\", "/");
-}
-
-function sepOf(value: string): string {
-  return value.includes("/") ? "/" : "\\";
+  return toRelativeDownloadRootPath(value, downloadRoot);
 }
 
 /**
@@ -51,10 +33,7 @@ export function resolveSummaryOutputPath(
   value: string,
   downloadRoot: string,
 ): string {
-  if (!value || isAbsoluteSummaryPath(value)) {
-    return value;
-  }
-  return join(downloadRoot, value);
+  return resolveFromDownloadRoot(value, downloadRoot) ?? value;
 }
 
 /** Markdown 图片语法：![alt](url)（当前生成器仅产出该语法，url 不含空格/括号） */

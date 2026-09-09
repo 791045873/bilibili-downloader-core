@@ -16,10 +16,10 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `none`（AI 总结本地原始内容完整性检查已实现闭合：`docs/plans/2026-09-07-summary-integrity-check-plan.md`；前端交互观感与真实部署效果由用户部署后确认）
+- Active requirement: `none`（task.outputFile / analysis_sub_task.output_file 相对 DOWNLOAD_ROOT 锚点改造已实现闭合：`docs/plans/2026-09-09-outputfile-relative-anchor-plan.md`；存量库 004 迁移脚本与部署后前端展示目测待用户执行）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `none`（summary-integrity-check plan 已闭合；下一步候选：Phase 3 RAG 问答 / Phase 4 重算工具，需求未定稿）
-- Active backlog item: 无（最近完成项：AI 总结完整性检查；此前：下载队列页表格化 + 两张任务表格列宽可调、Prisma P0-P4、知识回填与 Phase 2 向量检索、2026-09-04 输出目录/paths service/相对路径批次）
+- Active plan: `none`（outputfile 相对锚点 plan 已闭合；下一步候选：Phase 3 RAG 问答 / Phase 4 重算工具，需求未定稿）
+- Active backlog item: 无（最近完成项：task.outputFile / analysis_sub_task.output_file 相对锚点改造；此前：AI 总结完整性检查、下载队列页表格化 + 两张任务表格列宽可调、Prisma P0-P4、知识回填与 Phase 2 向量检索、2026-09-04 输出目录/paths service/相对路径批次）
 - AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Current blocker: `none`
 

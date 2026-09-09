@@ -43,7 +43,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 - 页面轮询仅覆盖当前页中的非终态任务；翻页、切换过滤和切换每页条数时会释放旧轮询集合。
 - 删除语义：`DELETE /api/tasks/:id` 删除下载任务及其下载子任务记录；`DELETE /api/summary-tasks/:id` 删除 AI 总结记录。两者都只删数据库记录、不删除磁盘上的媒体文件/总结输出文件，且互不联动；AI 总结记录处于 `pending`/`analyzing` 时禁止删除（返回 409）。
 - AI 总结记录的本地原始内容完整性（`integrity_status`: `complete`/`missing`、`integrity_detail`、`integrity_checked_at`，NULL=未检查）仅由用户手动触发的一键检查（`POST /api/summary-tasks/integrity-check`）写入：只读磁盘判定 md 与相对截图是否存在于当前环境，只读不改文件；记录被重新触发/重新构建总结后重置为未检查。AI 总结任务表格展示"本地文件"列（完整/缺失/未检查，缺失 tooltip 含明细与检查时间），检查进行中按钮禁用，结束后刷新列表可见最新结果。
-- DB 相对路径锚点约定（无例外）：DB 中所有磁盘相对路径（`task.outputFile`、`ai_summary_task.summary_output` 等）一律相对下载根目录 `DOWNLOAD_ROOT` 存储，读取时 `join(DOWNLOAD_ROOT, value)`，`summary_output` 值自带 `summary/` 段；遗留绝对路径值原样容错透传（读侧既有语义）。`SUMMARY_BASE_DIR` 等派生目录仅用于运行时定位/静态挂载，不是 DB 值的锚点。
+- DB 相对路径锚点约定（无例外）：DB 中所有磁盘相对路径（`task.outputFile`、`analysis_sub_task.output_file`、`ai_summary_task.summary_output` 等）一律相对下载根目录 `DOWNLOAD_ROOT` 存储，读取时 `join(DOWNLOAD_ROOT, value)`，`summary_output` 值自带 `summary/` 段；遗留绝对路径值原样容错透传（读侧既有语义）。`SUMMARY_BASE_DIR` 等派生目录仅用于运行时定位/静态挂载，不是 DB 值的锚点。写侧锚点 helper 统一在 `packages/server/src/paths/path-anchor.ts`（summary_output 的 summary-dir 同名函数为其委托）。
 
 ## Key Domain Objects
 

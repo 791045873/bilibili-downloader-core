@@ -20,6 +20,7 @@ import { sanitizeFileName } from "../download/file-naming.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 import { PromptService } from "./prompt.service.js";
 import { PathsService } from "../paths/paths.service.js";
+import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
 
 /** AI 总结任务执行耗时明细 */
@@ -381,7 +382,10 @@ export class AnalysisTriggerService implements OnModuleInit {
       }
       const effectiveBvid = effectiveTask.bvid;
       const effectiveCid = effectiveTask.cid;
-      const highResPath = effectiveTask.outputFile;
+      const highResPath = resolveFromDownloadRoot(
+        effectiveTask.outputFile,
+        this.paths.DOWNLOAD_ROOT,
+      );
 
       // LLM 分析视频决策统一走资产层：低清子任务文件 → 高清任务文件，缺失时调度重下
       const video = await this.analysisVideoResolver.resolveAnalysisVideo({
@@ -391,7 +395,10 @@ export class AnalysisTriggerService implements OnModuleInit {
         title: task.title,
         preferredLowResPath:
           lowResSubTask?.status === "completed"
-            ? lowResSubTask.outputFile
+            ? resolveFromDownloadRoot(
+                lowResSubTask.outputFile,
+                this.paths.DOWNLOAD_ROOT,
+              )
             : undefined,
         highResPath,
         llmVideoDir: this.llmVideoDir,
@@ -582,9 +589,13 @@ export class AnalysisTriggerService implements OnModuleInit {
       latestTask;
 
     // 磁盘校验：重载文件已不存在时回退当前任务，交由下游低清恢复
+    const completedOutputFile = resolveFromDownloadRoot(
+      completedTask.outputFile,
+      this.paths.DOWNLOAD_ROOT,
+    );
     if (
-      completedTask.outputFile &&
-      !(await this.downloadService.fileExists(completedTask.outputFile))
+      completedOutputFile &&
+      !(await this.downloadService.fileExists(completedOutputFile))
     ) {
       this.logger.warn(
         createLogMessage(
@@ -796,7 +807,10 @@ export class AnalysisTriggerService implements OnModuleInit {
       if (!task || !task.bvid || typeof task.cid !== "number") {
         throw new Error("无对应的下载任务，无法重新构建");
       }
-      const outputFile = task.outputFile;
+      const outputFile = resolveFromDownloadRoot(
+        task.outputFile,
+        this.paths.DOWNLOAD_ROOT,
+      );
       if (!outputFile || !(await this.downloadService.fileExists(outputFile))) {
         throw new Error("视频文件不存在，无法重新构建截图");
       }

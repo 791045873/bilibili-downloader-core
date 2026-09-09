@@ -16,6 +16,8 @@ import { DatabaseService } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { createLogMessage } from "../logging/server-log.util.js";
+import { PathsService } from "../paths/paths.service.js";
+import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
 import isNil from "lodash/isNil.js";
 
 export interface ScreenshotSourceResolverInput {
@@ -52,6 +54,7 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
     private readonly downloadService: DownloadService,
     private readonly databaseService: DatabaseService,
     private readonly downloadScheduler: DownloadScheduler,
+    private readonly paths: PathsService,
   ) {}
 
   /**
@@ -205,10 +208,15 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
 
     const completedTask =
       await this.databaseService.findCompletedTaskByBvidAndCid(bvid, cid);
+    const completedOutputFile = resolveFromDownloadRoot(
+      completedTask?.outputFile,
+      this.paths.DOWNLOAD_ROOT,
+    );
     if (
-      completedTask?.outputFile &&
+      completedOutputFile &&
+      completedTask &&
       (completedTask.quality ?? 0) >= 80 &&
-      (await this.downloadService.fileExists(completedTask.outputFile))
+      (await this.downloadService.fileExists(completedOutputFile))
     ) {
       this.logger.log(
         createLogMessage(
@@ -223,9 +231,9 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
           },
         ),
       );
-      return { source: completedTask.outputFile, sourceType: "local" };
+      return { source: completedOutputFile, sourceType: "local" };
     }
-    if (completedTask?.outputFile && (completedTask.quality ?? 0) >= 80) {
+    if (completedOutputFile && completedTask && (completedTask.quality ?? 0) >= 80) {
       this.logger.warn(
         createLogMessage(
           "Completed local download file is missing on disk, skipping this fallback",
@@ -303,17 +311,21 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
       throw new Error(finalRecord?.errorMessage ?? "下载失败");
     }
 
+    const rawOutputFile = finalRecord.outputFile;
+    const finalOutputFile =
+      resolveFromDownloadRoot(rawOutputFile, this.paths.DOWNLOAD_ROOT) ??
+      rawOutputFile;
     this.logger.log(
       createLogMessage("Using freshly downloaded local screenshot source", {
         taskId: task.id,
         bvid,
         cid,
-        outputFile: finalRecord.outputFile,
+        outputFile: finalOutputFile,
         sourceType: "local",
       }),
     );
 
-    return { source: finalRecord.outputFile, sourceType: "local" };
+    return { source: finalOutputFile, sourceType: "local" };
   }
 
   private async executeWithTimeout<T>(

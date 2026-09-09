@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { join } from "node:path";
+import { PathsService } from "../../src/paths/paths.service.js";
 import {
   initTestDb,
   truncateAll,
@@ -6,6 +8,7 @@ import {
 } from "../helpers/db.js";
 
 const db: DatabaseService = await initTestDb();
+const downloadRoot = new PathsService().DOWNLOAD_ROOT;
 
 afterAll(async () => {
   await db.onApplicationShutdown();
@@ -69,6 +72,39 @@ describe("analysis_sub_task", () => {
       createdAt: new Date().toISOString(),
     });
     expect(await db.getAnalysisSubTasks("BV1", 1)).toHaveLength(2);
+  });
+
+  it("output_file 绝对值写侧相对化，相对值原样保留", async () => {
+    const taskId = await db.insertTask({ status: "success", bvid: "BV1", cid: 1 } as any);
+    const sid = await db.insertAnalysisSubTask({
+      taskId,
+      bvid: "BV1",
+      cid: 1,
+      quality: 32,
+      status: "created",
+      createdAt: new Date().toISOString(),
+    });
+    await db.updateAnalysisSubTaskStatus(sid, {
+      status: "success",
+      outputFile: join(downloadRoot, ".analysis-llm", "low.mp4"),
+      completedAt: new Date().toISOString(),
+    });
+    expect((await db.getAnalysisSubTasks("BV1", 1))[0].outputFile).toBe(
+      ".analysis-llm/low.mp4",
+    );
+
+    const sid2 = await db.insertAnalysisSubTask({
+      taskId,
+      bvid: "BV1",
+      cid: 1,
+      quality: 16,
+      status: "failed",
+      outputFile: "legacy/outside.mp4",
+      createdAt: new Date().toISOString(),
+    });
+    expect((await db.getAnalysisSubTasks("BV1", 1)).find((s) => s.id === sid2)!.outputFile).toBe(
+      "legacy/outside.mp4",
+    );
   });
 
   // 一次性 supersede 迁移用例已随迁移归档移除（见 packages/server/scripts/one-off-migrations/README.md）。

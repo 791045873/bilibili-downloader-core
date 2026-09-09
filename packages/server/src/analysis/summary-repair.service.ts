@@ -10,6 +10,7 @@ import {
   type TaskRecord,
 } from "../database/database.service.js";
 import { PathsService } from "../paths/paths.service.js";
+import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { sanitizeFileName } from "../download/file-naming.js";
 import { createLogMessage } from "../logging/server-log.util.js";
@@ -174,14 +175,21 @@ export class SummaryRepairService {
         return;
       }
 
-      let videoPath = task.outputFile;
+      let videoPath = resolveFromDownloadRoot(
+        task.outputFile,
+        this.paths.DOWNLOAD_ROOT,
+      );
       if (!videoPath || !(await fileExists(videoPath))) {
         const completedTask = await this.db.findCompletedTaskByBvidAndCid(
           record.bvid,
           record.cid,
         );
-        if (completedTask?.outputFile && (await fileExists(completedTask.outputFile))) {
-          videoPath = completedTask.outputFile;
+        const completedOutputFile = resolveFromDownloadRoot(
+          completedTask?.outputFile,
+          this.paths.DOWNLOAD_ROOT,
+        );
+        if (completedOutputFile && (await fileExists(completedOutputFile))) {
+          videoPath = completedOutputFile;
         } else {
           deferredCandidates.push({ record, task });
           return;

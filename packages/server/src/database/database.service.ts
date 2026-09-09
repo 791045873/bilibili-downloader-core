@@ -16,8 +16,8 @@ import {
   BUILTIN_AI_PROMPT_NAME,
 } from "../analysis/prompt-template.js";
 import {
-  toRelativeSummaryOutputPath,
-} from "../analysis/summary-dir.js";
+  toRelativeDownloadRootPath,
+} from "../paths/path-anchor.js";
 import { PathsService } from "../paths/paths.service.js";
 
 pgTypes.setTypeParser(20, (value: string) => Number(value));
@@ -335,12 +335,18 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   ): Promise<void> {
     const previous = await this.getTaskById(id);
     const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+    // outputFile 统一存相对 DOWNLOAD_ROOT 的相对路径；根外/遗留绝对值原样保留
+    const outputFile =
+      fields.outputFile !== undefined
+        ? (toRelativeDownloadRootPath(fields.outputFile, this.paths.DOWNLOAD_ROOT) ??
+          fields.outputFile)
+        : undefined;
     await this.prismaDb.orm.public.Task.where({ id: BigInt(id) }).update({
       status: fields.status,
       updatedAt: now,
       ...(fields.autoSummary !== undefined ? { autoSummary: fields.autoSummary } : {}),
       ...(fields.promptId !== undefined ? { promptId: fields.promptId } : {}),
-      ...(fields.outputFile !== undefined ? { outputFile: fields.outputFile } : {}),
+      ...(outputFile !== undefined ? { outputFile } : {}),
       ...(fields.fileSize !== undefined ? { fileSize: BigInt(fields.fileSize) } : {}),
       ...(fields.errorCode !== undefined ? { errorCode: fields.errorCode } : {}),
       ...(fields.errorMessage !== undefined ? { errorMessage: fields.errorMessage } : {}),
@@ -355,7 +361,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     const shouldLog =
       statusChanged ||
       fields.errorMessage !== undefined ||
-      fields.outputFile !== undefined ||
+      outputFile !== undefined ||
       fields.autoSummary !== undefined ||
       fields.promptId !== undefined ||
       fields.durationMs !== undefined;
@@ -370,7 +376,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         status: fields.status,
         autoSummary: fields.autoSummary,
         promptId: fields.promptId,
-        outputFile: fields.outputFile,
+        outputFile,
         error: fields.errorMessage,
         durationMs: fields.durationMs,
         progress: fields.progress,
@@ -717,13 +723,18 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   }
 
   async insertAnalysisSubTask(record: AnalysisSubTaskRecord): Promise<number> {
+    // output_file 统一存相对 DOWNLOAD_ROOT 的相对路径；根外/遗留绝对值原样保留
+    const outputFile = record.outputFile
+      ? (toRelativeDownloadRootPath(record.outputFile, this.paths.DOWNLOAD_ROOT) ??
+        record.outputFile)
+      : (record.outputFile ?? null);
     const created = await this.prismaDb.orm.public.AnalysisSubTask.create({
       taskId: BigInt(record.taskId),
       bvid: record.bvid ?? null,
       cid: record.cid != null ? BigInt(record.cid) : null,
       quality: record.quality ?? null,
       status: record.status ?? "created",
-      outputFile: record.outputFile ?? null,
+      outputFile,
       errorMessage: record.errorMessage ?? null,
       createdAt: toInstant(record.createdAt)!,
       completedAt: toInstant(record.completedAt),
@@ -764,11 +775,18 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         }
       : undefined;
 
+    // output_file 统一存相对 DOWNLOAD_ROOT 的相对路径；根外/遗留绝对值原样保留
+    const outputFile =
+      fields.outputFile !== undefined
+        ? (toRelativeDownloadRootPath(fields.outputFile, this.paths.DOWNLOAD_ROOT) ??
+          fields.outputFile)
+        : undefined;
+
     await this.prismaDb.orm.public.AnalysisSubTask
       .where({ id: BigInt(id) })
       .update({
         status: fields.status,
-        ...(fields.outputFile !== undefined ? { outputFile: fields.outputFile } : {}),
+        ...(outputFile !== undefined ? { outputFile } : {}),
         ...(fields.errorMessage !== undefined ? { errorMessage: fields.errorMessage } : {}),
         ...(fields.completedAt !== undefined ? { completedAt: toInstant(fields.completedAt) } : {}),
       });
@@ -782,7 +800,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       fromStatus: prev?.status,
       toStatus: fields.status,
       status: fields.status,
-      outputFile: fields.outputFile,
+      outputFile,
       error: fields.errorMessage,
     };
 
@@ -1129,7 +1147,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         : (existing?.modelName ?? null);
     // summary_output 统一存相对 DOWNLOAD_ROOT 的相对路径；根外遗留绝对值原样保留
     const summaryOutput = record.summaryOutput
-      ? (toRelativeSummaryOutputPath(record.summaryOutput, this.paths.DOWNLOAD_ROOT) ??
+      ? (toRelativeDownloadRootPath(record.summaryOutput, this.paths.DOWNLOAD_ROOT) ??
         record.summaryOutput)
       : (record.summaryOutput ?? null);
     await this.prismaDb.orm.public.AiSummaryTask.upsert({

@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { join } from "node:path";
 import type { TaskRecord } from "../src/database/database.service.js";
+import { PathsService } from "../../src/paths/paths.service.js";
 import {
   initTestDb,
   truncateAll,
@@ -7,6 +9,7 @@ import {
 } from "../helpers/db.js";
 
 const db: DatabaseService = await initTestDb();
+const downloadRoot = new PathsService().DOWNLOAD_ROOT;
 
 afterAll(async () => {
   await db.onApplicationShutdown();
@@ -63,6 +66,34 @@ describe("task lifecycle", () => {
     expect(row!.durationMs).toBe(9000);
     expect(row!.completedAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
     expect(row!.errorCode).toBeNull();
+  });
+
+  it("updateTaskStatus 把根下绝对 outputFile 写为相对 DOWNLOAD_ROOT 的相对值", async () => {
+    const id = await db.insertTask({ status: "downloading" } as TaskRecord);
+    const abs = join(downloadRoot, "sub", "T-BV1-1-q80.mp4");
+    await db.updateTaskStatus(id, {
+      status: "success",
+      outputFile: abs,
+    });
+    const row = await db.getTaskById(id);
+    expect(row!.outputFile).toBe("sub/T-BV1-1-q80.mp4");
+  });
+
+  it("updateTaskStatus 保留相对值与根外绝对值原样", async () => {
+    const id = await db.insertTask({ status: "downloading" } as TaskRecord);
+    await db.updateTaskStatus(id, {
+      status: "success",
+      outputFile: "rel/a.mp4",
+    });
+    expect((await db.getTaskById(id))!.outputFile).toBe("rel/a.mp4");
+
+    const id2 = await db.insertTask({ status: "downloading" } as TaskRecord);
+    const outside = join(downloadRoot, "..", "outside.mp4");
+    await db.updateTaskStatus(id2, {
+      status: "success",
+      outputFile: outside,
+    });
+    expect((await db.getTaskById(id2))!.outputFile).toBe(outside);
   });
 
   it("updateTaskStatus failed 写入错误字段", async () => {
