@@ -175,6 +175,11 @@ export function Component() {
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [integrityChecking, setIntegrityChecking] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  const [repairReportOpen, setRepairReportOpen] = useState(false);
+  const [repairReport, setRepairReport] = useState<api.SummaryRepairReport | null>(
+    null,
+  );
 
   const [rawOpen, setRawOpen] = useState(false);
   const [rawLoading, setRawLoading] = useState(false);
@@ -257,6 +262,21 @@ export function Component() {
     } finally {
       setIntegrityChecking(false);
       await query.refetch();
+    }
+  }
+
+  async function handleRepair() {
+    setError("");
+    setRepairing(true);
+    try {
+      const result = await api.repairSummaryTasks();
+      setRepairReport(result.report);
+      setRepairReportOpen(true);
+      await query.refetch();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "触发本地文件修复失败");
+    } finally {
+      setRepairing(false);
     }
   }
 
@@ -543,6 +563,7 @@ export function Component() {
           </h1>
           <p className="mt-1 text-sm text-zinc-600">
             任务列表仅在点击按钮时刷新；"检查本地文件"期间自动轮询检查进度，结束后刷新结果。
+            "修复本地文件"会同步重建缺失的总结文件并展示报告；视频缺失项将自动入队重新下载，待下载完成后可再次点击修复。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -552,6 +573,13 @@ export function Component() {
             onClick={() => void handleIntegrityCheck()}
           >
             {integrityChecking ? "检查中..." : "检查本地文件"}
+          </Button>
+          <Button
+            loading={repairing}
+            disabled={repairing}
+            onClick={() => void handleRepair()}
+          >
+            {repairing ? "修复中..." : "修复本地文件"}
           </Button>
           <Button
             loading={refreshing}
@@ -719,6 +747,67 @@ export function Component() {
         {!rawLoading && !rawContent && !rawIsFallbackError && (
           <div className="py-6 text-center text-sm text-zinc-400">
             无原始返回（历史记录或本次未成功返回模型内容）
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={repairReportOpen}
+        title="本地文件修复报告"
+        width={720}
+        footer={
+          <Button onClick={() => setRepairReportOpen(false)}>关闭</Button>
+        }
+        onCancel={() => setRepairReportOpen(false)}
+      >
+        {repairReport && (
+          <div className="space-y-4">
+            <div className="text-sm text-zinc-600">
+              共 {repairReport.totalCompleted} 条已完成任务，其中{" "}
+              {repairReport.pendingCount} 条待修复：修复成功{" "}
+              {repairReport.repaired.length}、跳过 {repairReport.skipped.length}
+              、失败 {repairReport.failed.length}、待重新下载{" "}
+              {repairReport.deferred.length}。
+            </div>
+            {repairReport.deferred.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                {repairReport.deferred.length} 个任务已按原画质入队重新下载；请在下载任务完成后再次点击"修复本地文件"完成剩余修复。
+              </div>
+            )}
+            {(
+              [
+                { title: "修复成功", items: repairReport.repaired, color: "green" },
+                { title: "跳过", items: repairReport.skipped, color: "default" },
+                { title: "失败", items: repairReport.failed, color: "red" },
+                { title: "待重新下载", items: repairReport.deferred, color: "orange" },
+              ] as const
+            )
+              .filter((group) => group.items.length > 0)
+              .map((group) => (
+                <div key={group.title}>
+                  <div className="mb-1 flex items-center gap-2 text-sm font-medium text-zinc-700">
+                    {group.title}
+                    <Tag color={group.color}>{group.items.length}</Tag>
+                  </div>
+                  <div className="max-h-48 space-y-1 overflow-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                    {group.items.map((item, index) => (
+                      <div
+                        key={`${item.id ?? "n"}-${index}`}
+                        className="text-xs leading-relaxed text-zinc-700"
+                      >
+                        {item.id !== undefined ? `#${item.id} ` : ""}
+                        {item.title ?? item.bvid ?? ""}
+                        {item.summaryPath ? ` → ${item.summaryPath}` : ""}
+                        {item.empty ? "（空内容文档）" : ""}
+                        {item.reason ? `：${item.reason}` : ""}
+                        {item.queuedTaskId !== undefined
+                          ? `（下载任务 #${item.queuedTaskId}）`
+                          : ""}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
           </div>
         )}
       </Modal>
