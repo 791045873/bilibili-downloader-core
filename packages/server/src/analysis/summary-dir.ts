@@ -27,7 +27,7 @@ export function toRelativeSummaryOutputPath(
 
 /**
  * 读侧：把 DB 中的 summary_output 解析为当前环境的绝对路径。
- * 相对值按 join(downloadRoot, value) 拼接；绝对值（迁移前遗留）原样透传。
+ * 非空值一律 join(downloadRoot, value)（读侧恒 join，不透传绝对值）。
  */
 export function resolveSummaryOutputPath(
   value: string,

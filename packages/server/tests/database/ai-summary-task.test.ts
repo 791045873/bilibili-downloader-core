@@ -332,13 +332,13 @@ describe("summary path helpers", () => {
     ).toBeNull();
   });
 
-  it("resolve: 相对值拼接 downloadRoot，绝对值原样透传", () => {
+  it("resolve: 非空值一律拼接 downloadRoot，不再透传绝对形态", () => {
     expect(resolveSummaryOutputPath("summary/a.md", root)).toBe(
       "C:\\base\\downloads\\summary\\a.md",
     );
     expect(
       resolveSummaryOutputPath("C:\\dl\\summary\\a.md", root),
-    ).toBe("C:\\dl\\summary\\a.md");
+    ).toBe(join(root, "C:\\dl\\summary\\a.md"));
     expect(resolveSummaryOutputPath("", root)).toBe("");
   });
 });

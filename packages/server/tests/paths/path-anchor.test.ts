@@ -40,10 +40,12 @@ describe("resolveFromDownloadRoot", () => {
     );
   });
 
-  it("绝对值原样透传", () => {
-    expect(resolveFromDownloadRoot("/tmp/x.mp4", root)).toBe("/tmp/x.mp4");
+  it("非空值一律按 join(root, value) 解析，不再透传绝对形态", () => {
+    expect(resolveFromDownloadRoot("/tmp/x.mp4", root)).toBe(
+      join(root, "/tmp/x.mp4"),
+    );
     expect(resolveFromDownloadRoot(join(root, "a.mp4"), root)).toBe(
-      join(root, "a.mp4"),
+      join(root, join(root, "a.mp4")),
     );
   });
 });

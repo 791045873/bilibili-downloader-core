@@ -16,10 +16,10 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `none`（下载入队创建层去重已实现闭合：`docs/plans/2026-09-09-download-create-dedup-plan.md`；前端 409 提示的运行级人工目测待用户部署后确认）
+- Active requirement: `none`（下载入队创建层去重与读侧路径锚点恒 join 两项均已实现闭合：`docs/plans/2026-09-09-download-create-dedup-plan.md`、`docs/plans/2026-09-09-anchor-read-join-only-plan.md`；前端提示呈现与部署效果待用户确认）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `none`（download-create-dedup plan 已闭合；下一步候选：Phase 3 RAG 问答 / Phase 4 重算工具，需求未定稿）
-- Active backlog item: 无（最近完成项：下载入队创建层去重；此前：task.outputFile / analysis_sub_task.output_file 相对锚点改造、AI 总结完整性检查、Prisma P0-P4 等）
+- Active plan: `none`（anchor-read-join-only plan 已闭合；下一步候选：Phase 3 RAG 问答 / Phase 4 重算工具，需求未定稿）
+- Active backlog item: 无（最近完成项：读侧路径锚点恒 join 不透传绝对值；此前：下载入队创建层去重、task.outputFile / analysis_sub_task.output_file 相对锚点改造等）
 - AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Current blocker: `none`
 

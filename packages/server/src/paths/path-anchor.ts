@@ -1,8 +1,10 @@
 /**
  * DB 路径锚点工具 — 相对 DOWNLOAD_ROOT 的写侧/读侧纯函数
  *
- * 约定（docs/design/app-overview.md）：DB 中磁盘相对路径一律相对 DOWNLOAD_ROOT
- * 存储（POSIX 分隔符）；读取时 join(DOWNLOAD_ROOT, value)；遗留绝对值原样透传。
+ * 约定（docs/design/app-overview.md）：DB 中磁盘路径一律相对 DOWNLOAD_ROOT
+ * 存储（POSIX 分隔符）；读取时 join(DOWNLOAD_ROOT, value)，不透传绝对值
+ * （2026-09-09 起读侧恒 join，遗留绝对值须迁移清理）；写侧把进程内绝对值
+ * 归一化为该锚点的 POSIX 相对路径，根外值不改写。
  * 纯函数层：不读 env、不依赖 Nest。
  */
 
@@ -43,8 +45,9 @@ function sepOf(value: string): string {
 }
 
 /**
- * 读侧：把 DB 中的相对值解析为当前环境的绝对路径。
- * 相对值按 join(downloadRoot, value) 拼接；绝对值（迁移前遗留）原样透传。
+ * 读侧：把 DB 值解析为当前环境的绝对路径。
+ * 非空值一律 join(downloadRoot, value)（2026-09-09 起不再透传绝对值：
+ * `/abc` 等根相对形态同样按下载根拼接）。
  */
 export function resolveFromDownloadRoot(
   value: string | null | undefined,
@@ -52,9 +55,6 @@ export function resolveFromDownloadRoot(
 ): string | undefined {
   if (!value) {
     return undefined;
-  }
-  if (isAbsoluteAnchorPath(value)) {
-    return value;
   }
   return join(downloadRoot, value);
 }
