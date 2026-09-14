@@ -106,6 +106,31 @@ model AppSettings {
   @@map("app_settings")
 }
 
+model Conversation {
+  id        BigInt      @id(map: "conversation_pkey") @default(autoincrement())
+  title     String?
+  createdAt Timestamptz @default(now()) @map("created_at")
+  updatedAt Timestamptz @default(now()) @map("updated_at")
+  messages  Message[]
+
+  @@map("conversation")
+}
+
+model Message {
+  id             BigInt       @id(map: "message_pkey") @default(autoincrement())
+  conversationId BigInt       @map("conversation_id")
+  role           String
+  content        String
+  photoUrls      String[]     @map("photo_urls")
+  replyImages    Jsonb?       @map("reply_images")
+  replySources   Jsonb?       @map("reply_sources")
+  createdAt      Timestamptz  @default(now()) @map("created_at")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, map: "message_conversation_id_fkey")
+
+  @@index([conversationId], map: "idx_message_conversation_id")
+  @@map("message")
+}
+
 model Summary {
   id              BigInt           @id(map: "summary_pkey") @default(autoincrement())
   bvid            String

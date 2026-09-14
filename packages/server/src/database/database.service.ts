@@ -142,6 +142,24 @@ export interface PaginatedAiSummaryTaskResult {
   hasMore: boolean;
 }
 
+export interface ConversationRecord {
+  id?: number;
+  title?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ChatMessageRecord {
+  id?: number;
+  conversationId: number;
+  role: string;
+  content: string;
+  photoUrls?: string[];
+  replyImages?: unknown;
+  replySources?: unknown;
+  createdAt?: string;
+}
+
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(DatabaseService.name);
@@ -1548,6 +1566,95 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       videoUrl: row.videoUrl ?? null,
     }));
   }
+
+  // ==================== RAG Chat conversations ====================
+
+  /** 创建会话，返回自增 id */
+  async createConversation(title?: string): Promise<number> {
+    const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+    const created = await this.prismaDb.orm.public.Conversation.create({
+      title: title ?? null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return Number(created.id);
+  }
+
+  /** 会话列表（按最近更新倒序） */
+  async listConversations(): Promise<ConversationRecord[]> {
+    const rows = await this.prismaDb.orm.public.Conversation
+      .orderBy((m) => m.updatedAt.desc())
+      .all();
+    return rows.map(mapConversationRow);
+  }
+
+  async getConversation(id: number): Promise<ConversationRecord | undefined> {
+    const row = await this.prismaDb.orm.public.Conversation
+      .where({ id: BigInt(id) })
+      .first();
+    return row ? mapConversationRow(row) : undefined;
+  }
+
+  /** 更新会话标题（提供时）并 touch updated_at */
+  async updateConversationTitleAndTouch(id: number, title?: string): Promise<void> {
+    await this.prismaDb.orm.public.Conversation.where({ id: BigInt(id) }).update({
+      ...(title !== undefined ? { title } : {}),
+      updatedAt: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+    });
+  }
+
+  /** 删除会话（messages 经 FK ON DELETE CASCADE 级联删除） */
+  async deleteConversation(id: number): Promise<void> {
+    await this.prismaDb.orm.public.Conversation.where({ id: BigInt(id) }).delete();
+  }
+
+  /** 插入消息，返回自增 id */
+  async insertMessage(record: ChatMessageRecord): Promise<number> {
+    const created = await this.prismaDb.orm.public.Message.create({
+      conversationId: BigInt(record.conversationId),
+      role: record.role,
+      content: record.content,
+      photoUrls: record.photoUrls ?? [],
+      replyImages: (record.replyImages ?? null) as never,
+      replySources: (record.replySources ?? null) as never,
+      createdAt: record.createdAt
+        ? (toInstant(record.createdAt) ?? Temporal.Instant.fromEpochMilliseconds(Date.now()))
+        : Temporal.Instant.fromEpochMilliseconds(Date.now()),
+    });
+    return Number(created.id);
+  }
+
+  /** 会话内消息（按写入顺序） */
+  async listMessages(conversationId: number): Promise<ChatMessageRecord[]> {
+    const rows = await this.prismaDb.orm.public.Message
+      .where({ conversationId: BigInt(conversationId) })
+      .orderBy((m) => m.id.asc())
+      .all();
+    return rows.map((row) => ({
+      id: bigintToNumber(row.id),
+      conversationId: Number(row.conversationId),
+      role: row.role,
+      content: row.content,
+      photoUrls: [...row.photoUrls],
+      replyImages: row.replyImages ?? undefined,
+      replySources: row.replySources ?? undefined,
+      createdAt: toIsoString(row.createdAt) ?? undefined,
+    }));
+  }
+}
+
+function mapConversationRow(row: {
+  id: bigint | number;
+  title: string | null;
+  createdAt: unknown;
+  updatedAt: unknown;
+}): ConversationRecord {
+  return {
+    id: bigintToNumber(row.id),
+    title: row.title ?? undefined,
+    createdAt: toIsoString(row.createdAt) ?? undefined,
+    updatedAt: toIsoString(row.updatedAt) ?? undefined,
+  };
 }
 
 function escapeLikePattern(value: string): string {
@@ -1567,6 +1674,8 @@ const EXPECTED_TABLES = [
   "ai_prompt_creator",
   "summary",
   "summary_segment",
+  "conversation",
+  "message",
 ] as const;
 
 const ONE_OFF_MIGRATION_COLUMNS = ["knowledge_status", "knowledge_error"] as const;

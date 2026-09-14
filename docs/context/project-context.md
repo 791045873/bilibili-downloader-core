@@ -16,10 +16,13 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `none`（下载入队创建层去重与读侧路径锚点恒 join 两项均已实现闭合：`docs/plans/2026-09-09-download-create-dedup-plan.md`、`docs/plans/2026-09-09-anchor-read-join-only-plan.md`；前端提示呈现与部署效果待用户确认）
+- Active requirement: `docs/requirements/2026-09-09-rag-chat-service.md`（Phase 3 RAG 问答，已实施完成并闭合）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `none`（anchor-read-join-only plan 已闭合；下一步候选：Phase 3 RAG 问答 / Phase 4 重算工具，需求未定稿）
-- Active backlog item: 无（最近完成项：读侧路径锚点恒 join 不透传绝对值；此前：下载入队创建层去重、task.outputFile / analysis_sub_task.output_file 相对锚点改造等）
+- Active plan: `none`（`docs/plans/2026-09-09-rag-chat-plan.md` 已闭合：plan audit + closure audit 均独立 subagent 通过；下一步候选：Phase 4 embedding 重算工具 / 用户部署后 LLM 运行级确认，需求未定稿）
+- Active backlog item: 无（最近完成项：RAG 穿搭问答服务与前端；此前：历史总结向量回填、Phase 2 向量检索 API 等）
+- AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
+- Current blocker: `none`
+- Pending user confirmation: 部署新镜像后对 RAG 问答 LLM 全链路做运行级确认（T2/T3/T5/T6 开关/T7，见 `docs/testing/2026/09-09-rag-chat-testing.md` 裁决段）
 - AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Current blocker: `none`
 

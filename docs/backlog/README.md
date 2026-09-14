@@ -10,21 +10,24 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 
 ### 当前活跃项
 
-- Priority: `P0`
-- Item: `历史 AI 总结知识回填（一次性手动触发）`
-- Requirement: `docs/requirements/2026-09-01-knowledge-backfill.md`
-- Owner Doc: `docs/design/app-overview.md`
-- Plan: `none`（待编写并审计）
-- Status: `needs-design`（需求已定稿，待出 plan）
-- AI Autonomy: `plan-first`
+- Priority: —
+- Item: （无活跃项；最近完成：RAG 穿搭问答服务与前端）
+- Requirement: —
+- Owner Doc: —
+- Plan: —
+- Status: `none`
+- AI Autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Blocker: `none`
-- Next: 回填完成后实施 Phase 2 向量化（`docs/requirements/2026-09-01-knowledge-vector-search.md`）
-- Last Checked: `2026-09-01`
+- Next: 候选：Phase 4 embedding 重算工具（`docs/requirements/2026-09-01-knowledge-vector-search.md` Open Question #3）；RAG 问答 LLM 运行级确认（用户部署后，见 `docs/testing/2026/09-09-rag-chat-testing.md`）
+- Last Checked: `2026-09-09`
 
 ### 已完成与历史项
 
 | Priority | Item | Requirement | Owner Doc | Plan | Status | AI Autonomy | Blocker | Last Checked |
 |----------|------|-------------|-----------|------|--------|-------------|---------|--------------|
+| P0 | RAG 穿搭问答服务与前端（Phase 3） | `docs/requirements/2026-09-09-rag-chat-service.md` | `docs/design/app-overview.md` | `docs/plans/2026-09-09-rag-chat-plan.md` | `done`（plan audit + closure audit 均独立 subagent 通过；LLM 运行级确认留用户部署） | `implement` | `none` | 2026-09-09 |
+| P0 | 历史 AI 总结知识回填（一次性） | `docs/requirements/2026-09-01-knowledge-backfill.md` | `docs/design/app-overview.md` | `docs/plans/2026-09-01-knowledge-backfill-plan.md` | `done`（2026-09-09 用户确认向量回填完成） | `implement` | `none` | 2026-09-09 |
+| P0 | 总结知识向量化与向量检索 API（Phase 2） | `docs/requirements/2026-09-01-knowledge-vector-search.md` | `docs/design/app-overview.md` | `docs/plans/2026-09-02-knowledge-vector-search-plan.md` | `done` | `implement` | `none` | 2026-09-03 |
 | P0 | 本地开发体验优化 | `docs/requirements/2026-06-11-local-dev-experience.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-11-local-dev-experience-plan.md` | `done` | `implement` | `none` | 2026-07-12 |
 | P0 | 视频解析页面优化 | `docs/requirements/2026-06-02-video-detail-page-improvement.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-03-video-detail-page-improvement-plan.md` | `done` | `implement` | `none` | 2026-07-12 |
 | P1 | 下载目录指定与查看 | `docs/requirements/2026-06-15-download-directory-view.md` | `docs/design/app-overview.md` | `docs/plans/2026-06-15-download-directory-view-plan.md` | `done` | `implement` | `none` | 2026-07-12 |

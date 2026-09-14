@@ -97,6 +97,45 @@ export class CosStoreService {
     return this.publicUrl(key);
   }
 
+  /**
+   * 上传内存 Buffer 到 COS，返回公网 URL（问答用户照片等无本地落盘场景）。
+   * @param buffer 文件内容
+   * @param key 对象键（如 user-photos/<conversationId>/<uuid>.jpg）
+   * @param contentType 对象 MIME 类型
+   */
+  async uploadBuffer(
+    buffer: Buffer,
+    key: string,
+    contentType: string,
+  ): Promise<string> {
+    if (!this.cos || !this.bucket || !this.region) {
+      throw new Error("COS 未配置，无法上传");
+    }
+    await new Promise<void>((resolve, reject) => {
+      this.cos!.putObject(
+        {
+          Bucket: this.bucket!,
+          Region: this.region!,
+          Key: key,
+          Body: buffer,
+          ContentType: contentType,
+        },
+        (err: unknown) => {
+          if (err) {
+            const message =
+              typeof err === "object" && err && "message" in err
+                ? String((err as { message?: unknown }).message)
+                : String(err);
+            reject(new Error(`COS 上传失败（${key}）: ${message}`));
+          } else {
+            resolve();
+          }
+        },
+      );
+    });
+    return this.publicUrl(key);
+  }
+
   /** 生成对象公网 URL（需 bucket 公网读） */
   publicUrl(key: string): string {
     if (!this.publicUrlPrefix) {

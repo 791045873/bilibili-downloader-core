@@ -8,6 +8,7 @@ import { DownloadModule } from "./download/download.module.js";
 import { AnalysisModule } from "./analysis/analysis.module.js";
 import { ParseModule } from "./parse/parse.module.js";
 import { NotificationModule } from "./notification/notification.module.js";
+import { ChatModule } from "./chat/chat.module.js";
 import { RequestLoggingInterceptor } from "./logging/request-logging.interceptor.js";
 
 @Module({
@@ -23,6 +24,7 @@ import { RequestLoggingInterceptor } from "./logging/request-logging.interceptor
     AnalysisModule,
     ParseModule,
     NotificationModule,
+    ChatModule,
   ],
   providers: [
     {

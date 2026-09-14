@@ -45,6 +45,15 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 - AI 总结记录的本地原始内容完整性（`integrity_status`: `complete`/`missing`、`integrity_detail`、`integrity_checked_at`，NULL=未检查）仅由用户手动触发的一键检查（`POST /api/summary-tasks/integrity-check`）写入：只读磁盘判定 md 与相对截图是否存在于当前环境，只读不改文件；记录被重新触发/重新构建总结后重置为未检查。AI 总结任务表格展示"本地文件"列（完整/缺失/未检查，缺失 tooltip 含明细与检查时间），检查进行中按钮禁用，结束后刷新列表可见最新结果。
 - DB 相对路径锚点约定（无例外）：DB 中所有磁盘路径（`task.outputFile`、`analysis_sub_task.output_file`、`ai_summary_task.summary_output` 等）一律相对下载根目录 `DOWNLOAD_ROOT` 存储，读取时 `join(DOWNLOAD_ROOT, value)`，`summary_output` 值自带 `summary/` 段；读侧恒按相对锚点 join，不透传绝对值（2026-09-09 起语义收敛，`/abc` 等根相对形态同样按根拼接；遗留绝对值须由迁移脚本/人工清理）。`SUMMARY_BASE_DIR` 等派生目录仅用于运行时定位/静态挂载，不是 DB 值的锚点。写侧锚点 helper 统一在 `packages/server/src/paths/path-anchor.ts`（summary_output 的 summary-dir 同名函数为其委托）。
 
+### 穿搭问答（Web）
+
+1. 用户进入"穿搭问答"页（`/qa`）：左侧为会话列表（按最近更新倒序，含历史会话），可新建会话、删除会话（二次确认）；旧会话完整保留，可随时点开回看全部历史并继续讨论（query 重写保证省略式追问与中断前的上下文连续）
+2. 场景二（文本）：输入穿搭期望（如"小个子怎么穿显高"）发送 → 服务端向量检索知识库 → 返回带 `[n]` 引用标记的建议正文
+3. 场景一（照片）：选择本地穿搭照片（≤3 张）发送 → 服务端压缩一次后存 COS 专属目录 → 多模态模型分析照片产出穿搭描述 → 结合知识库给出针对性建议
+4. 回答三段式渲染：正文（Markdown，含 [n] 引用）→ 图片示例区（命中技巧的截图）→ 底部视频注脚（来源视频标题 + B 站 `?t=` 时刻跳转链接）
+5. 兜底：知识库无相关内容时回答"知识库暂无相关内容"，无图片与视频注脚，不编造
+6. 会话与消息持久化在云端数据库，server 重启后历史完整可回看；发送失败可重试
+
 ## Key Domain Objects
 
 - `DownloadRequest` — 用户发起的下载请求，包含资源标识和偏好设置
@@ -83,6 +92,12 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | POST /api/knowledge/backfill | 手动触发一次历史总结知识回填：后台批量（并发 2）把 `completed` + `raw_response` 非空 + 非 synced 的总结逐条经发布管道入库；无可回填返回 `{ total: 0 }`，否则返回 `{ message, total }` 并立即返回（fire-and-forget）；运行中重复触发返回 409 | `packages/server/src/knowledge/knowledge-backfill.controller.ts` |
 | GET /api/knowledge/backfill | 查询回填批次进度：`{ running, total, synced, skipped, failed, failures[{ summaryTaskId, error }] }`；批次完成后回到 idle 且计数保留到下次触发 | `packages/server/src/knowledge/knowledge-backfill.controller.ts` |
 | GET /api/knowledge/search?q=&k= | 向量检索：q 归一化后经 DashScope embedding，pgvector 余弦 top-k（k 缺省 10、限 1–50）；返回 `[{ segmentId, title, content, score, screenshotUrl, frameDescription, videoTitle, videoUrl, timestampSeconds }]`；q 空或 k 非法返回 400，缺 embedding 配置/调用失败返回 503（不降级关键词搜索）；仅 `embedding_model` 与当前配置一致的 segment 参与 | `packages/server/src/knowledge/knowledge-search.controller.ts` |
+| POST /api/chat/conversations | 创建空问答会话，返回 `{ conversationId }` | `packages/server/src/chat/chat.controller.ts` |
+| GET /api/chat/conversations | 会话列表（按 `updated_at` 倒序，`{ conversations: [{ id, title?, createdAt, updatedAt }] }`） | `packages/server/src/chat/chat.controller.ts` |
+| GET /api/chat/conversations/:id/messages | 会话历史消息（含 user 照片 URL 与 assistant 三段式回答 JSONB）；会话不存在返回 404 | `packages/server/src/chat/chat.controller.ts` |
+| POST /api/chat/conversations/:id/photos | 上传用户穿搭照片（multipart，字段 `photos`，单次 ≤ `PHOTO_MAX_PER_MESSAGE`）：校验格式（jpeg/png/webp）与大小（`PHOTO_MAX_UPLOAD_MB`）→ sharp 压缩（最长边 `PHOTO_MAX_EDGE`、JPEG 质量 `PHOTO_JPEG_QUALITY`、EXIF 方向修正）→ COS 专属目录 `user-photos/<conversationId>/`，返回公网 URL 列表；会话不存在 404，格式/大小非法 400，COS 未配置或上传失败 503 | `packages/server/src/chat/chat.controller.ts`、`packages/server/src/chat/chat-photo.service.ts` |
+| POST /api/chat/conversations/:id/messages | 发送提问并同步返回回答（非流式）：每轮执行 query 重写（多轮）→ 照片分析（本轮带照片时，失败不降级直接报错）→ pgvector 向量检索（`CHAT_RETRIEVAL_K`，score=余弦相似度 ≥ `CHAT_HIT_THRESHOLD` 判命中）→ 多模态生成（模型=设置页 `llm.modelName`，视觉输入默认开启可 `CHAT_VISUAL_INPUT=false` 关闭）→ 三段式拼装（`{ userMessageId, assistantMessageId, reply: { text（含 [n] 引用）, images, sources } }`）；命中为空时服务端直接回答"知识库暂无相关内容"（不调用生成、不编造）；content 与 photoUrls 同时为空返回 400，缺 LLM/embedding/vision-proxy 配置返回 503；生成失败时 assistant 消息落失败态可回看重试；user/assistant 消息均持久化，首条消息自动生成会话标题 | `packages/server/src/chat/chat.controller.ts`、`packages/server/src/chat/chat.service.ts` |
+| DELETE /api/chat/conversations/:id | 删除会话（级联删消息，前端二次确认）；COS 照片文件不即时删除（统一经 `user-photos/` 专属前缀目录后续清理）；会话不存在返回 404 | `packages/server/src/chat/chat.controller.ts` |
 | GET /summary-files/* | 摘要文档根目录（下载根目录 `OUTPUT_DIR` 下的 `summary/` 子目录，随下载目录一起持久化）静态挂载，供前端预览 md 内相对插图；本地 dev 由 Vite 代理 `/summary-files` 转发，容器内与前端同源 | `packages/server/src/main.ts` |
 | POST /api/download | 创建下载任务，body 可带 `promptId?` 写入 `task.prompt_id`；必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；同 (bvid,cid) 已有排队中/下载中任务或已下载且磁盘文件存在时返回 HTTP 409；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts` |
 

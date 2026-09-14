@@ -17,7 +17,7 @@ function navLinkClass({ isActive }: { isActive: boolean }): string {
 }
 
 /** 全宽页面：下载队列与 AI 总结的列表/表格占满整屏宽度，不受 max-w-5xl 限制 */
-const FULL_WIDTH_PATHS = new Set(["/downloading", "/summary-tasks"]);
+const FULL_WIDTH_PATHS = new Set(["/downloading", "/summary-tasks", "/qa"]);
 
 export default function App() {
   const user = useAuthStore((s) => s.user);
@@ -45,6 +45,9 @@ export default function App() {
             </NavLink>
             <NavLink to="/summary-tasks" className={navLinkClass}>
               AI 总结任务
+            </NavLink>
+            <NavLink to="/qa" className={navLinkClass}>
+              穿搭问答
             </NavLink>
             <NavLink to="/prompts" className={navLinkClass}>
               AI 提示词

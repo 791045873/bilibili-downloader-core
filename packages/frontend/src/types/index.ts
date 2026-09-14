@@ -268,3 +268,49 @@ export interface UserInfo {
 export type SubtitleLang = "none" | "zh" | "en" | "all";
 
 export type LoginStatus = "pending" | "scanned" | "confirmed" | "expired";
+
+// ---- RAG 穿搭问答 ----
+
+export interface ChatConversation {
+  id: number;
+  title?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ChatReplyImage {
+  url: string;
+  caption: string | null;
+  tipTitle: string;
+}
+
+export interface ChatReplySource {
+  videoTitle: string;
+  videoUrl: string | null;
+  timestampSeconds: number | null;
+  tipTitle: string;
+  screenshotUrl: string | null;
+}
+
+export interface ChatReplyPayload {
+  text: string;
+  images: ChatReplyImage[];
+  sources: ChatReplySource[];
+}
+
+export interface ChatMessage {
+  id: number;
+  conversationId: number;
+  role: "user" | "assistant";
+  content: string;
+  photoUrls: string[];
+  replyImages?: ChatReplyImage[];
+  replySources?: ChatReplySource[];
+  createdAt?: string;
+}
+
+export interface ChatSendMessageResponse {
+  userMessageId: number;
+  assistantMessageId: number | null;
+  reply: ChatReplyPayload;
+}

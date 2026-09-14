@@ -40,6 +40,7 @@ import { KnowledgeSearchController } from "../knowledge/knowledge-search.control
     PromptService,
     CosStoreService,
     KnowledgePublisherService,
+    EmbeddingService,
   ],
 })
 export class AnalysisModule {}

@@ -33,6 +33,6 @@ export function internals(db: DatabaseService): DbInternals {
 
 export async function truncateAll(db: DatabaseService): Promise<void> {
   await internals(db).pool.query(
-    `TRUNCATE task, analysis_sub_task, ai_summary_task, app_settings, ai_prompt, ai_prompt_creator, summary, summary_segment RESTART IDENTITY CASCADE`,
+    `TRUNCATE task, analysis_sub_task, ai_summary_task, app_settings, ai_prompt, ai_prompt_creator, summary, summary_segment, conversation, message RESTART IDENTITY CASCADE`,
   );
 }

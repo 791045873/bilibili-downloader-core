@@ -1,6 +1,7 @@
 # 2026-08-21 总结知识云端化与穿搭问答服务讨论
 
 > 状态更新（2026-08-24）：用户决定先执行本讨论目标第 1 点"数据库迁移云端"，范围为方案 A（六张表全部迁移到 PostgreSQL），在这一点上取代本文收敛的方案 B。云端数据库目标改为阿里云云数据库。详见 `docs/requirements/2026-08-24-sqlite-to-postgresql-migration.md` 与 `docs/plans/2026-08-24-sqlite-to-postgresql-migration-plan.md`。方案 B 的其余内容（知识发布管道/COS/RAG）仍有效，属后续需求。
+> 状态更新（2026-09-09）：Phase 2 向量检索已完成，历史总结向量回填完成。用户确认 Phase 3 三项选型：双场景一期同时交付、前端为同仓库独立路由页、回答为非流式 JSON。Phase 3 需求已起草：`docs/requirements/2026-09-09-rag-chat-service.md`（待用户确认后转 plan + 审计）。
 > 状态更新（2026-09-01）：Phase 1（知识发布管道）已完成并关闭；用户确认 Embedding 模型选型为 DashScope `qwen3.7-text-embedding`（Open Question #3 解决），进入 Phase 2 需求准备。Phase 2 需求已定稿：`docs/requirements/2026-09-01-knowledge-vector-search.md`。历史回填从 Phase 4 提前并拆为独立需求（用户部署镜像后手动触发一次）：`docs/requirements/2026-09-01-knowledge-backfill.md`，实施顺序为回填 → 向量化。
 
 ## Source

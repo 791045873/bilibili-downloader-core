@@ -1,4 +1,7 @@
 import type {
+  ChatConversation,
+  ChatMessage,
+  ChatSendMessageResponse,
   AiPrompt,
   AiSummaryTaskStatus,
   DownloadConfig,
@@ -416,3 +419,58 @@ export async function getQrStatus(
 export async function getCurrentUser(): Promise<UserInfo | null> {
   return request("/auth/user");
 }
+
+// ==================== RAG 穿搭问答 ====================
+
+async function requestRaw<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${url}`, options);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function createChatConversation(): Promise<{ conversationId: number }> {
+  return requestRaw("/chat/conversations", { method: "POST", body: JSON.stringify({}) });
+}
+
+export async function listChatConversations(): Promise<{ conversations: ChatConversation[] }> {
+  return request("/chat/conversations");
+}
+
+export async function listChatMessages(
+  conversationId: number,
+): Promise<{ messages: ChatMessage[] }> {
+  return request(`/chat/conversations/${conversationId}/messages`);
+}
+
+export async function uploadChatPhotos(
+  conversationId: number,
+  files: File[],
+): Promise<{ photoUrls: string[] }> {
+  const form = new FormData();
+  for (const file of files) {
+    form.append("photos", file);
+  }
+  return requestRaw(`/chat/conversations/${conversationId}/photos`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function sendChatMessage(
+  conversationId: number,
+  content: string,
+  photoUrls: string[],
+): Promise<ChatSendMessageResponse> {
+  return request(`/chat/conversations/${conversationId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content, photoUrls }),
+  });
+}
+
+export async function deleteChatConversation(conversationId: number): Promise<void> {
+  await requestRaw(`/chat/conversations/${conversationId}`, { method: "DELETE" });
+}
+
