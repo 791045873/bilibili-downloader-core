@@ -16,10 +16,10 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `docs/requirements/2026-09-09-rag-chat-service.md`（Phase 3 RAG 问答，已实施完成并闭合）
+- Active requirement: `docs/requirements/2026-09-14-qa-mobile-adaptation.md`（QA 穿搭问答页移动端适配，含共享顶栏壳层；规划中）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `none`（`docs/plans/2026-09-09-rag-chat-plan.md` 已闭合：plan audit + closure audit 均独立 subagent 通过；下一步候选：Phase 4 embedding 重算工具 / 用户部署后 LLM 运行级确认，需求未定稿）
-- Active backlog item: 无（最近完成项：RAG 穿搭问答服务与前端；此前：历史总结向量回填、Phase 2 向量检索 API 等）
+- Active plan: `docs/plans/2026-09-14-qa-mobile-adaptation-plan.md`（plan audit 已通过：`docs/audits/2026-09-14-plan-audit-qa-mobile-adaptation.md`；未实施）
+- Active backlog item: QA 移动端适配（上一完成项：RAG 穿搭问答服务与前端；再前：历史总结向量回填、Phase 2 向量检索 API 等）
 - AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Current blocker: `none`
 - Pending user confirmation: 部署新镜像后对 RAG 问答 LLM 全链路做运行级确认（T2/T3/T5/T6 开关/T7，见 `docs/testing/2026/09-09-rag-chat-testing.md` 裁决段）

@@ -10,16 +10,16 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 
 ### 当前活跃项
 
-- Priority: —
-- Item: （无活跃项；最近完成：RAG 穿搭问答服务与前端）
-- Requirement: —
-- Owner Doc: —
-- Plan: —
-- Status: `none`
+- Priority: P1
+- Item: QA 穿搭问答页移动端适配（含共享顶栏壳层）
+- Requirement: `docs/requirements/2026-09-14-qa-mobile-adaptation.md`
+- Owner Doc: `docs/design/app-overview.md`
+- Plan: `docs/plans/2026-09-14-qa-mobile-adaptation-plan.md`
+- Status: `in-progress`（plan audit 已通过，未实施）
 - AI Autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Blocker: `none`
-- Next: 候选：Phase 4 embedding 重算工具（`docs/requirements/2026-09-01-knowledge-vector-search.md` Open Question #3）；RAG 问答 LLM 运行级确认（用户部署后，见 `docs/testing/2026/09-09-rag-chat-testing.md`）
-- Last Checked: `2026-09-09`
+- Next: Phase 1–4 实施（plan audit 证据：`docs/audits/2026-09-14-plan-audit-qa-mobile-adaptation.md`）
+- Last Checked: `2026-09-14`
 
 ### 已完成与历史项
 

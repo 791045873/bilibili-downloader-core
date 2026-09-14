@@ -518,23 +518,25 @@ export function Component() {
           >
             重新总结
           </Button>
-          <Button
-            size="small"
-            color={
-              task.knowledgeStatus === "failed" || !task.knowledgeStatus
-                ? "cyan"
-                : "default"
-            }
-            variant={
-              task.knowledgeStatus === "failed" || !task.knowledgeStatus
-                ? "solid"
-                : "outlined"
-            }
-            disabled={task.status !== "completed"}
-            onClick={() => void handlePublish(task)}
-          >
-            发布
-          </Button>
+          {task.knowledgeStatus !== "synced" && (
+            <Button
+              size="small"
+              color={
+                task.knowledgeStatus === "failed" || !task.knowledgeStatus
+                  ? "cyan"
+                  : "default"
+              }
+              variant={
+                task.knowledgeStatus === "failed" || !task.knowledgeStatus
+                  ? "solid"
+                  : "outlined"
+              }
+              disabled={task.status !== "completed"}
+              onClick={() => void handlePublish(task)}
+            >
+              发布
+            </Button>
+          )}
           <Button
             size="small"
             color={isInProgress(task) ? "default" : "red"}
