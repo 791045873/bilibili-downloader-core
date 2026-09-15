@@ -15,10 +15,10 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 - Requirement: `docs/requirements/2026-09-14-qa-mobile-adaptation.md`
 - Owner Doc: `docs/design/app-overview.md`
 - Plan: `docs/plans/2026-09-14-qa-mobile-adaptation-plan.md`
-- Status: `in-progress`（plan audit 已通过，未实施）
+- Status: `in-progress`（代码/配置已落地，typecheck/build 通过；移动端设备矩阵验证待人工）
 - AI Autonomy: `plan-first`（新工作需先出需求与计划并过审计）
-- Blocker: `none`
-- Next: Phase 1–4 实施（plan audit 证据：`docs/audits/2026-09-14-plan-audit-qa-mobile-adaptation.md`）
+- Blocker: `移动端设备矩阵运行级验证待人工执行（D1–D19）`
+- Next: 人工设备矩阵验证 → 确认/裁决 testing 方向 → 独立 closure audit 后闭合（plan audit 证据：`docs/audits/2026-09-14-plan-audit-qa-mobile-adaptation.md`）
 - Last Checked: `2026-09-14`
 
 ### 已完成与历史项

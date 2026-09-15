@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
   Button,
+  Drawer,
   Empty,
   Image as AntImage,
   Input,
@@ -15,6 +16,7 @@ import {
   PlusOutlined,
   PictureOutlined,
   SendOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -26,7 +28,7 @@ import {
   sendChatMessage,
   uploadChatPhotos,
 } from "../api";
-import type { ChatConversation, ChatMessage } from "../types";
+import type { ChatConversation, ChatMessage, ChatReplyImage } from "../types";
 
 const PHOTO_MAX_PER_MESSAGE = 3;
 const IMAGE_FALLBACK =
@@ -34,6 +36,23 @@ const IMAGE_FALLBACK =
   encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="100"><rect width="100%" height="100%" fill="#f4f4f5"/><text x="50%" y="50%" fill="#a1a1aa" font-size="12" text-anchor="middle" dominant-baseline="middle">图片加载失败</text></svg>`,
   );
+const MOBILE_QUERY = "(max-width: 767.98px)";
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
+const SWIPE_THRESHOLD_PX = 50;
+const CHAT_HEIGHT =
+  "calc(var(--vvh, 100dvh) - var(--app-header-h, 3.5rem) - 3rem)";
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
 
 function videoLink(url: string | null, timestampSeconds: number | null): string | null {
   if (!url) return null;
@@ -45,17 +64,29 @@ function newLocalMessage(id: number, conversationId: number, role: "user" | "ass
   return { id, conversationId, role, content, photoUrls };
 }
 
+function replyImageCaption(images: ChatReplyImage[] | null, index: number): string {
+  const image = images?.[index];
+  if (!image) return "";
+  return image.caption ? `${image.tipTitle}：${image.caption}` : image.tipTitle;
+}
+
 export function Component() {
   const { message: antdMessage } = App.useApp();
   const queryClient = useQueryClient();
+  const isMobile = useMediaQuery(MOBILE_QUERY);
+  const coarsePointer = useMediaQuery(COARSE_POINTER_QUERY);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [pendingPhotos, setPendingPhotos] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
+  const [gallery, setGallery] = useState<ChatReplyImage[] | null>(null);
+  const [galleryIndex, setGalleryIndex] = useState(0);
   const localIdRef = useRef(-1);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
+  const scaleRef = useRef(1);
 
   const conversationsQuery = useQuery({
     queryKey: ["chat-conversations"],
@@ -65,6 +96,12 @@ export function Component() {
     () => conversationsQuery.data?.conversations ?? [],
     [conversationsQuery.data],
   );
+  const activeConversation = conversations.find((item) => item.id === activeId);
+  const galleryItems = useMemo(
+    () => (gallery ?? []).map((image) => ({ src: image.url, alt: image.tipTitle })),
+    [gallery],
+  );
+  const galleryOpen = gallery !== null && gallery.length > 0;
 
   useEffect(() => {
     if (activeId == null && conversations.length > 0) {
@@ -99,8 +136,72 @@ export function Component() {
   }, [activeId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, [messages.length, sending]);
+
+  useEffect(() => {
+    scaleRef.current = 1;
+    setGallery(null);
+    setGalleryIndex(0);
+  }, [activeId]);
+
+  useEffect(() => {
+    if (!galleryOpen) return;
+    let startX = 0;
+    let startY = 0;
+    let tracking = false;
+    const handleStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        tracking = false;
+        return;
+      }
+      tracking = true;
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+    };
+    const handleEnd = (event: TouchEvent) => {
+      if (!tracking) return;
+      tracking = false;
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+      if (Math.abs(dx) < SWIPE_THRESHOLD_PX) return;
+      if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (scaleRef.current > 1) return;
+      setGalleryIndex((current) => {
+        const total = gallery?.length ?? 0;
+        const next = dx < 0 ? current + 1 : current - 1;
+        if (next < 0 || next >= total) return current;
+        return next;
+      });
+    };
+    document.addEventListener("touchstart", handleStart, { capture: true, passive: true });
+    document.addEventListener("touchend", handleEnd, { capture: true, passive: true });
+    return () => {
+      document.removeEventListener("touchstart", handleStart, { capture: true });
+      document.removeEventListener("touchend", handleEnd, { capture: true });
+    };
+  }, [galleryOpen, gallery]);
+
+  const openGallery = useCallback((images: ChatReplyImage[], index: number) => {
+    scaleRef.current = 1;
+    setGallery(images);
+    setGalleryIndex(index);
+  }, []);
+
+  const closeGallery = useCallback(() => {
+    scaleRef.current = 1;
+    setGallery(null);
+    setGalleryIndex(0);
+  }, []);
+
+  const handleSelectConversation = useCallback((id: number) => {
+    setActiveId(id);
+    setListOpen(false);
+  }, []);
 
   const handleCreate = useCallback(async () => {
     try {
@@ -108,6 +209,7 @@ export function Component() {
       await queryClient.invalidateQueries({ queryKey: ["chat-conversations"] });
       setActiveId(res.conversationId);
       setMessages([]);
+      setListOpen(false);
     } catch (err) {
       antdMessage.error(err instanceof Error ? err.message : "创建会话失败");
     }
@@ -180,141 +282,248 @@ export function Component() {
   }, [activeId, antdMessage, input, pendingPhotos, queryClient, sending]);
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-7.5rem)]">
-      <aside className="w-64 shrink-0 flex flex-col gap-2">
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate} block>
-          新建会话
-        </Button>
-        <div className="flex-1 overflow-auto rounded-lg border border-zinc-200 bg-white divide-y divide-zinc-100">
-          {conversationsQuery.isLoading ? (
-            <div className="p-4 text-center">
-              <Spin />
-            </div>
-          ) : conversations.length === 0 ? (
-            <div className="p-4 text-sm text-zinc-400 text-center">暂无会话</div>
-          ) : (
-            conversations.map((conv) => (
-              <div
-                key={conv.id}
-                className={`group flex items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${
-                  conv.id === activeId ? "bg-rose-50" : "hover:bg-zinc-50"
-                }`}
-                onClick={() => setActiveId(conv.id)}
-              >
-                <span className="flex-1 truncate text-sm" title={conv.title ?? `会话 ${conv.id}`}>
-                  {conv.title ?? `会话 ${conv.id}`}
-                </span>
-                <Popconfirm
-                  title="删除会话？"
-                  description="删除后不可恢复"
-                  onConfirm={(e) => {
-                    e?.stopPropagation();
-                    void handleDelete(conv.id);
-                  }}
-                  onCancel={(e) => e?.stopPropagation()}
-                >
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </Popconfirm>
-              </div>
-            ))
-          )}
-        </div>
-      </aside>
-
-      <section className="flex-1 flex flex-col rounded-lg border border-zinc-200 bg-white min-w-0">
-        <div className="flex-1 overflow-auto p-4 space-y-4">
-          {loadingMessages ? (
-            <div className="h-full flex items-center justify-center">
-              <Spin />
-            </div>
-          ) : activeId == null ? (
-            <Empty description="选择或新建一个会话开始提问" className="mt-16" />
-          ) : messages.length === 0 ? (
-            <Empty
-              description="问一个穿搭问题，或上传穿搭照片"
-              className="mt-16"
-            >
-              <Typography.Text type="secondary" className="text-sm">
-                例如：小个子怎么穿显高？
-              </Typography.Text>
-            </Empty>
-          ) : (
-            messages.map((m) => <ChatBubble key={m.id} message={m} />)
-          )}
-          {sending && (
-            <div className="flex justify-start">
-              <div className="rounded-lg bg-zinc-100 px-3 py-2">
-                <Spin size="small" />
-                <span className="ml-2 text-sm text-zinc-500">正在思考…</span>
+    <div className="flex flex-col gap-3" style={{ height: CHAT_HEIGHT }}>
+      <AntImage.PreviewGroup
+        items={galleryItems}
+        fallback={IMAGE_FALLBACK}
+        preview={{
+          open: galleryOpen,
+          current: galleryIndex,
+          onOpenChange: (open) => {
+            if (!open) closeGallery();
+          },
+          onChange: (current) => setGalleryIndex(current),
+          onTransform: (info) => {
+            scaleRef.current = info.transform.scale;
+          },
+          imageRender: (node, info) => (
+            <div className="flex flex-col items-center gap-2">
+              {node}
+              <div className="max-w-[90vw] px-4 text-center text-sm text-white/90">
+                {replyImageCaption(gallery, info.current)}
               </div>
             </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
+          ),
+        }}
+      />
 
-        <div className="border-t border-zinc-200 p-3 space-y-2">
-          {pendingPhotos.length > 0 && (
-            <div className="flex gap-2">
-              {pendingPhotos.map((f, i) => (
-                <span key={`${f.name}-${i}`} className="text-xs text-zinc-500 bg-zinc-100 rounded px-2 py-1">
-                  {f.name.slice(0, 16)}
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="flex items-end gap-2">
-            <label className="cursor-pointer">
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                multiple
-                hidden
-                onChange={(e) => {
-                  handlePickPhotos(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-              <Button icon={<PictureOutlined />} disabled={sending || pendingPhotos.length >= PHOTO_MAX_PER_MESSAGE}>
-                照片（{pendingPhotos.length}/{PHOTO_MAX_PER_MESSAGE}）
-              </Button>
-            </label>
-            <Input.TextArea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="问一个穿搭问题，如：小个子怎么穿显高？"
-              autoSize={{ minRows: 1, maxRows: 4 }}
-              disabled={sending || activeId == null}
-              onPressEnter={(e) => {
-                if (!e.shiftKey) {
-                  e.preventDefault();
-                  void handleSend();
-                }
-              }}
-              className="flex-1"
-            />
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              loading={sending}
-              disabled={activeId == null || (input.trim() === "" && pendingPhotos.length === 0)}
-              onClick={() => void handleSend()}
-            >
-              发送
+      {isMobile && (
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            icon={<UnorderedListOutlined />}
+            onClick={() => setListOpen(true)}
+            aria-label="会话列表"
+          >
+            会话列表
+          </Button>
+          <span className="truncate text-sm text-zinc-500">
+            {activeConversation?.title ?? (activeId != null ? `会话 ${activeId}` : "尚无会话")}
+          </span>
+        </div>
+      )}
+
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4">
+        {!isMobile && (
+          <aside className="w-64 shrink-0 flex flex-col gap-2">
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate} block>
+              新建会话
             </Button>
+            <ConversationList
+              conversations={conversations}
+              activeId={activeId}
+              loading={conversationsQuery.isLoading}
+              onSelect={setActiveId}
+              onDelete={(id) => void handleDelete(id)}
+            />
+          </aside>
+        )}
+
+        <section className="flex-1 min-w-0 flex flex-col rounded-lg border border-zinc-200 bg-white">
+          <div ref={messagesRef} className="flex-1 overflow-auto p-4 space-y-4">
+            {loadingMessages ? (
+              <div className="h-full flex items-center justify-center">
+                <Spin />
+              </div>
+            ) : activeId == null ? (
+              <Empty description="选择或新建一个会话开始提问" className="mt-16" />
+            ) : messages.length === 0 ? (
+              <Empty description="问一个穿搭问题，或上传穿搭照片" className="mt-16">
+                <Typography.Text type="secondary" className="text-sm">
+                  例如：小个子怎么穿显高？
+                </Typography.Text>
+              </Empty>
+            ) : (
+              messages.map((m) => (
+                <ChatBubble key={m.id} message={m} onOpenImages={openGallery} />
+              ))
+            )}
+            {sending && (
+              <div className="flex justify-start">
+                <div className="rounded-lg bg-zinc-100 px-3 py-2">
+                  <Spin size="small" />
+                  <span className="ml-2 text-sm text-zinc-500">正在思考…</span>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      </section>
+
+          <div className="border-t border-zinc-200 p-3 pb-safe space-y-2">
+            {pendingPhotos.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {pendingPhotos.map((f, i) => (
+                  <span key={`${f.name}-${i}`} className="text-xs text-zinc-500 bg-zinc-100 rounded px-2 py-1">
+                    {f.name.slice(0, 16)}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end gap-2">
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    handlePickPhotos(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  icon={<PictureOutlined />}
+                  disabled={sending || pendingPhotos.length >= PHOTO_MAX_PER_MESSAGE}
+                  aria-label="选择照片"
+                >
+                  {isMobile ? null : `照片（${pendingPhotos.length}/${PHOTO_MAX_PER_MESSAGE}）`}
+                </Button>
+              </label>
+              <Input.TextArea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="问一个穿搭问题，如：小个子怎么穿显高？"
+                autoSize={{ minRows: 1, maxRows: 4 }}
+                disabled={sending || activeId == null}
+                onPressEnter={(e) => {
+                  if (coarsePointer) return;
+                  if (!e.shiftKey) {
+                    e.preventDefault();
+                    void handleSend();
+                  }
+                }}
+                className="flex-1"
+              />
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                loading={sending}
+                disabled={activeId == null || (input.trim() === "" && pendingPhotos.length === 0)}
+                aria-label="发送"
+                onClick={() => void handleSend()}
+              >
+                {isMobile ? null : "发送"}
+              </Button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {isMobile && (
+        <Drawer
+          open={listOpen}
+          onClose={() => setListOpen(false)}
+          placement="left"
+          width={280}
+          title="会话"
+        >
+          <div className="flex h-full flex-col gap-2">
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate} block>
+              新建会话
+            </Button>
+            <ConversationList
+              conversations={conversations}
+              activeId={activeId}
+              loading={conversationsQuery.isLoading}
+              onSelect={handleSelectConversation}
+              onDelete={(id) => void handleDelete(id)}
+            />
+          </div>
+        </Drawer>
+      )}
     </div>
   );
 }
 
-function ChatBubble({ message }: { message: ChatMessage }) {
+function ConversationList({
+  conversations,
+  activeId,
+  loading,
+  onSelect,
+  onDelete,
+}: {
+  conversations: ChatConversation[];
+  activeId: number | null;
+  loading: boolean;
+  onSelect: (id: number) => void;
+  onDelete: (id: number) => void;
+}) {
+  if (loading) {
+    return (
+      <div className="flex-1 rounded-lg border border-zinc-200 bg-white p-4 text-center">
+        <Spin />
+      </div>
+    );
+  }
+  if (conversations.length === 0) {
+    return (
+      <div className="flex-1 rounded-lg border border-zinc-200 bg-white p-4 text-center text-sm text-zinc-400">
+        暂无会话
+      </div>
+    );
+  }
+  return (
+    <div className="flex-1 overflow-auto rounded-lg border border-zinc-200 bg-white divide-y divide-zinc-100">
+      {conversations.map((conv) => (
+        <div
+          key={conv.id}
+          className={`group flex items-center gap-1 px-3 py-2 cursor-pointer transition-colors ${
+            conv.id === activeId ? "bg-rose-50" : "hover:bg-zinc-50"
+          }`}
+          onClick={() => onSelect(conv.id)}
+        >
+          <span className="flex-1 truncate text-sm" title={conv.title ?? `会话 ${conv.id}`}>
+            {conv.title ?? `会话 ${conv.id}`}
+          </span>
+          <Popconfirm
+            title="删除会话？"
+            description="删除后不可恢复"
+            onConfirm={(e) => {
+              e?.stopPropagation();
+              onDelete(conv.id);
+            }}
+            onCancel={(e) => e?.stopPropagation()}
+          >
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              aria-label="删除会话"
+              style={{ width: 44, height: 44 }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </Popconfirm>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChatBubble({
+  message,
+  onOpenImages,
+}: {
+  message: ChatMessage;
+  onOpenImages: (images: ChatReplyImage[], index: number) => void;
+}) {
   if (message.role === "user") {
     return (
       <div className="flex flex-col items-end gap-1">
@@ -345,19 +554,25 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
       </div>
       {(message.replyImages?.length ?? 0) > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          {message.replyImages!.map((img) => (
-            <div key={img.url} className="w-40">
-              <AntImage
+        <div className="flex flex-wrap gap-2">
+          {message.replyImages!.map((img, index) => (
+            <button
+              key={`${img.url}-${index}`}
+              type="button"
+              onClick={() => onOpenImages(message.replyImages!, index)}
+              aria-label={`查看示例图 ${index + 1}`}
+              className="overflow-hidden rounded-lg border border-zinc-200 transition-opacity hover:opacity-90"
+            >
+              <img
                 src={img.url}
-                fallback={IMAGE_FALLBACK}
-                className="rounded-lg border border-zinc-200"
+                alt={img.tipTitle}
+                loading="lazy"
+                className="h-20 w-20 object-cover"
+                onError={(event) => {
+                  event.currentTarget.src = IMAGE_FALLBACK;
+                }}
               />
-              <div className="text-xs text-zinc-500 mt-1 truncate" title={img.tipTitle}>
-                {img.tipTitle}
-                {img.caption ? `：${img.caption}` : ""}
-              </div>
-            </div>
+            </button>
           ))}
         </div>
       )}

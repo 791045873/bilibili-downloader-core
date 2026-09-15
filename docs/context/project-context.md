@@ -18,7 +18,7 @@ Update it in place. Do not create dated copies.
 
 - Active requirement: `docs/requirements/2026-09-14-qa-mobile-adaptation.md`（QA 穿搭问答页移动端适配，含共享顶栏壳层；规划中）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-09-14-qa-mobile-adaptation-plan.md`（plan audit 已通过：`docs/audits/2026-09-14-plan-audit-qa-mobile-adaptation.md`；未实施）
+- Active plan: `docs/plans/2026-09-14-qa-mobile-adaptation-plan.md`（plan audit 已通过：`docs/audits/2026-09-14-plan-audit-qa-mobile-adaptation.md`；代码/配置已落地，`pnpm typecheck`/`pnpm build` 通过；移动端设备矩阵运行级验证待人工，计划未闭合）
 - Active backlog item: QA 移动端适配（上一完成项：RAG 穿搭问答服务与前端；再前：历史总结向量回填、Phase 2 向量检索 API 等）
 - AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Current blocker: `none`

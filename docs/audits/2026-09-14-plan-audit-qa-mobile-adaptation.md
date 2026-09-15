@@ -95,6 +95,35 @@ Current Baseline 关键声明与 live 代码一致（两轮抽查通过）：`Ap
 
 两项阻断已按修复项消解；剩余为文档一致性修正，无契约/数据/跨界面边界变化。计划维持 `passed`，可进入实施。
 
+## 追加审计 — 左右滑动手势纳入范围（2026-09-14）
+
+- 触发：用户确认助手回复示例图全屏查看**需要左右滑动手势**，推翻此前"仅按钮/键盘、滑动出界"的处理。
+- 方式：独立 subagent 聚焦复审，task `ses_f5d4f30eaffem9wobF5DRML0SO`。
+
+### 结论
+
+`pass`。需求/计划/测试三份文档对滑动的表述一致；Phase 3 新增 `Explore` 且要求先结出结论再解析 `Decision`（符合 rule 9）；`Decision` 仍含选择/备选/残余风险；范围变更已按 rule 10 记录（计划 Post-audit refinement）；新增 D19 覆盖方向正确性、首末不循环、放大时平移不切换、轻微/斜向不误切、与按钮/键盘等效。反 slack 通过，无禁词、无未定稿 Decision。
+
+### 能力核实（静态）
+
+- antd 6.6.0 提供 `Image.PreviewGroup`；`preview` 的 `open`/`onOpenChange`/`current`/`onChange` 经 `usePreviewConfig`/`useMergedPreviewConfig` 透传。
+- rc `PreviewGroup` 用 `useControlledState` 支持受控 `current`/`open`；`showLeftOrRightSwitches = groupContext && count > 1`（单图自动隐藏切换）。
+- 受控 `current` 下缩略图点击不会移动索引（`onPreviewFromImage` 调内部 `setCurrent`，受控时被忽略）→ 缩略图须自身 onClick 以索引打开。
+- `useTouchEvent.onTouchStart` 在 `!movable` 时直接返回；`movable=true` 时单指 `onTouchMove` 无条件平移 → 需在手势层仲裁。
+- `items` 会剥离非 `COMMON_PROPS` 键，`caption`/`tipTitle` 必须按索引映射。
+
+### 实施前门禁（已处理）
+
+1. 本审计轮次已追加至本文件，并更新计划 `Plan Audit` 证据（四轮 subagent 记录）。
+2. Phase 3 `Explore` 必须在 `Decision` 解析前执行，证据写入 `docs/logs/`；若受控/手势仲裁不可接受，须改写 `Decision` 为自建查看器路线并重新审计。
+
+### 剩余风险（Explore 承接）
+
+- 滑动与内置平移/缩放的仲裁需实测调参（未放大切换、放大平移）；
+- `movable` 是否按 `scale` 切换及其对捏合缩放的影响；
+- `onTransform` 的 raf 批处理可能导致手势起始 `scale` 读数滞后，需交叉校验；
+- 重复 `url` 在 rc 按 `src` 查找时归并首图（缩略图以索引打开可规避）。
+
 ## 关闭审计
 
 本计划尚未实施；closure audit 将在计划关闭时独立执行（优先独立 subagent，非保护区域且无未解决产品风险时允许 cold-replay 自检），证据另行归档。

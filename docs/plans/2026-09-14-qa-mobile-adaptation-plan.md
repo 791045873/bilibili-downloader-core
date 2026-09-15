@@ -1,6 +1,6 @@
 # 2026-09-14 QA 穿搭问答页移动端适配（含共享顶栏壳层）
 
-> Plan Status: planned
+> Plan Status: in progress
 > Last Reviewed: 2026-09-14
 > Source: `docs/requirements/2026-09-14-qa-mobile-adaptation.md`
 > Related: `docs/requirements/2026-09-09-rag-chat-service.md`（QA 页功能基线）
@@ -32,7 +32,7 @@
 - PWA/离线/原生封装。
 - 回答流式化、三段式结构、照片上传语义变更。
 - 桌面端布局/顶栏视觉重设计（助手回复示例图形态调整除外）。
-- 全屏查看器的自定义滑动手势（左右滑动切换）；仅用内置切换按钮/键盘方向键。
+- 引入第三方手势/轮播库（如 swiper）；左右滑动在现有能力内自行实现。
 
 ## Infrastructure And Config Prereqs
 
@@ -45,16 +45,16 @@
 
 ### Phase 1 - 全局视口与安全区基线
 
-Status: planned
+Status: in progress
 Targets: `packages/frontend/index.html`, `packages/frontend/src/assets/main.css`
 
 - Item Types: `Add`
 - Prereqs: none
 
-- [ ] `Add`: 更新视口配置，支持安全区适配与虚拟键盘交互模式，保证动态视口高度语义可用。
-- [ ] `Add`: 在全局样式中补充动态视口/安全区基础能力（供壳层与 QA 页消费），并保持既有 Markdown 预览样式不变。
-- [ ] `Add`: 设置 `theme-color` 为品牌色 `#f43f5e`。
-- [ ] `Proof`: 运行 `pnpm typecheck`、`pnpm build`；在窄屏目测动态视口与安全区变量生效。链接 `docs/testing/2026/09-14-qa-mobile-adaptation-testing.md` 对应方向。
+- [x] `Add`: 更新视口配置，支持安全区适配与虚拟键盘交互模式，保证动态视口高度语义可用。
+- [x] `Add`: 在全局样式中补充动态视口/安全区基础能力（供壳层与 QA 页消费），并保持既有 Markdown 预览样式不变。
+- [x] `Add`: 设置 `theme-color` 为品牌色 `#f43f5e`。
+- [ ] `Proof`: 运行 `pnpm typecheck`、`pnpm build`（已通过，见 Implementation Status）；窄屏目测动态视口与安全区变量生效（待人工）。链接 `docs/testing/2026/09-14-qa-mobile-adaptation-testing.md` 对应方向。
 
 Exit Criteria:
 
@@ -65,18 +65,18 @@ Exit Criteria:
 
 ### Phase 2 - 共享顶栏壳层响应式与高度模型
 
-Status: planned
+Status: in progress
 Targets: `packages/frontend/src/App.tsx`, `packages/frontend/src/assets/main.css`
 
 - Item Types: `Add | Fix | Decision`
 - Prereqs: Phase 1
 
-- [ ] `Decision`: 窄屏顶栏折叠采用"汉堡 + Drawer"（用户 2026-09-14 已确认）。选择理由：改动面小、与 QA 会话抽屉模式一致、不新增常驻布局。备选：底部 Tab 栏（更接近原生，但需重排全部导航、改动更大）。残余风险：抽屉需一次额外点击才能到达导航项。
-- [ ] `Add`: 窄屏（`< 768px`）将导航折叠为汉堡入口 + 抽屉，抽屉内可到达全部导航项与登录入口，选中后关闭。
-- [ ] `Fix`: 顶栏在窄屏保持固定高度不换行；`≥ 768px` 顶栏与导航保持现有横向行为不变。
-- [ ] `Decision`: 高度模型采用"壳层暴露顶栏实测高度变量（含顶部安全区） + QA 页局部消费动态视口高度"，不把其他全宽页切到壳层固定高度。选择理由：QA 是唯一底部锚定输入区的页面，局部改动回归面最小。计算式：动态视口 − 顶栏实测高度 − `main` 垂直内边距 − 底部安全区；顺带修正现有 `7.5rem` 与实际 `6.5rem`（3.5rem + 3rem）的偏差。备选：全宽页统一改为壳层固定高度（更一致，但会改变 `/downloading`、`/summary-tasks` 及 `AiSummaryTasks.tsx:886` 的滚动行为，回归面更大）。残余风险：依赖顶栏实测值，测量时序与横竖屏切换需覆盖。软键盘策略随本决策定稿：Android 用 `interactive-widget=resizes-content` + 动态视口，iOS 用 `visualViewport` 事件调整可视高度。
-- [ ] `Fix`: 保证共享顶栏改动后，首页/下载队列/AI 总结/提示词/设置/登录页面在窄屏与桌面均可正常打开，无布局回归。
-- [ ] `Proof`: `pnpm typecheck`、`pnpm build`；窄屏逐页目测导航可达性与无横向溢出；桌面端目测无差异。链接 testing 文档对应方向。
+- [x] `Decision`: 窄屏顶栏折叠采用"汉堡 + Drawer"（用户 2026-09-14 已确认）。选择理由：改动面小、与 QA 会话抽屉模式一致、不新增常驻布局。备选：底部 Tab 栏（更接近原生，但需重排全部导航、改动更大）。残余风险：抽屉需一次额外点击才能到达导航项。
+- [x] `Add`: 窄屏（`< 768px`）将导航折叠为汉堡入口 + 抽屉，抽屉内可到达全部导航项与登录入口，选中后关闭。
+- [x] `Fix`: 顶栏在窄屏保持固定高度不换行；`≥ 768px` 顶栏与导航保持现有横向行为不变。
+- [x] `Decision`: 高度模型采用"壳层暴露顶栏实测高度变量（含顶部安全区） + QA 页局部消费动态视口高度"，不把其他全宽页切到壳层固定高度。选择理由：QA 是唯一底部锚定输入区的页面，局部改动回归面最小。计算式：动态视口 − 顶栏实测高度 − `main` 垂直内边距 − 底部安全区；顺带修正现有 `7.5rem` 与实际 `6.5rem`（3.5rem + 3rem）的偏差。备选：全宽页统一改为壳层固定高度（更一致，但会改变 `/downloading`、`/summary-tasks` 及 `AiSummaryTasks.tsx:886` 的滚动行为，回归面更大）。残余风险：依赖顶栏实测值，测量时序与横竖屏切换需覆盖。软键盘策略随本决策定稿：Android 用 `interactive-widget=resizes-content` + 动态视口，iOS 用 `visualViewport` 事件调整可视高度。实现：`App.tsx` 经 `ResizeObserver` 写 `--app-header-h`、经 `visualViewport` 写 `--vvh`，QA 页消费二者计算高度。
+- [x] `Fix`: 保证共享顶栏改动后，首页/下载队列/AI 总结/提示词/设置/登录页面在窄屏与桌面均可正常打开，无布局回归。
+- [ ] `Proof`: `pnpm typecheck`、`pnpm build`（已通过）；窄屏逐页目测导航可达性与无横向溢出、桌面端目测无差异（待人工）。链接 testing 文档对应方向。
 
 Exit Criteria:
 
@@ -88,29 +88,31 @@ Exit Criteria:
 
 ### Phase 3 - QA 页移动端改造
 
-Status: planned
+Status: in progress
 Targets: `packages/frontend/src/pages/QaChat.tsx`, `packages/frontend/src/App.tsx`（消费 Phase 1/2 的全局能力）
 
-- Item Types: `Add | Fix | Decision`
+- Item Types: `Add | Fix | Decision | Explore`
 - Prereqs: Phase 1, Phase 2
 
-- [ ] `Decision`: 窄屏首屏落点采用"自动选中最近会话直接进入聊天 + 会话列表抽屉入口"。选择理由：与桌面一致、保持会话连续性。备选：进入后先展示会话列表（更接近 IM 列表首页，但与桌面不一致且多一次点击）。残余风险：新用户可能需先理解抽屉入口，用明确按钮文案缓解。
-- [ ] `Add`: 以 `768px` 为单一断点，`< 768px` 时 QA 页切换为单列；会话列表移入 `Drawer`，提供"会话列表"入口，选中会话后抽屉关闭，当前会话高亮。
-- [ ] `Fix`: 聊天容器与底部输入区适配动态视口与安全区；消息区内部滚动，滚到最新不引起整页跳动；软键盘弹收后输入区仍可见可操作。
-- [ ] `Fix`: 导航栏状态与抽屉在会话新建/删除/切换后保持正确（列表即时更新、删除二次确认、切换回退合理）。
-- [ ] `Fix`: 输入区窄屏紧凑化，照片/发送控件改为图标形态且触控目标足够；文本域可用宽度不被过度挤压。
-- [ ] `Fix`: 回车语义按指针粒度区分——粗指针回车换行、按钮发送；细指针保持回车发送、Shift+回车换行。残余风险：触屏笔记本可能上报粗指针而按触屏语义处理（可接受）。
-- [ ] `Decision`: 助手回复示例图改为"横向并排缩略图条 + 全屏查看器（点击放大、左右切换）"，缩略图不显示文字、全屏显示 `tipTitle`/`caption`，桌面与移动端采用同一形态（用户 2026-09-14 确认）。选择理由：缩略图更紧凑、不占纵向空间；全屏复用 antd `Image.PreviewGroup` 内建的放大与左右切换（已核实 antd 6.6.0 提供 `Image.PreviewGroup`，单图自动隐藏左右切换），不引入新依赖。切换方式为内置左右按钮/键盘方向键，**不含左右滑动手势**（安装版预览仅按钮/键盘导航，滑动手势需自研，已列入 Non-Goals）。备选：保留带标题的固定卡片（窄屏每行仅 1 张、较重）、单张大图 + 数量角标（信息量不足）。残余风险：全屏查看器需适配底部安全区；`items` 不携带 caption，需按 `onChange` 索引映射当前图标题/说明；此为对已通过审计计划的用户可见方案细化（Phase 3 范围内，无契约/跨界面边界变化），已记录于本项。
-- [ ] `Fix`: 助手回复示例图替换为横向缩略图条 + 全屏查看器（同一条回答的图片为一组，用 `Image.PreviewGroup`）；缩略图不显示文字，全屏展示当前图技巧标题与说明；切换用内置左右按钮/键盘方向键，单张时无左右切换；缩略图/全屏加载失败保留占位降级；缩略图 key 用索引避免同 URL 重复冲突。
-- [ ] `Fix`: 待发照片 chip 支持换行；用户照片、视频来源、长文本在窄屏不横向溢出且自适应宽度。
-- [ ] `Fix`: 会话删除等交互控件在触屏下触控目标不小于约 44px，保留二次确认。
-- [ ] `Proof`: `pnpm typecheck`、`pnpm build`；按 device matrix 手工验证移动端全流程（进入/切换/新建/删除、文本问答、照片问答、三段式渲染与来源跳转、空/载/错态、键盘与安全区）。链接 testing 文档全部方向。
+- [x] `Decision`: 窄屏首屏落点采用"自动选中最近会话直接进入聊天 + 会话列表抽屉入口"。选择理由：与桌面一致、保持会话连续性。备选：进入后先展示会话列表（更接近 IM 列表首页，但与桌面不一致且多一次点击）。残余风险：新用户可能需先理解抽屉入口，用明确按钮文案缓解。
+- [x] `Add`: 以 `768px` 为单一断点，`< 768px` 时 QA 页切换为单列；会话列表移入 `Drawer`，提供"会话列表"入口，选中会话后抽屉关闭，当前会话高亮。
+- [x] `Fix`: 聊天容器与底部输入区适配动态视口与安全区；消息区内部滚动，滚到最新不引起整页跳动；软键盘弹收后输入区仍可见可操作。
+- [x] `Fix`: 导航栏状态与抽屉在会话新建/删除/切换后保持正确（列表即时更新、删除二次确认、切换回退合理）。
+- [x] `Fix`: 输入区窄屏紧凑化，照片/发送控件改为图标形态且触控目标足够；文本域可用宽度不被过度挤压。
+- [x] `Fix`: 回车语义按指针粒度区分——粗指针回车换行、按钮发送；细指针保持回车发送、Shift+回车换行。残余风险：触屏笔记本可能上报粗指针而按触屏语义处理（可接受）。
+- [x] `Explore`: 验证在 antd `Image.PreviewGroup` 受控 `open`/`current` + `items` 模式下接入横向滑动手势的可行性（原生捕获阶段 `touchstart`/`touchend` + 位移/方向阈值 + 未放大门控），重点结论：(a) 是否需要在未放大时切换 `movable` 以消除滑动与内置平移的争抢，及该取舍对捏合缩放的影响；(b) `scale` 取值的可靠性（`onTransform` 为 raf 批处理，可在手势起始交叉读取图片内联 transform）；(c) 受控 `current` 下缩略图点击须由自身 onClick 以索引打开（不依赖 rc 的按 `src` 查找，规避重复 URL 归并到首图）。若受控模式或手势仲裁不可接受，则评估自建轻量全屏查看器（antd `Modal` + 触摸手势）路线。Explore 必须在 Decision 前结出结论，证据写入 `docs/logs/`。
+- [x] `Decision`: 助手回复示例图采用"横向并排缩略图条 + 全屏查看器（点击放大，左右滑动/按钮/键盘切换）"，缩略图不显示文字、全屏显示 `tipTitle`/`caption`，桌面与移动端同一形态（用户 2026-09-14 确认）。选择理由：缩略图更紧凑；全屏复用 antd `Image.PreviewGroup`（已核实 antd 6.6.0 提供 `Image.PreviewGroup`，其 `preview` 受控支持 `open`/`current`/`onChange`，单图自动隐藏左右切换），在受控模式上叠加横向滑动手势，不引入新依赖。备选：保留带标题的固定卡片（窄屏每行仅 1 张、较重）；自建轻量查看器（可控性最高但代码量更大，作为 Explore 兜底）。残余风险：滑动与内置缩放/平移的仲裁需实测调参（未放大时滑动切换、放大时滑动平移）；`items` 不携带 caption，需按受控 `current`/`onChange` 索引映射当前图标题/说明；全屏需适配底部安全区。此为对已通过审计计划的用户可见方案变更（Phase 3 范围内，无契约/跨界面边界变化），已记录于本项。
+- [x] `Fix`: 助手回复示例图替换为横向缩略图条 + 全屏查看器（同一条回答的图片为一组）；缩略图不显示文字，全屏展示当前图技巧标题与说明；支持左右滑动与内置左右按钮/键盘方向键切换，未放大时滑动切换、放大时滑动平移，首/末不循环，单张仅显示不切换；缩略图/全屏加载失败保留占位降级；缩略图 key 用索引避免同 URL 重复冲突。
+- [x] `Fix`: 待发照片 chip 支持换行；用户照片、视频来源、长文本在窄屏不横向溢出且自适应宽度。
+- [x] `Fix`: 会话删除等交互控件在触屏下触控目标不小于约 44px，保留二次确认。
+- [ ] `Proof`: `pnpm typecheck`、`pnpm build`（已通过）；按 device matrix 手工验证移动端全流程（进入/切换/新建/删除、文本问答、照片问答、三段式渲染与来源跳转、空/载/错态、键盘与安全区），含滑动仲裁（待人工）。链接 testing 文档全部方向。
 
 Exit Criteria:
 
 - [ ] 窄屏 QA 页单列可用，抽屉会话管理完整；桌面双栏与改造前一致（助手回复示例图按新形态更新除外）。
 - [ ] 软键盘、安全区、横竖屏、系统大字体、长文本/图片溢出、回复图片加载失败降级、照片上限禁用态场景均通过（对应 testing 文档 D5–D9、D12–D14）。
-- [ ] 助手回复示例图横向缩略图条 + 全屏左右切换通过（含缩略图无文字、全屏显示标题/说明、单张无切换、加载失败降级；对应 testing 文档 D18）。
+- [ ] 助手回复示例图横向缩略图条 + 全屏查看通过（含缩略图无文字、全屏显示标题/说明、单张不切换、加载失败降级；对应 testing 文档 D18）。
+- [ ] 全屏左右滑动切换与按钮/键盘切换等效、首末不循环、放大时滑动为平移不切换（对应 testing 文档 D19）。
 - [ ] 既有 QA 功能在移动端行为不变（含空/载/错态、删除二次确认、来源 `?t=` 跳转）。
 - [ ] 决策项已记录选择、备选与残余风险。
 - [ ] `docs/design/app-overview.md` 的"穿搭问答（Web）"与导航模型描述更新为包含移动端行为。
@@ -118,17 +120,17 @@ Exit Criteria:
 
 ### Phase 4 - 文档、测试方向与闭合
 
-Status: planned
+Status: in progress
 Targets: `docs/testing/2026/09-14-qa-mobile-adaptation-testing.md`, `docs/design/app-overview.md`, `docs/context/codebase-map.md`, `docs/context/project-context.md`, `docs/backlog/README.md`, `docs/logs/`
 
 - Item Types: `Proof | Add`
 - Prereqs: Phase 1–3
 
-- [ ] `Proof`: 确认 testing 文档已存在，且每条测试方向均有 `passed` 或带理由的 `out of scope` 记录。
-- [ ] `Add`: 更新 `docs/design/app-overview.md`（移动端 QA 行为、顶栏导航模型）与 `docs/context/codebase-map.md`（Frontend 行 Last Verified/注记）。
-- [ ] `Add`: 更新 `docs/context/project-context.md`（active requirement/plan 指向本工作，完成后回填现状）与 `docs/backlog/README.md`（记录其他页面移动端适配为后续候选）。
-- [ ] `Add`: 写入 `docs/logs/` 聚合日志（含验证命令与证据）。
-- [ ] `Proof`: 执行 `pnpm typecheck`、`pnpm build` 并记录输出；整理手工设备矩阵证据。
+- [ ] `Proof`: 确认 testing 文档已存在，且每条测试方向均有 `passed` 或带理由的 `out of scope` 记录（文档已存在；方向执行待人工设备矩阵）。
+- [x] `Add`: 更新 `docs/design/app-overview.md`（移动端 QA 行为、顶栏导航模型）与 `docs/context/codebase-map.md`（Frontend 行 Last Verified/注记）。
+- [x] `Add`: 更新 `docs/context/project-context.md`（active requirement/plan 指向本工作，完成后回填现状）与 `docs/backlog/README.md`（记录其他页面移动端适配为后续候选）。
+- [x] `Add`: 写入 `docs/logs/` 聚合日志（含验证命令与证据）。
+- [ ] `Proof`: 执行 `pnpm typecheck`、`pnpm build` 并记录输出（已通过，见 Implementation Status）；整理手工设备矩阵证据（待人工）。
 - [ ] `Proof`: 独立 closure audit（优先独立 subagent）。本计划非保护区域，若独立 reviewer 不可得，允许按政策使用"与执行期上下文隔离的 cold-replay"自检并记录证据与限制；若实施中发现未解决的产品风险，则不得用 cold-replay 替代，门禁保持开放。
 
 Exit Criteria:
@@ -139,12 +141,31 @@ Exit Criteria:
 - [ ] closure audit 独立完成或按政策记录限制并保持门禁。
 - [ ] `docs/logs/` 聚合日志已写入。
 
+## Implementation Status (2026-09-14)
+
+代码与配置均已落地，静态验证通过；**移动端运行级（设备矩阵）验证尚未执行**，故各相位保持 `in progress`、退出条件未全部勾选。
+
+已落地：
+
+- Phase 1：`index.html` 视口（`viewport-fit=cover` + `interactive-widget=resizes-content` + `theme-color`）；`main.css` 增加 `--app-header-h`/`--vvh` 默认值与 `.pt-safe`/`.pb-safe`。
+- Phase 2：`App.tsx` 顶栏 `≥768px` 横向、`<768px` 汉堡 + 右抽屉（含登录入口）；`ResizeObserver` 写 `--app-header-h`（含顶部安全区），`visualViewport` 写 `--vvh`；壳层 `min-h-dvh`；其他全宽页保持文档级滚动。
+- Phase 3：`QaChat.tsx` 断点单列 + 会话抽屉（新建/切换/删除/高亮/二次确认）；消息区容器内滚动；底部输入区 `pb-safe`；窄屏照片/发送图标化；粗指针回车换行、细指针回车发送；待发 chip 换行；助手示例图改为横向缩略图条 + `Image.PreviewGroup` 受控全屏查看（`imageRender` 显示 `tipTitle`/`caption`），叠加捕获阶段 `touchstart`/`touchend` 横向滑动（阈值 50px、方向校验、`scale>1` 时不平移切换、首末不循环、单图不切换）。
+- `Explore` 结论：受控 `open`/`current` + `items` 路线静态可行并已选用（缩略图点击由自身 onClick 以索引打开，规避 `src` 归并）；运行时手势仲裁（滑动 vs 内置缩放/平移）留待设备矩阵确认。证据见 `docs/logs/2026-09-14-qa-mobile-adaptation.md`。
+- Phase 4（部分）：`app-overview.md`、`codebase-map.md`、`project-context.md`、`backlog/README.md`、`docs/logs/` 已更新。
+
+待执行（阻断闭合）：
+
+- 设备矩阵手工验证 D1–D19（尤其 D5 软键盘、D6 安全区、D18/D19 画廊与滑动仲裁），并据此确认或裁决 testing 方向。
+- 独立 closure audit（或按政策 cold-replay 自检）。
+
+静态验证证据：`pnpm typecheck` 全包通过；`pnpm build` 全包通过（含 frontend vite build 3409 modules）。
+
 ## Plan Audit
 
 - Status: passed
-- Reviewer / Agent: 独立 subagent（两轮：首轮 `needs revision`，修订后复审 `pass`）；另有针对回复示例图细化的聚焦复审（`needs revision` → 按修复项修订）
-- Evidence: `docs/audits/2026-09-14-plan-audit-qa-mobile-adaptation.md`（首轮 task `ses_f60f8fc64ffeXOINeSFtYJ0BZO`；复审 task `ses_f60f607ebffe2WHMKpGjo6PkeP`；聚焦复审 task `ses_f60e7bfd4ffeEpYsaUOEYolc1N`）
-- Post-audit refinement: 回复示例图细化（2026-09-14）已记录于 Phase 3 Decision/Fix 与 Non-Goals，聚焦复审两项阻断（桌面范围矛盾、滑动手势不可用）已按修复项修订：统一"桌面与移动端同形态"、明确切换仅内置按钮/键盘、滑动列入 Non-Goals。
+- Reviewer / Agent: 独立 subagent（共四轮：首轮 `needs revision` → 复审 `pass`；回复示例图细化聚焦复审 `needs revision` → 修订；左右滑动手势纳入范围聚焦复审 `pass`）
+- Evidence: `docs/audits/2026-09-14-plan-audit-qa-mobile-adaptation.md`（首轮 task `ses_f60f8fc64ffeXOINeSFtYJ0BZO`；复审 task `ses_f60f607ebffe2WHMKpGjo6PkeP`；示例图细化 task `ses_f60e7bfd4ffeEpYsaUOEYolc1N`；滑动范围 task `ses_f5d4f30eaffem9wobF5DRML0SO`）
+- Post-audit refinement: 回复示例图细化（2026-09-14）已记录于 Phase 3 Decision/Fix 与 Non-Goals，聚焦复审两项阻断（桌面范围矛盾、滑动手势不可用）已按修复项修订：统一"桌面与移动端同形态"。随后用户确认**需要左右滑动手势**，故新增 Phase 3 `Explore` + 重写 `Decision`/`Fix`，将滑动纳入范围（受控 `Image.PreviewGroup` 上叠加手势，放大时滑动为平移），并新增 testing 方向 D19；Non-Goals 改为仅排除第三方手势库。
 
 ## Closure Gates
 
