@@ -243,6 +243,15 @@ export async function getAiSummaryTaskMarkdown(
   return request(`/summary-tasks/${id}/markdown`);
 }
 
+export async function getSummaryMarkdownByResource(
+  bvid: string,
+  cid: number,
+): Promise<{ content: string; meta: SummaryMarkdownMeta }> {
+  return request(
+    `/summary-tasks/by-resource/${encodeURIComponent(bvid)}/${cid}/markdown`,
+  );
+}
+
 export async function deleteAiSummaryTask(id: number): Promise<void> {
   await request(`/summary-tasks/${id}`, { method: "DELETE" });
 }

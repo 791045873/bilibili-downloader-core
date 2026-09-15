@@ -20,6 +20,8 @@ export interface ChatReplySource {
   timestampSeconds: number | null;
   tipTitle: string;
   screenshotUrl: string | null;
+  bvid: string;
+  cid: number;
 }
 
 /** 三段式回答对象（非流式 JSON） */
@@ -40,4 +42,6 @@ export interface ChatHit {
   timestampSeconds: number | null;
   videoTitle: string;
   videoUrl: string | null;
+  bvid: string;
+  cid: number;
 }

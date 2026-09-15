@@ -11,6 +11,19 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 ### 当前活跃项
 
 - Priority: P1
+- Item: QA 回答来源视频增加"AI 总结"整页链接
+- Requirement: `docs/requirements/2026-09-15-qa-source-summary-link.md`
+- Owner Doc: `docs/design/app-overview.md`
+- Plan: `docs/plans/2026-09-15-qa-source-summary-link-plan.md`
+- Status: `in-progress`（plan audit 通过（cold-replay，reviewer availability=none）；代码已落地，`pnpm typecheck`/`pnpm build` 通过；手工路径核对与 closure 待完成）
+- AI Autonomy: `plan-first`（新工作需先出需求与计划并过审计）
+- Blocker: `none`
+- Next: 手工路径核对（正常/错误分支、历史消息无链接）→ 独立或按政策 closure audit 后闭合（plan audit 证据：`docs/audits/2026-09-15-plan-audit-qa-source-summary-link.md`）
+- Last Checked: `2026-09-15`
+
+### 进行中（未闭合）：QA 移动端适配
+
+- Priority: P1
 - Item: QA 穿搭问答页移动端适配（含共享顶栏壳层）
 - Requirement: `docs/requirements/2026-09-14-qa-mobile-adaptation.md`
 - Owner Doc: `docs/design/app-overview.md`

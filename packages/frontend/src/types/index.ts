@@ -290,6 +290,9 @@ export interface ChatReplySource {
   timestampSeconds: number | null;
   tipTitle: string;
   screenshotUrl: string | null;
+  /** 视频资源标识：历史消息可能缺失，缺失时不渲染"AI 总结"链接 */
+  bvid?: string;
+  cid?: number;
 }
 
 export interface ChatReplyPayload {

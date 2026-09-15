@@ -16,15 +16,13 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `docs/requirements/2026-09-14-qa-mobile-adaptation.md`（QA 穿搭问答页移动端适配，含共享顶栏壳层；规划中）
+- Active requirement: `docs/requirements/2026-09-15-qa-source-summary-link.md`（QA 回答来源视频增加"AI 总结"整页链接）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-09-14-qa-mobile-adaptation-plan.md`（plan audit 已通过：`docs/audits/2026-09-14-plan-audit-qa-mobile-adaptation.md`；代码/配置已落地，`pnpm typecheck`/`pnpm build` 通过；移动端设备矩阵运行级验证待人工，计划未闭合）
-- Active backlog item: QA 移动端适配（上一完成项：RAG 穿搭问答服务与前端；再前：历史总结向量回填、Phase 2 向量检索 API 等）
+- Active plan: `docs/plans/2026-09-15-qa-source-summary-link-plan.md`（plan audit 通过：`docs/audits/2026-09-15-plan-audit-qa-source-summary-link.md`；代码已落地，`pnpm typecheck`/`pnpm build` 通过；手工路径核对与 closure 待完成，计划未闭合）
+- Active backlog item: QA 来源视频 AI 总结整页链接（上一进行中：QA 移动端适配，待人工设备矩阵验证）
 - AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Current blocker: `none`
 - Pending user confirmation: 部署新镜像后对 RAG 问答 LLM 全链路做运行级确认（T2/T3/T5/T6 开关/T7，见 `docs/testing/2026/09-09-rag-chat-testing.md` 裁决段）
-- AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
-- Current blocker: `none`
 
 Rule:
 

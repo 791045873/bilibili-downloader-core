@@ -345,6 +345,8 @@ export function buildReplyPayload(
         timestampSeconds: hit.timestampSeconds,
         tipTitle: hit.title,
         screenshotUrl: hit.screenshotUrl,
+        bvid: hit.bvid,
+        cid: hit.cid,
       });
     }
   }

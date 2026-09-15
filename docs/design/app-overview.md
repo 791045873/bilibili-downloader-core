@@ -52,10 +52,11 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 1. 用户进入"穿搭问答"页（`/qa`）：左侧为会话列表（按最近更新倒序，含历史会话），可新建会话、删除会话（二次确认）；旧会话完整保留，可随时点开回看全部历史并继续讨论（query 重写保证省略式追问与中断前的上下文连续）
 2. 场景二（文本）：输入穿搭期望（如"小个子怎么穿显高"）发送 → 服务端向量检索知识库 → 返回带 `[n]` 引用标记的建议正文
 3. 场景一（照片）：选择本地穿搭照片（≤3 张）发送 → 服务端压缩一次后存 COS 专属目录 → 多模态模型分析照片产出穿搭描述 → 结合知识库给出针对性建议
-4. 回答三段式渲染：正文（Markdown，含 [n] 引用）→ 图片示例区（命中技巧的截图）→ 底部视频注脚（来源视频标题 + B 站 `?t=` 时刻跳转链接）；示例图以横向并排缩略图条展示（缩略图不带文字），点击后进入全屏查看大图，可左右滑动或使用内置左右按钮/键盘方向键切换同组图片，全屏时展示该图的技巧标题与说明（单张时无切换）
+4. 回答三段式渲染：正文（Markdown，含 [n] 引用）→ 图片示例区（命中技巧的截图）→ 底部视频注脚（来源视频标题 + B 站 `?t=` 时刻跳转链接 + 每条来源的"AI 总结"入口）；示例图以横向并排缩略图条展示（缩略图不带文字），点击后进入全屏查看大图，可左右滑动或使用内置左右按钮/键盘方向键切换同组图片，全屏时展示该图的技巧标题与说明（单张时无切换）
 5. 兜底：知识库无相关内容时回答"知识库暂无相关内容"，无图片与视频注脚，不编造
 6. 会话与消息持久化在云端数据库，server 重启后历史完整可回看；发送失败可重试
 7. 响应式布局：桌面端为左侧会话列表 + 右侧聊天区双栏；窄屏（<768px）为单列，会话列表收进"会话列表"抽屉（可新建/切换/删除，选中后抽屉关闭，当前会话高亮），底部输入区避让软键盘与设备安全区，照片/发送控件在窄屏以图标呈现（触屏下回车换行、按钮发送；鼠标下回车发送、Shift+回车换行）
+8. 来源视频"AI 总结"：每条来源注脚（按 source 条目去重）在保留 B 站链接与技巧标题的同时，追加"AI 总结"整页入口；点击跳转 `/summary/:bvid/:cid`，整页展示该视频完整 AI 总结 Markdown（顶部元数据条 + 正文 + 截图，插图经 `/summary-files` 静态前缀）。总结按 `(bvid,cid)` 唯一定位 `ai_summary_task`；无记录/未完成/无输出文档/文件缺失时页面只报错，不做兜底或跳转。历史消息来源缺 `bvid/cid` 时不渲染该入口
 
 ## Key Domain Objects
 
@@ -84,6 +85,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | POST /api/summary-tasks/:id/retrigger | 对 AI 总结记录按资源重新触发总结（全管线重跑，重新调用 LLM，复用该记录 `prompt_id` 作为显式提示词）；非法 id 返回 400，不存在返回 404，`pending`/`analyzing` 返回 409，无对应成功下载任务返回 409；复用 `AnalysisTriggerService.trigger` 链路 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | POST /api/summary-tasks/:id/rebuild | 对已完成的 AI 总结记录用已存储的大模型返回内容（`raw_response`）重建总结报告与截图，**不调用 LLM**；仅 `completed` 且 `raw_response` 非空可触发，非法 id 返回 400，不存在返回 404，非 completed 返回 409，raw 为空返回 409，并发重建返回 409；异步执行，失败不改写记录状态 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | GET /api/summary-tasks/:id/markdown | 按 id 读取该记录 `summary_output` 指向的 Markdown 总结文档并返回 `{ content, meta }`；`summary_output` 存相对下载根目录（`DOWNLOAD_ROOT`）的相对路径（POSIX 分隔符；读侧恒按根拼接，2026-09-09 起不再容错透传绝对值），读取时按当前环境根目录拼接：`content` 为剥离 YAML frontmatter 后的正文，相对图片链接已统一重写为 `/summary-files/…` 同源静态路径（绝对链接/根相对/锚点原样保留，`../` 越界不重写，HTML `<img>` 不处理）；`meta` 含 `title/videoUrl/model/createdAt`（frontmatter 缺失或畸形时为空对象，正文原样透传）；非法 id 返回 400，不存在返回 404，非 `completed` 或 `summary_output` 为空返回 409，文件缺失返回 404 | `packages/server/src/analysis/analysis-task.controller.ts` |
+| GET /api/summary-tasks/by-resource/:bvid/:cid/markdown | 按视频资源 `(bvid,cid)` 定位 `ai_summary_task` 并返回完整总结 Markdown `{ content, meta }`（语义与按 id 的 markdown 接口一致，供 QA 来源视频"AI 总结"整页消费）；`bvid` 为空或 `cid` 非正整数返回 400，无记录返回 404，非 `completed` 返回 409，`summary_output` 为空返回 409，文件缺失返回 404；不做降级兜底 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | DELETE /api/summary-tasks/:id | 删除 AI 总结任务记录（仅删数据库、不动磁盘）；非法 id 返回 400，不存在返回 404，`pending`/`analyzing` 返回 409 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | POST /api/summary-tasks/integrity-check | 手动触发一键本地原始内容完整性检查：遍历全部 `completed` 的 AI 总结记录，逐条判定 `summary_output` 指向的 md 与 md 内引用的本地相对截图是否存在于当前环境磁盘，结果（`integrity_status`：`complete`/`missing`、`integrity_detail`：缺失明细（>40 项截断并保留总计数）、`integrity_checked_at`）逐条写回 `ai_summary_task`（不触碰 `updated_at`）；进程内全局互斥，运行中重复触发返回 409；异步执行，仅手动触发、无自动/定时路径；只读磁盘不改文件 | `packages/server/src/analysis/analysis-task.controller.ts`、`packages/server/src/analysis/summary-integrity.service.ts` |
 | GET /api/summary-tasks/integrity-check/status | 查询完整性检查运行状态 `{ running: boolean }`（供前端轮询） | `packages/server/src/analysis/analysis-task.controller.ts` |
@@ -94,7 +96,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | POST /api/analysis/trigger | 对 bvid/cid 触发 AI 总结，body 可带 `promptId?`：无任务时创建下载任务并写入 `task.prompt_id`（下载完成后自动总结使用），有任务时透传触发 | `packages/server/src/analysis/analysis.controller.ts` |
 | POST /api/knowledge/backfill | 手动触发一次历史总结知识回填：后台批量（并发 2）把 `completed` + `raw_response` 非空 + 非 synced 的总结逐条经发布管道入库；无可回填返回 `{ total: 0 }`，否则返回 `{ message, total }` 并立即返回（fire-and-forget）；运行中重复触发返回 409 | `packages/server/src/knowledge/knowledge-backfill.controller.ts` |
 | GET /api/knowledge/backfill | 查询回填批次进度：`{ running, total, synced, skipped, failed, failures[{ summaryTaskId, error }] }`；批次完成后回到 idle 且计数保留到下次触发 | `packages/server/src/knowledge/knowledge-backfill.controller.ts` |
-| GET /api/knowledge/search?q=&k= | 向量检索：q 归一化后经 DashScope embedding，pgvector 余弦 top-k（k 缺省 10、限 1–50）；返回 `[{ segmentId, title, content, score, screenshotUrl, frameDescription, videoTitle, videoUrl, timestampSeconds }]`；q 空或 k 非法返回 400，缺 embedding 配置/调用失败返回 503（不降级关键词搜索）；仅 `embedding_model` 与当前配置一致的 segment 参与 | `packages/server/src/knowledge/knowledge-search.controller.ts` |
+| GET /api/knowledge/search?q=&k= | 向量检索：q 归一化后经 DashScope embedding，pgvector 余弦 top-k（k 缺省 10、限 1–50）；返回 `[{ segmentId, title, content, score, screenshotUrl, frameDescription, videoTitle, videoUrl, timestampSeconds, bvid, cid }]`（`bvid/cid` 为 2026-09-15 新增，供 QA 来源"AI 总结"定位）；q 空或 k 非法返回 400，缺 embedding 配置/调用失败返回 503（不降级关键词搜索）；仅 `embedding_model` 与当前配置一致的 segment 参与 | `packages/server/src/knowledge/knowledge-search.controller.ts` |
 | POST /api/chat/conversations | 创建空问答会话，返回 `{ conversationId }` | `packages/server/src/chat/chat.controller.ts` |
 | GET /api/chat/conversations | 会话列表（按 `updated_at` 倒序，`{ conversations: [{ id, title?, createdAt, updatedAt }] }`） | `packages/server/src/chat/chat.controller.ts` |
 | GET /api/chat/conversations/:id/messages | 会话历史消息（含 user 照片 URL 与 assistant 三段式回答 JSONB）；会话不存在返回 404 | `packages/server/src/chat/chat.controller.ts` |

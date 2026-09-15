@@ -15,6 +15,7 @@ import {
 } from "@nestjs/common";
 import { readFile } from "node:fs/promises";
 import { DatabaseService } from "../database/database.service.js";
+import type { AiSummaryTaskRecord } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 import { SummaryIntegrityService } from "./summary-integrity.service.js";
@@ -25,6 +26,7 @@ import {
   resolveSummaryOutputPath,
   rewriteMarkdownImageUrls,
 } from "./summary-dir.js";
+import type { SummaryMeta } from "./summary-dir.js";
 import { PathsService } from "../paths/paths.service.js";
 
 @Controller("api")
@@ -200,6 +202,46 @@ export class AnalysisTaskController {
       );
       throw new NotFoundException("AI 总结任务不存在");
     }
+
+    return this.renderSummaryMarkdown(record, `id=${summaryTaskId}`);
+  }
+
+  /**
+   * 按视频资源 (bvid,cid) 取完整总结文档，供 QA 来源视频"AI 总结"整页消费。
+   * 不做降级：无记录/未完成/无输出/文件缺失分别返回 404/409/409/404。
+   */
+  @Get("/summary-tasks/by-resource/:bvid/:cid/markdown")
+  async getAiSummaryTaskMarkdownByResource(
+    @Param("bvid") bvid: string,
+    @Param("cid") cid: string,
+  ) {
+    const parsedCid = Number.parseInt(cid, 10);
+    if (!bvid || bvid.trim() === "" || !Number.isInteger(parsedCid) || parsedCid < 0) {
+      this.logger.warn(
+        `Get ai summary task markdown by resource rejected due to invalid params: bvid=${bvid} cid=${cid}`,
+      );
+      throw new BadRequestException("无效的视频资源标识");
+    }
+
+    const record = await this.databaseService.getAiSummaryTaskByResource(
+      bvid,
+      parsedCid,
+    );
+    if (!record) {
+      this.logger.warn(
+        `Get ai summary task markdown by resource rejected due to not-found: ${bvid}-${parsedCid}`,
+      );
+      throw new NotFoundException("该视频暂无 AI 总结");
+    }
+
+    return this.renderSummaryMarkdown(record, `${bvid}-${parsedCid}`);
+  }
+
+  /** 校验完成态并读取 summary_output 指向的 Markdown（剥离 frontmatter、重写相对图片链接） */
+  private async renderSummaryMarkdown(
+    record: AiSummaryTaskRecord,
+    logRef: string,
+  ): Promise<{ content: string; meta: SummaryMeta }> {
     if (record.status !== "completed") {
       throw new ConflictException("仅已完成的 AI 总结可查看总结文档");
     }
@@ -207,16 +249,16 @@ export class AnalysisTaskController {
       throw new ConflictException("该总结无输出文档");
     }
 
-    let content: string;
     const mdAbsPath = resolveSummaryOutputPath(
       record.summaryOutput,
       this.paths.DOWNLOAD_ROOT,
     );
+    let content: string;
     try {
       content = await readFile(mdAbsPath, "utf-8");
     } catch (err) {
       this.logger.warn(
-        `Get ai summary task markdown rejected because file is missing: ${summaryTaskId} ${mdAbsPath}`,
+        `Get ai summary task markdown rejected because file is missing: ${logRef} ${mdAbsPath}`,
         err instanceof Error ? err.stack : undefined,
       );
       throw new NotFoundException("总结文档不存在或已被删除");

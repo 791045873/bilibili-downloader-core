@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
@@ -593,6 +594,17 @@ function ChatBubble({
                 )}
                 <span className="mx-1 text-zinc-300">|</span>
                 <span>{src.tipTitle}</span>
+                {src.bvid && src.cid != null && (
+                  <>
+                    <span className="mx-1 text-zinc-300">|</span>
+                    <Link
+                      to={`/summary/${encodeURIComponent(src.bvid)}/${src.cid}`}
+                      className="text-rose-600 hover:underline"
+                    >
+                      AI 总结
+                    </Link>
+                  </>
+                )}
               </div>
             );
           })}

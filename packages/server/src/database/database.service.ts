@@ -1541,13 +1541,16 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       timestampSeconds: number | null;
       videoTitle: string;
       videoUrl: string | null;
+      bvid: string;
+      cid: number;
     }>
   > {
     const { rows } = await this.pool.query(
       `SELECT ss.id, ss.title, ss.content, 1 - (ss.embedding <=> $1::vector) AS score,
               ss.screenshot_url AS "screenshotUrl", ss.frame_description AS "frameDescription",
               ss.timestamp_seconds AS "timestampSeconds",
-              s.video_title AS "videoTitle", s.video_url AS "videoUrl"
+              s.video_title AS "videoTitle", s.video_url AS "videoUrl",
+              s.bvid AS "bvid", s.cid AS "cid"
        FROM summary_segment ss JOIN summary s ON s.id = ss.summary_id
        WHERE ss.embedding_model = $2 AND ss.embedding IS NOT NULL
        ORDER BY ss.embedding <=> $1::vector
@@ -1564,6 +1567,8 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       timestampSeconds: row.timestampSeconds == null ? null : Number(row.timestampSeconds),
       videoTitle: row.videoTitle,
       videoUrl: row.videoUrl ?? null,
+      bvid: row.bvid,
+      cid: Number(row.cid),
     }));
   }
 
