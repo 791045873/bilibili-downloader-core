@@ -16,10 +16,10 @@ Update it in place. Do not create dated copies.
 
 ## Active Work
 
-- Active requirement: `docs/requirements/2026-09-15-qa-source-summary-link.md`（QA 回答来源视频增加"AI 总结"整页链接）
+- Active requirement: `docs/requirements/2026-09-15-qa-chat-soft-delete.md`（QA 会话删除改为软删除）
 - Active owner doc: `docs/design/app-overview.md`
-- Active plan: `docs/plans/2026-09-15-qa-source-summary-link-plan.md`（plan audit 通过：`docs/audits/2026-09-15-plan-audit-qa-source-summary-link.md`；代码已落地，`pnpm typecheck`/`pnpm build` 通过；手工路径核对与 closure 待完成，计划未闭合）
-- Active backlog item: QA 来源视频 AI 总结整页链接（上一进行中：QA 移动端适配，待人工设备矩阵验证）
+- Active plan: `docs/plans/2026-09-15-qa-chat-soft-delete-plan.md`（保护区数据删除；用户已确认实施；contract/迁移/数据层/测试/typecheck/build 已完成；保护区 closure 评审待人工）
+- Active backlog item: QA 会话软删除（其他未闭合进行中：QA 来源视频 AI 总结整页链接、QA 移动端适配）
 - AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Current blocker: `none`
 - Pending user confirmation: 部署新镜像后对 RAG 问答 LLM 全链路做运行级确认（T2/T3/T5/T6 开关/T7，见 `docs/testing/2026/09-09-rag-chat-testing.md` 裁决段）

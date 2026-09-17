@@ -111,6 +111,7 @@ model Conversation {
   title     String?
   createdAt Timestamptz @default(now()) @map("created_at")
   updatedAt Timestamptz @default(now()) @map("updated_at")
+  deletedAt Timestamptz? @map("deleted_at")
   messages  Message[]
 
   @@map("conversation")

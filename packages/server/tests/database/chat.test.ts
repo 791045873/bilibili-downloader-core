@@ -49,7 +49,7 @@ describe("chat conversations", () => {
     expect(await db.getConversation(99999)).toBeUndefined();
   });
 
-  it("deleteConversation 级联删除 messages", async () => {
+  it("deleteConversation 软删除：隐藏会话但保留 messages", async () => {
     const id = await db.createConversation();
     await db.insertMessage({ conversationId: id, role: "user", content: "hi" });
     await db.insertMessage({
@@ -63,9 +63,20 @@ describe("chat conversations", () => {
     await db.deleteConversation(id);
 
     expect(await db.getConversation(id)).toBeUndefined();
+    const list = await db.listConversations();
+    expect(list.some((c) => c.id === id)).toBe(false);
     const pool = internals(db).pool;
     const rows = await pool.query(`SELECT * FROM message WHERE conversation_id = $1`, [id]);
-    expect(rows.rows).toHaveLength(0);
+    expect(rows.rows).toHaveLength(2);
+  });
+
+  it("listConversations 排除已软删除会话", async () => {
+    const kept = await db.createConversation("kept");
+    const removed = await db.createConversation("removed");
+    await db.deleteConversation(removed);
+
+    const list = await db.listConversations();
+    expect(list.map((c) => c.id)).toEqual([kept]);
   });
 
   it("insertMessage / listMessages 保持写入顺序与字段", async () => {

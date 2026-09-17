@@ -57,6 +57,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 6. 会话与消息持久化在云端数据库，server 重启后历史完整可回看；发送失败可重试
 7. 响应式布局：桌面端为左侧会话列表 + 右侧聊天区双栏；窄屏（<768px）为单列，会话列表收进"会话列表"抽屉（可新建/切换/删除，选中后抽屉关闭，当前会话高亮），底部输入区避让软键盘与设备安全区，照片/发送控件在窄屏以图标呈现（触屏下回车换行、按钮发送；鼠标下回车发送、Shift+回车换行）
 8. 来源视频"AI 总结"：每条来源注脚（按 source 条目去重）在保留 B 站链接与技巧标题的同时，追加"AI 总结"整页入口；点击跳转 `/summary/:bvid/:cid`，整页展示该视频完整 AI 总结 Markdown（顶部元数据条 + 正文 + 截图，插图经 `/summary-files` 静态前缀）。总结按 `(bvid,cid)` 唯一定位 `ai_summary_task`；无记录/未完成/无输出文档/文件缺失时页面只报错，不做兜底或跳转。历史消息来源缺 `bvid/cid` 时不渲染该入口
+9. 会话删除为**软删除**：`DELETE /api/chat/conversations/:id` 仅写 `conversation.deleted_at`，不删除任何 `message`（全部保留供后续分析）；已删除会话从会话列表隐藏、对既有接口表现为不存在（404），不提供恢复入口。该会话的消息数据本次仅能通过直接查库读取，不提供分析读取接口
 
 ## Key Domain Objects
 

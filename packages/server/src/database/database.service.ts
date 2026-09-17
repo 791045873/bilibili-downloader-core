@@ -147,6 +147,8 @@ export interface ConversationRecord {
   title?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** 软删除标记：非空表示已删除（数据保留，供后续分析） */
+  deletedAt?: string;
 }
 
 export interface ChatMessageRecord {
@@ -1585,17 +1587,19 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     return Number(created.id);
   }
 
-  /** 会话列表（按最近更新倒序） */
+  /** 会话列表（按最近更新倒序，排除已软删除） */
   async listConversations(): Promise<ConversationRecord[]> {
     const rows = await this.prismaDb.orm.public.Conversation
+      .where((m) => m.deletedAt.isNull())
       .orderBy((m) => m.updatedAt.desc())
       .all();
     return rows.map(mapConversationRow);
   }
 
+  /** 读取会话；已软删除视为不存在 */
   async getConversation(id: number): Promise<ConversationRecord | undefined> {
     const row = await this.prismaDb.orm.public.Conversation
-      .where({ id: BigInt(id) })
+      .where({ id: BigInt(id), deletedAt: null })
       .first();
     return row ? mapConversationRow(row) : undefined;
   }
@@ -1608,9 +1612,11 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     });
   }
 
-  /** 删除会话（messages 经 FK ON DELETE CASCADE 级联删除） */
+  /** 软删除会话：仅写 deleted_at，消息数据全部保留（供后续分析） */
   async deleteConversation(id: number): Promise<void> {
-    await this.prismaDb.orm.public.Conversation.where({ id: BigInt(id) }).delete();
+    await this.prismaDb.orm.public.Conversation
+      .where({ id: BigInt(id), deletedAt: null })
+      .update({ deletedAt: Temporal.Instant.fromEpochMilliseconds(Date.now()) });
   }
 
   /** 插入消息，返回自增 id */
@@ -1653,12 +1659,14 @@ function mapConversationRow(row: {
   title: string | null;
   createdAt: unknown;
   updatedAt: unknown;
+  deletedAt: unknown;
 }): ConversationRecord {
   return {
     id: bigintToNumber(row.id),
     title: row.title ?? undefined,
     createdAt: toIsoString(row.createdAt) ?? undefined,
     updatedAt: toIsoString(row.updatedAt) ?? undefined,
+    deletedAt: toIsoString(row.deletedAt) ?? undefined,
   };
 }
 

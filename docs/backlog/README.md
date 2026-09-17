@@ -11,6 +11,19 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 ### 当前活跃项
 
 - Priority: P1
+- Item: QA 会话删除改为软删除
+- Requirement: `docs/requirements/2026-09-15-qa-chat-soft-delete.md`
+- Owner Doc: `docs/design/app-overview.md`
+- Plan: `docs/plans/2026-09-15-qa-chat-soft-delete-plan.md`
+- Status: `in-progress`（保护区数据删除；用户已确认实施；contract/迁移/数据层/测试/typecheck/build 完成；保护区 closure 评审待人工）
+- AI Autonomy: `plan-first`（保护区 `ask-first`：数据删除）
+- Blocker: `保护区 closure 评审需人工/子代理（reviewer availability=none，禁止 cold-replay 代替）`
+- Next: 人工/子代理 closure 评审 → 闭合；部署新镜像时容器 `db init` 自动应用 additive 列
+- Last Checked: `2026-09-15`
+
+### 进行中（未闭合）：QA 来源视频 AI 总结整页链接
+
+- Priority: P1
 - Item: QA 回答来源视频增加"AI 总结"整页链接
 - Requirement: `docs/requirements/2026-09-15-qa-source-summary-link.md`
 - Owner Doc: `docs/design/app-overview.md`

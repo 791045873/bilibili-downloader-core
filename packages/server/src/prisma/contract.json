@@ -549,6 +549,13 @@
                   "kind": "scalar"
                 }
               },
+              "deletedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-temporal@1",
+                  "kind": "scalar"
+                }
+              },
               "id": {
                 "nullable": false,
                 "type": {
@@ -592,6 +599,9 @@
               "fields": {
                 "createdAt": {
                   "column": "created_at"
+                },
+                "deletedAt": {
+                  "column": "deleted_at"
                 },
                 "id": {
                   "column": "id"
@@ -1601,6 +1611,11 @@
                   "nativeType": "timestamptz",
                   "nullable": false
                 },
+                "deleted_at": {
+                  "codecId": "pg/timestamptz-temporal@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
                 "id": {
                   "codecId": "pg/int8@1",
                   "default": {
@@ -2097,7 +2112,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "4daf8a58243f35a1d81665ef33d8b16c64d221410cfdb23f7902f1af4cff0acb"
+    "storageHash": "6bb52ad1917bae5bd3dc5986529f5a348e2789da536828b0083d35b3dc485702"
   },
   "capabilities": {
     "postgres": {
