@@ -42,7 +42,7 @@
 | 完整性检查 / 修复需读本地 md 与截图 | `summary-integrity.service.ts:105-119`；`summary-repair.service.ts:134-146` |
 | 数据库已经是云端阿里云 RDS；用户照片已存 COS | `docs/architecture/system-baseline.md:33,64-65`；`docs/design/app-overview.md:104` |
 | 既有讨论已识别"上云后 md 应改为从 raw_response 实时渲染""rebuild 云端无视频不可用" | `docs/discussions/2026-08-21-summary-cloud-knowledge-base.md:56,61-65,277-278` |
-| 部署属保护区（`ask-first`） | `docs/context/ai-autonomy-policy.md:62` |
+| 部署属保护区（`ask-first`） | `docs/context/ai-autonomy-policy.md:63` |
 
 ---
 
@@ -56,7 +56,7 @@
 
 ### 3.2 被耦合挡住、必须改造的部分
 
-1. **没有持久化作业队列。** 下载与低清下载调度都在内存（`download-scheduler.ts:30-42`），通过进程内回调驱动分析（`analysis-trigger.service.ts:86-171`）。跨主机后，云端下单、NAS 执行必须有 DB 队列或 RPC 边界；内存队列和回调语义全部失效。
+1. **缺少统一的持久化作业队列。** 高清下载已有持久化认领（`task` 行 `created → downloading` 守卫 UPDATE，`database.service.ts:586-609`），但并发槽位、低清队列（`download-scheduler.ts:30-33,220-291`）与下载完成→分析的触发回调（`analysis-trigger.service.ts:86-171`）都在进程内。跨主机后，云端下单、NAS 执行必须有统一 DB 队列或 RPC 边界；内存槽位与回调语义失效。
 2. **存在同步跨进程降级。** `AnalysisVideoResolver.resolve` 会在分析链路里**同步**下载一个视频（`analysis-video-resolver.ts:270-315`）。若分析编排在云、下载在 NAS，这个同步调用无法工作，必须改成异步作业 + 状态机。
 3. **云侧读接口直接读 NAS 磁盘。** `GET /api/summary-tasks/:id/markdown`、`by-resource/:bvid/:cid/markdown`、`/summary-files/*` 静态挂载、COS 发布、完整性与修复，都从 `DOWNLOAD_ROOT/summary/` 读 md / 截图（`main.ts:24-27`、`knowledge-publisher.service.ts:123-138`、`summary-integrity.service.ts:105-119`、`summary-repair.service.ts:134-146`）。云侧若没有这些文件的副本，这些接口会退化到 404。
 4. **vision-proxy 与本地路径绑定。** 分析把本地媒体路径当 `video_url` 传给代理（`analysis-engine.ts:164`），代理必须在文件所在主机。云端要跑分析，要么把多模态调用留在 NAS worker，要么让云端经网络调用 NAS 的代理，要么把低清视频上传到云/COS。
@@ -136,7 +136,7 @@
 - `summary` / `summary_segment`（知识发布后才有）：云端知识表，`summary.raw_response` + 每段 `summary_segment`（含 `screenshot_url`、embedding）。
 - `ai_summary_task.summary_output`：本地 md 的**相对路径**，不是内容。
 
-**md 是派生产物**：`generateMarkdown`（`document-generator.ts:36-67`）由 raw_response + 视频元数据 + 按序号命名的截图 `screenshots/segment-N.jpg` **确定性**生成。所以：
+**md 是派生产物**：`generateMarkdown`（`document-generator.ts:36-67`）由 raw_response + 视频元数据 + 按序号命名的截图（实际为 `${filenamePrefix}-frame-${i}.jpg`，如 `screenshots/segment-0-frame-0.jpg`，见 `ffmpeg-screenshot.ts:91`）**确定性**生成。所以：
 - **云端读取侧可以不再读 NAS 的 md 文件，改为从 DB 渲染**（raw_response 或 summary+segments）。这正是既有讨论 `2026-08-21...:277` 的建议。
 - **但不能把本地 md 文件整体去掉**：用户要求完整性检查 / 重建 / 修复留在 NAS，它们都以本地 md 与截图为准（`summary-integrity.service.ts:105-119`、`summary-repair.service.ts:134-146`、`analysis-task.controller.ts:252-271`）。
 - 三个需要处理的细节：md frontmatter 的 `createdAt` 需用 DB 时间近似；图片地址需用 `summary_segment.screenshot_url`（COS）；未发布（`knowledge_status` 非 synced）的总结在云端没有图片可渲染。
@@ -145,7 +145,7 @@
 
 ### 8.3 `/summary-files` 是做什么的？
 
-它是把 `DOWNLOAD_ROOT/summary/`（`paths.service.ts:47-49`）静态挂到 URL 前缀 `/summary-files`（`main.ts:24-27`、`summary-dir.ts:14`）。用途：让**浏览器能加载总结 md 里内嵌的本地截图**。`renderSummaryMarkdown` 会把 md 中的相对图片链接 `screenshots/segment-N.jpg` 重写成 `/summary-files/<目录>/...`（`analysis-task.controller.ts:269`、`summary-dir.ts:142-171`）。
+它是把 `DOWNLOAD_ROOT/summary/`（`paths.service.ts:47-49`）静态挂到 URL 前缀 `/summary-files`（`main.ts:24-27`、`summary-dir.ts:14`）。用途：让**浏览器能加载总结 md 里内嵌的本地截图**。`renderSummaryMarkdown` 会把 md 中的相对图片链接 `screenshots/segment-0-frame-0.jpg` 重写成 `/summary-files/<目录>/...`（`analysis-task.controller.ts:269`、`summary-dir.ts:142-171`）。
 
 关键事实：COS 发布时会把本地 md 里的相对图片链接**原地改写成 COS 公网 URL**（`knowledge-publisher.service.ts:183-187`）。因此：
 - **已发布**的总结，图片本来就已从 COS 加载，`/summary-files` 不是必需。
@@ -308,16 +308,18 @@
 | 侧 | 组件 | 存在的唯一理由 | 输入形态 |
 | --- | --- | --- | --- |
 | NAS | **vision-proxy**（保留原名） | 模型读不到 NAS 文件系统，需经 DashScope Python SDK 把**本地路径**转成模型可读消息 | 本地视频/图片路径 |
-| 云端 | **多模态直连客户端**（不叫 proxy，不新增服务/容器） | 图片已在 COS 有公网 URL，模型可自行抓取 | COS 公网 URL |
+| 云端 | **OpenAI Node SDK 直连客户端**（不是 proxy，不新增服务 / 容器） | 图片已在 COS 有公网 URL，模型可自行抓取；无需 DashScope | COS 公网 URL |
 
 结论：**NAS 的代理保留且不可替代**（本地路径能力只有它有）；云端只是在既有 server 内用 URL 直连模型，不新增独立组件。二者职责不同，命名必须区分。
 
 前置条件与已确认项：
 
-1. **已确认（人工，2026-09-17）**：多模态端点支持 URL 形态图片，云端可直连，无需代理中转。此项不作为待验证项。
-2. **代码改造**：`QwenClient` 需支持两种模式——**URL 直连**（云端）与**经代理**（NAS 本地路径），替代当前"凡多模态必走代理"（`qwen-client.ts:143-161`）。这是唯一确定的实现工作。
-3. **URL 可达性**：COS 必须是模型提供方可匿名抓取的公网 URL（与 `TENCENT_COS_PUBLIC_URL_PREFIX` 语义一致），注意签名 URL 的过期问题；否则模型抓不到图。
-4. 保留 `assertNoBase64MediaUrls` 约束（`qwen-client.ts:110-125`）：云端同样只用 URL，不传 Base64。
+1. **已确认（人工，2026-09-17）**：调用方式由 DashScope 改为 **OpenAI 官方 Node.js SDK**（`openai` 包）；**所用模型、调用的端点（同一私有 MaaS 工作区）、相应配置都不变**。即以同一端点的 OpenAI 兼容面（`chat.completions`）替代原 Python 代理的 `MultiModalConversation` 调用，而非更换模型或提供方。
+2. **前提**：该 MaaS 端点须暴露 OpenAI 兼容的 `/chat/completions`（含 `image_url`）。OpenAI SDK 的 `baseURL` 用其兼容基址（与现有原生基址 `.../api/v1` 可能路径不同），属配置细节。
+3. **代码改造**：云端引入 `openai` 依赖，替代 `QwenClient` 对 `visionProxyUrl` 的强制依赖（`qwen-client.ts:143-161`）；需处理 DashScope 专有参数 `enable_thinking`（OpenAI SDK 无此参数）与 `response_format` 差异。
+4. **NAS 本地视频仍需 Python 代理**：OpenAI SDK 不接受本地文件路径（`file://` 或磁盘路径），而视频分析送的是本地视频。只要视频仍留在 NAS，就需要 vision-proxy 这条本地文件通道；除非改为上传 / 抽帧，否则 NAS 不能改用 OpenAI SDK。因此本裁决在云端可无损落地，在 NAS 视频路径上不适用。
+5. **URL 可达性**：COS 必须是模型提供方可匿名抓取的公网 URL（与 `TENCENT_COS_PUBLIC_URL_PREFIX` 语义一致），注意签名 URL 的过期问题；否则模型抓不到图。
+6. 保留 `assertNoBase64MediaUrls` 约束（`qwen-client.ts:110-125`）：云端同样只用 URL，不传 Base64。
 
 ### 11.3 截图策略：本地已下载、高清优先
 
