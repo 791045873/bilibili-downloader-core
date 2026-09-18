@@ -30,6 +30,23 @@
 8. **vision-proxy / LLM 调用角色**：NAS 保留 vision-proxy（本地视频必须经 DashScope Python SDK 读取本地路径）；云端把调用方式改为 **OpenAI 官方 Node.js SDK**（`openai` 包）走同一端点的 OpenAI 兼容面，**所用模型、端点、配置均不变**（人工裁决，2026-09-17：只换调用方式，不换模型 / 端点 / 配置）。
 9. **截图策略**：**本地已下载高清优先**；缺失时在 NAS 下载高清后再截图。送 LLM 分析仍用低清优先。
 
+## Supersedes
+
+- `docs/requirements/2026-09-07-summary-integrity-check.md`：其 Non-Goals 明确"不检查视频文件本体、不检查 COS 对象"，本草案 Q5 将二者纳入判据 → **取代其判据范围**。
+- `docs/requirements/2026-08-24-cos-summary-knowledge-publish.md`：其"影子双写 + `knowledge_status` + 独立发布"设计，被本草案"分析内联写云 DB + 直传 COS"取代；`knowledge_status` / `knowledge_error` 去留见清理项。
+- `docs/requirements/2026-09-01-knowledge-backfill.md`：历史回填已由用户手动完成，本草案**不再实施该子系统**。
+- `docs/requirements/2026-09-04-summary-output-relative-path.md`、`2026-09-09-outputfile-relative-anchor.md`：其"相对 `DOWNLOAD_ROOT` 锚点"仍是 **NAS 侧约定**；云端读取不再 join 媒体路径，属对既有语义的收窄，不推翻锚点本身。
+- `docs/architecture/2026-07-06-video-analysis-baseline.md`：其"所有部署形态均需 `QWEN_VISION_PROXY_URL`、无公网 URL 直连"被"云端 OpenAI SDK 直连（NAS 仍经代理）"取代 → 需人工批准更新 owner doc。
+
+## Owner-Doc Deltas
+
+- `docs/design/app-overview.md`：`/summary-files`（:36、:59、:88、:107）、删除语义"只删 DB 不动磁盘 / COS"（:38、:46、:90）、markdown 从本地文件读取、`rebuild` 语义、完整性检查判据、Integration Points 相关行。
+- `docs/architecture/system-baseline.md`：Runtime Shape（新增 worker / api 两角色）、Deployment Shape（两镜像）、External Platforms（云端 OpenAI SDK）。
+- `docs/architecture/module-boundaries.md`：vision-proxy 职责（云端直连 vs NAS 代理）、新增 worker 边界。
+- `docs/architecture/2026-07-06-video-analysis-baseline.md`：:40、:69 的"强制代理 / 无直连"表述。
+- `docs/design/feature-inventory.md`：知识发布、完整性检查、rebuild 等状态更新。
+- `docs/context/codebase-map.md`：新增 worker / 作业表 / 用户系统入口。
+
 ## Architecture Invariants（架构不变量）
 
 - **NAS 仅出站**：NAS 只发起对云 DB、COS、模型服务的出站连接；云端永不拨入 NAS。任何"云主动调 NAS"的需求须重新评审（届时才考虑反向隧道）。
@@ -119,18 +136,31 @@
 - **截图源顺序**：本地已下载高清优先 → 缺失时 NAS 下载高清 → 仍不可得时远端流截图兜底；降级须显式标记。送 LLM 分析仍用低清优先。
 - **触发与执行分离**：云端只写作业；执行、磁盘校验、ffmpeg 可用性判断在 NAS。
 - **不变量优先**：任何方案不得引入云端对 NAS 的入站调用。
+- **B站接口调用最小化**：B站接口调用尽量集中在云端（解析 / 触发阶段）；NAS 只保留执行下载所必需、且因时效无法提前解析的调用，并用进程内内存缓存减少重复。**结论（已定）**：非下载类解析全部前移云端；持久化 `task.resource_type`；创作者 mid / 提示词解析在云端完成并随作业负载下发；NAS 仅剩 **playurl 与字幕** 两类下载固有调用（均不可缓存 / 时效敏感）。不引入云端 B站网关。
 
 ## Roles / Permissions
 
-- 当前为单用户工具，无角色 / 权限系统。
-- **对外访问将涉及鉴权 / 限流**（受保护区域），本草案不定义具体方案；如公开运营需另立需求（owner doc + 测试）。
+- **引入小用户系统（auth 保护区，需独立 owner doc + 测试）**：
+  - 角色：`admin`（内置）与 `user`（普通）。
+  - **写操作仅 admin**：下载/分析触发、删除、重建/重试截图、完整性检查、设置/提示词管理、任务/总结管理。
+  - **普通用户仅 QA 问答**：创建/查看/删除自己的会话、上传照片、发送消息；以及 QA 回答来源所需的"AI 总结"整页读取（按 `(bvid,cid)`）。
+  - 其余读接口（下载列表、总结任务列表、设置等）仅 admin。
+- **NAS↔云服务身份**：NAS 不调云端业务 API；直连云 DB 用**独立最小权限 DB 角色**、直连 COS 用专用密钥。无需服务令牌。
+- **限流**：本期不做（用户明确先不考虑），保留为后续可选。
+- 备注：auth 属保护区域（`plan-first`），reviewer availability = `none` 时实现保持 blocked，需人工/子代理评审。
 
 ## Data / Model Impact（需 Prisma contract + migration）
 
 - 新增作业抽象（新表或扩展现有表，见 Open Questions）与 `worker_heartbeat`。
 - `ai_summary_task`：`summary_output` 去留，`knowledge_status` / `knowledge_error` 去留，完整性三列语义变更（判据从"本地 md/截图"改为"云端记录 ↔ NAS 视频 / COS 可达"）。
+- **B站登录 Cookie（建议待裁决）**：真源由 NAS 本地文件迁至**云数据库**（`app_settings` 是云 PostgreSQL 里的一张 key/value 表，见 `contract.prisma:102-107`、`database.service.ts:738-760`，**不是云服务器本地目录**；可复用它或新建专用 `bili_auth` 表存 cookie JSON + `updated_at` + `mid`）。各主机读取并物化为本地文件 / 内存串。登录由云端 API 承接并写库；NAS worker 需支持**运行时刷新**（现状为启动时加载一次：`parse.service.ts:50-56`、`download.service.ts:108-114`，且登录后 `ParseService` 的客户端不会自动刷新）。
+- **B站接口缓存（已定）**：云端保留 `FileCacheStore`（每缓存项一个本地 JSON 文件，`cacheStore.ts:64-81`）；**NAS 不保留磁盘缓存**——SDK 客户端不传 `cacheStore` 时默认使用 `MemoryCacheStore`（`client.ts:106-108`），即进程内缓存、无磁盘文件。
+  - 依据：NAS 的 B站调用主要是 playurl 解析，而 playurl **明确不缓存**（`cacheStore.ts:203-209`）；其余可缓存调用（`getVideoInfo`、字幕列表）频率低，磁盘缓存收益边际。
+  - 注意：NAS 并非"只传字节"，仍会调用 B站接口——下载需 info + playurl + 字幕列表；分析触发需 `getVideoInfo` 取创作者 mid（`analysis-trigger.service.ts:334`）；远端截图兜底需 playurl（`analysis-video-resolver.ts:182,253`）。**已定**：mid / 提示词解析移到云端触发阶段，解析好的 `promptId` 随作业负载下发，NAS 不再为此调 B站接口。
+- **`task.resource_type`（前移解析，已定）**：新增列（或随下载作业负载下发）存 `ResourceType`，云端创建任务时写入；NAS 执行时直接使用，免去执行期 `resourceParser.parse` 的 B站调用。现状任务只带 bvid、parse 仅实现 video/user-space/ugc-season/favorites，实践中基本恒为 `video`，落字段主要为番剧 / 课堂留路。
 - **截图完备性表示**：可由 `summary_segment.screenshot_url` 派生（全部非空 = 完整；部分为空 = 部分缺失），或新增 `image_status` 列；供前端展示与"重试截图"入口（实现时定）。
 - 删除 / 重总结的级联语义（`summary` / `summary_segment` / COS 截图）。
+- **用户系统（auth 保护区）**：新增 `user` 表（`id/username/password_hash/role/created_at/updated_at`）；`conversation` 新增 `user_id` 外键（QA 会话按用户隔离）。需独立需求与计划。
 - 所有变更须走 `contract → emit → migration plan → db migrate`，additive 优先；删除列属数据保护区，需人工批准。
 
 ## API / Integration Impact
@@ -162,22 +192,24 @@
 
 1. ~~COS 成功是否为分析完成的必要条件？~~ 已修订：`completed` = **内容完备**（分析文本入云 DB），截图入 COS 不阻塞完成且可独立手动重试（见 Q1）。
 2. ~~远端流截图：移除还是保留兜底？~~ 已确认：**保留为兜底**（见 Q2）。
-3. **作业载体**：新建通用 `job` 表，还是扩展现有 `task` / `analysis_sub_task`？租约 / 心跳字段如何设计？
-4. **raw_response 权威表**：以 `summary` 为准，`ai_summary_task` 仅存状态与原始返回？是否合并？
-5. **完整性检查新语义的精确判据与报告格式**（检查项、verdict 取值、是否允许自动/定时）。
-6. **角色拆分形态**：同一镜像以 `ROLE` 环境变量区分，还是拆为独立镜像 / 包？
-7. **轮询间隔与是否引入 MQ**（实时性要求）。
-8. **未发布 / 失败总结在云端是否必须可读**（影响 DB 渲染兜底范围）。
-9. **历史回填范围与时机**（存量总结数量、截图回填窗口）。
-10. **删除 / 重总结级联**：COS 截图是否随记录删除；`summary_segment` 与向量的级联。
-11. **对外访问鉴权 / 限流**（受保护区域，若公开运营需另立需求）。
+3. ~~作业载体~~ 已确认：**新增通用 `worker_job` 表**（字段清单见建议答案 Q3）；`task` / `analysis_sub_task` 继续作业务真源。
+4. ~~raw_response 权威表~~ 已确认（见 Q4）：`summary` + `summary_segment` 为消费权威；`ai_summary_task.raw_response` 为恢复 / 重建源；错误只写 `error_message`，`raw_response` 只放模型输出。
+5. ~~完整性检查新语义的精确判据与报告格式~~ 已确认（见 Q5）：分内容 / 截图 / 视频三类报告，严重度区分。
+6. ~~角色拆分形态~~ 已确认：**两个镜像**（云端 `server-api` / NAS `server-worker`），同代码库。
+7. ~~轮询间隔与是否引入 MQ~~ 已确认：**先 DB 轮询**（3–5s，带退避 / 抖动），后续可加 PostgreSQL `LISTEN/NOTIFY`；不引入 MQ。
+8. ~~未发布 / 失败总结在云端是否必须可读~~ 已确认（见 Q8）：仅 `completed` 可读；`completed` 仅保证内容完备，图片可缺省并重试。
+9. ~~历史回填范围与时机~~ **已由用户手动完成，本期不再实施回填**（保留能力，不作为 Phase 1 门控）。
+10. ~~删除 / 重总结级联~~ 已确认（见 Q10）：删除 `summary` 级联 segments + 异步清 COS 前缀；重总结原地 upsert + 删尾行 + 文本变更清向量。
+11. ~~对外访问鉴权~~ 已确认（见 Q11）：两个层面——NAS↔云用最小权限服务身份（无云端业务 API 令牌）；前端访问用**小用户系统 + 内置 admin**，仅 admin 可写，普通用户仅 QA 问答。属 auth 保护区，需独立 owner doc + 测试。**限流本期不做。**
 12. ~~云端 LLM 提供方 / 模型~~ 已确认：**仅换调用方式（OpenAI Node SDK），模型 / 端点 / 配置不变**。剩余细节：该端点的 OpenAI 兼容基址路径（现原生基址为 `.../api/v1`），以及 `enable_thinking` / `response_format` 在新 SDK 下的替代与语义。
 13. ~~NAS 视频分析是否迁离 DashScope~~ 已定（技术必然）：本地视频不属 OpenAI SDK 能力范围，NAS 分析继续经 vision-proxy。
 14. ~~Embedding 是否更换~~ 已定：embedding 本就走独立的 OpenAI 兼容客户端（`EmbeddingClient`，`embedding.service.ts:58-63`），本次**不动**，无向量重算。
+15. ~~Cookie 真源与登录流程归属~~ 已确认（见 Q15）：登录在云端，写 `app_settings`；NAS 物化 + 版本刷新。**补充（用户）：除扫码登录自动提取 cookie 外，支持用户手动粘贴 cookie。**
+16. ~~是否为 NAS 的 B站读接口引入云端网关~~ **已定：不引入网关，采用"前移解析 + 持久化 `resource_type`"。** 云端在创建任务时解析并落库资源类型（`ResourceType`，`ResourceParserPort.ts:35-42`），NAS 下载执行时直接读取以构造 `resolveStreams`，免去执行期 `resourceParser.parse`（`download.service.ts:528-534`）。结论：NAS 仅保留 playurl 与字幕两类下载固有 B站调用（均不可缓存 / 时效敏感）；未来若出现可缓存的 B站读需求，再评估网关（需服务鉴权，属保护区）。
 
-## 建议答案（AI 提案，待人工裁决）
+## 裁决记录（Decisions Log，2026-09-17）
 
-> 以下为 AI 建议，**不构成裁决**；涉及数据模型、契约、删除、部署的项需人工确认后才能进入计划。
+> 全部 Q1–Q16 已裁决。以下为裁决与理由留档；其中早期"建议"字样仅表示当时为提案，现已定案。
 
 **Q1. `completed` 的定义？截图是否阻塞完成？—— 已确认（2026-09-17 修订）。**
 - 裁决：`completed` 表示**分析任务结束，且最终分析结果（文本内容）已完整、正确地存储到云 DB**（`summary` + `summary_segment` 文本与元数据齐全）。**截图是否进入 COS 不阻塞 `completed`**，作为独立、可手动重试的事项。
@@ -190,15 +222,52 @@
 - 建议采集顺序：**本地已下载高清 → （缺失时）NAS 下载高清 → （仍不可得时）远端流截图兜底**；每次降级在结果与日志中显式标记原因。
 - 成本提示：为截图而重下高清体积较大；若"仅分析、未下载"的资源较多，可再评估是否把远端兜底提前或主要依赖远端兜底（待观察）。
 
-**Q3. 作业载体：新表还是扩展现有表？**
-- 建议：**新增通用 `worker_job` 表作为执行队列**（`kind`、`ref_type`/`ref_id`、`status`、`attempts`、`lease_owner`、`lease_expires_at`、`payload`、`result`、`error`、时间戳）；`task` / `analysis_sub_task` 等继续作为**业务状态真源**，不搬移语义。
-- 理由：统一认领/租约/心跳一个入口；`rebuild`/`integrity`/`retrigger` 本无归属表；避免把业务状态复制进队列造成双写。
-- 备选（最小改动）：仅给大作业（rebuild/integrity）建 job 表，下载继续用 `claimNextCreatedTask`；代价是两套触发语义。
+**Q3. 作业载体：新表还是扩展现有表？—— 已确认：新增 `worker_job` 表。**
+- 决策：新增通用 `worker_job` 表作统一执行队列；`task` / `analysis_sub_task` 等继续作为**业务状态真源**。
+- 建议字段清单（力求完备，供确认）：
+
+| 字段 | 类型 | 用途 |
+| --- | --- | --- |
+| `id` | bigserial PK | 作业标识 |
+| `kind` | text | download / low_res_download / analyze / rebuild / screenshot_retry / integrity_check / cos_cleanup |
+| `queue` | text | 目标消费者（默认 `nas`；`cos_cleanup` 可为 `api`），用于路由 |
+| `ref_type` / `ref_id` | text? / bigint? | 关联领域行（task / ai_summary_task / summary） |
+| `dedup_key` | text? | 防重复：同一逻辑工作的**活跃**作业唯一（部分唯一索引） |
+| `status` | text | queued / leased / running / succeeded / failed / canceled |
+| `priority` | int | 排序 |
+| `attempts` / `max_attempts` | int | 重试控制 |
+| `available_at` | timestamptz | 退避 / 定时可执行时间 |
+| `lease_owner` | text? | 认领的 worker 标识 |
+| `lease_expires_at` | timestamptz? | 租约到期（reaper 回收） |
+| `heartbeat_at` | timestamptz? | 最近心跳（观测） |
+| `payload` | jsonb | 作业输入（promptId、bvid/cid、force 等；不放密钥） |
+| `result` | jsonb? | 作业输出摘要 |
+| `last_error` | text? | 最近错误 |
+| `cancel_requested` | bool | 取消请求（运行中 worker 在安全点检查） |
+| `created_at` / `updated_at` / `started_at` / `finished_at` | timestamptz | 审计与观测 |
+
+- 配套：worker 存活单独用 `worker_heartbeat`（`worker_id` / `role` / `last_seen_at` / `meta`），与作业租约分离。
+- **租约 / 心跳机制（`lease_expires_at` + `heartbeat_at`）**：
+  1. worker 认领作业时写 `lease_owner=<自己>`、`lease_expires_at=now()+TTL`（如 60s），表示这段时间独占该作业；
+  2. 执行期间由**独立定时器**（不能阻塞在下载里）定期续期：更新 `heartbeat_at=now()` 并把 `lease_expires_at` 推后（如每 20s）；
+  3. worker 崩溃 → 心跳停止 → 租约到期；
+  4. **reaper**（云端或任一 worker）扫描 `status=running/leased` 且 `lease_expires_at<now()` 的作业，重置为 `queued`（`attempts++`），供重新认领。
+  - 目的：防止崩溃 worker 让作业永久卡在 running。
+  - 约束：TTL 明显大于心跳间隔（约 3 倍余量）。
+  - 语义：作业为**至少一次**（可能重复执行），故每个 handler 必须幂等（下载"文件存在即跳过"、COS 同 key 覆盖、DB upsert）。
+  - 字段取舍：`lease_expires_at` 为正确性必需；`heartbeat_at` 为观测性字段（可由 `lease_expires_at - TTL` 推导），建议保留以便排障。
+  - 与 `worker_heartbeat` 区分：后者是 **worker 级**存活（UI 显示"NAS 在线"），前者是**作业级**存活。
+- 理由：统一认领 / 租约 / 心跳入口；`rebuild`/`integrity`/`screenshot_retry` 本无归属表；避免把调度字段混入领域表。代价是双写，由"创建领域行时同事务插入 job、完成时同事务更新两者"缓解。
+- 分阶段：Phase 2 先给动作类作业用 job 表；下载可暂时沿用 `claimNextCreatedTask`，稳定后再迁移。
 
 **Q4. `raw_response` 权威表？**
-- 建议：**双表并存、职责分离**：`ai_summary_task.raw_response` = 恢复 / 重建源（不用于渲染）；`summary` + `summary_segment` = 面向消费与 RAG 的权威内容源。
+- 建议：**双表并存、职责分离**：`ai_summary_task.raw_response` = 分析记录 + 恢复 / 重建源（不用于渲染）；`summary` + `summary_segment` = 面向消费与 RAG 的权威内容源。
 - 理由：`summary_segment` 本就是检索必需；`ai_summary_task` 承载生命周期与完整性列。避免第三份拷贝。
-- 风险：两处 raw_response 可能漂移；需由管线在同一事务/同一步骤写入并由计划定义校验。
+- **错误信息与 `raw_response` 分离（无需新增列）**：`ai_summary_task.error_message` 已存在（`contract.prisma:32`）。修的是**行为**——失败时不得再把错误写进 `raw_response`（现状 `analysis-trigger.service.ts:534`）。语义：
+  - LLM 成功、后续步骤失败 → `status=failed`，`raw_response`=模型 JSON，`error_message`=失败原因；
+  - LLM 本身失败 → `status=failed`，`raw_response`=NULL，`error_message`=错误。
+  - 即 `raw_response` **永远只放模型输出**；`summary.raw_response`（jsonb）同样只接受合法模型 JSON。
+- 风险：两处 raw_response 可能漂移；需由管线在同一事务 / 同一步骤写入，并由完整性检查加一致性校验。
 
 **Q5. 完整性检查新判据与报告格式？**
 - 建议：范围 = 全部 `completed` 的 `ai_summary_task`；分三类检查并分别报告：
@@ -224,7 +293,8 @@
 - 理由：保持现有错误语义与前端契约；避免为失败态设计额外展示分支。
 
 **Q9. 历史回填范围与时机？**
-- 建议：回填全部 `completed` 且 `raw_response` 非空、截图尚未入 COS 的记录；**先计数后执行**，校验 COS 可达与 segment 入库；**回填验证通过前不删除本地文件**（本地只读备份）。
+- 建议：回填两类内容——① **内容**：对 `completed` 但缺 `summary` / `summary_segment` 的历史记录，用 `ai_summary_task.raw_response` 生成并写入 `summary` + segments（`completed` 新定义要求内容入库）；② **截图**：已有本地截图的上传 COS 并回写 `screenshot_url`，本地截图缺失的标记为待"重试截图"。
+- **先计数后执行**，校验 COS 可达与 segment 入库；**回填验证通过前不删除本地文件**（本地只读备份）。
 - 时机：Phase 1 内作为门控项，不阻塞开发但阻塞"下线本地文件"。
 
 **Q10. 删除 / 重总结级联？（含术语解释）**
@@ -237,10 +307,51 @@
 - COS key 按真实文件名 `segment-{segIdx}-frame-0.jpg`（`ffmpeg-screenshot.ts:91`），未变段无需重传；多余旧 key 交由清理作业回收。COS 层当前**无 list / delete 能力**（`cos-store.service.ts` 仅 `upload`/`uploadBuffer`/`publicUrl`），清理作业需新增封装。
 - 注意：这是行为变更 + 数据删除保护区，需人工批准与测试。另需决定：引用该总结的历史 QA 消息来源链接在删除后应表现为 404（当前"无记录即报错、不兜底"语义可复用）。
 
-**Q11. 对外访问鉴权 / 限流？**
-- 建议：**最小可行 = 全部写操作（触发下载/分析/重建/删除）必须鉴权**，读操作可后续收紧；先在反代层做共享令牌 / Basic Auth + 限流，再评估正式账号体系。
-- 理由：无鉴权公开写接口会导致 LLM 费用被滥用、磁盘被填满。
-- 备注：鉴权属保护区域，需独立 owner doc + 测试；本草案不定义具体方案。
+**Q11. 鉴权 / 限流？—— 已确认（两个层面）。**
+- **NAS↔云（服务间）**：NAS 不调云端业务 API；直连云 DB 用独立最小权限 DB 角色、直连 COS 用专用密钥，无需服务令牌。仅在将来引入云端 B站网关或反向隧道时才需服务级鉴权。
+- **前端→云端（用户侧）**：引入**小用户系统 + 内置 admin**；仅 admin 可写，普通用户仅 QA 问答。属 auth 保护区，需独立 owner doc + 测试。
+- **已确认的子决策（用户 2026-09-17 全部采纳）**：
+  1. **用户模型**：`user(id, username, password_hash, role, created_at, updated_at)`；role ∈ {admin, user}。建议独立表（不塞进 `app_settings`）。
+  2. **admin 引导**：内置 admin 首次启动由环境变量（如 `ADMIN_INITIAL_PASSWORD`）播种；不存在则创建，存在则不动。避免硬编码默认密码。
+  3. **普通用户来源**：建议**由 admin 创建/邀请**，不开放自助注册（个人工具更安全）；后续如需开放再评估。
+  4. **会话机制**：建议**服务端 session（HttpOnly Cookie）**或短时效 JWT；服务端 session 可吊销、实现简单。需与现有 B站 扫码登录 cookie 区分（两套 cookie，命名/路径隔离）。
+  5. **QA 会话归属**：`conversation` 需新增 `user_id`（外键），QA 会话按用户隔离（现状无归属，所有会话共享）。
+  6. **权限矩阵**：admin = 全部；user = QA（自己的会话 CRUD、照片上传、发消息）+ 按 `(bvid,cid)` 读"AI 总结"整页；其余接口（下载/总结管理、设置、提示词、重建、完整性）仅 admin。
+  7. ~~限流~~ 本期不做（用户明确先不考虑），保留为后续可选。
+- 备注：本项属 auth 保护区，需**独立需求与计划**（owner doc + 测试）；`reviewer availability=none` 时实现保持 blocked。
+
+**Q15. Cookie 真源、登录归属与 NAS 刷新机制？—— 已确认。**
+- 建议：
+  1. **登录（扫码）由云端承接**：前端访问云端 API，`AuthController` 的二维码/轮询/用户信息都在云端；确认登录后把 cookie 写入 `app_settings`（含 `updated_at` 版本）。
+  2. **支持手动粘贴 cookie（用户补充）**：除扫码自动提取外，提供入口让用户直接粘贴 cookie 字符串，校验后同样写入 `app_settings`（与扫码结果同源、同版本机制）。
+  3. **NAS 从云 DB 物化 cookie**：启动时读取并写本地 `COOKIE_FILE_PATH`（或直接内存串）；`DownloadService` 执行下载前按版本检查，变化则 `setCookieString` 重建/刷新 SDK 客户端（现状只在启动加载一次：`download.service.ts:108-114`；且登录后 `ParseService` 客户端不会自动刷新）。
+  4. **刷新触发**：每个下载/分析作业开始前比对 DB 的 `updated_at`，另加低频轮询（如 30–60s）兜底。
+- 理由：前端在云端、cookie 真源在云 DB，登录放云端最自然；NAS 只做出站读库 + 物化。
+- 备选：登录放 NAS（前端需经云端跳转到 NAS，破坏"NAS 仅出站"不变量，不推荐）。
+
+## Local-Copy Lifecycle
+
+顺序不可颠倒（先有替代读取，再停写，最后删除）：
+
+1. **落地云端 DB 渲染**（Phase 1a）：读取侧不再依赖本地 md / 截图。
+2. **内联发布**（Phase 1b）：分析结束即写云 DB + 直传 COS，`completed` 保证内容入库。
+3. **停止写入本地 md / 截图**（Phase 1b 之后）。
+4. **验证通过后删除本地副本**（Phase 4 清理）。
+- 历史回填已由用户手动完成；本地文件在验证通过前保留为只读备份。
+
+## Deployment / Config
+
+- **两个镜像**（同代码库）：`server-api`（云端：Node，无 ffmpeg / 无 Python）与 `server-worker`（NAS：Node + ffmpeg + vision-proxy）。建议以 `ROLE` / 入口区分。
+- **新增 / 变更配置**：`ROLE`、轮询间隔、租约 TTL、心跳间隔、worker 专用最小权限 `DATABASE_URL`（独立角色）、`ADMIN_INITIAL_PASSWORD`、云端多模态 SDK 配置（OpenAI 兼容 baseURL）、COS（截图存储）。
+- **vision-proxy 仅 NAS**；云端移除对 `QWEN_VISION_PROXY_URL` 的强制依赖。
+- **Cookie**：真源 `app_settings`；NAS 物化 `COOKIE_FILE_PATH` 并支持版本刷新。
+- **验证**：`pnpm docker:build`、`docker compose config`（经 `node compose.mjs config`）。
+
+## Testing / Observability
+
+- **测试**：数据层 vitest（作业表认领 / 租约、用户表与权限、删除级联、原地 upsert 与向量失效）；跨主机手工验证清单（NAS 离线排队、租约超时重领、COS 失败可重试、历史渲染兜底、角色路由白名单）。记录于 `docs/testing/`。
+- **观测**：作业积压 / 失败计数、worker heartbeat 在线态、租约回收日志、取消语义；日志经 `docs/server/src/logging/` allowlist。
+- 现状 E2E 为 `none`（`project-context.md`），跨主机路径必须手工验证。
 
 ## Acceptance Criteria
 
@@ -259,4 +370,7 @@
 
 ## Phasing Note
 
-本草案跨越部署、数据模型与多模块边界，**不应作为单一计划实施**。建议：人工确认后将 Phase 1（读取侧 + 单一真源）先行拆为独立需求与计划；Phase 2/3 作为架构需求另行评审；Phase 4 为清理切片。任何涉及部署与列删除的步骤须走保护区流程。
+本草案跨越部署、数据模型与多模块边界，**不应作为单一计划实施**。切片与顺序：
+- **Phase 1a** 已拆为独立可实现需求：`docs/requirements/2026-09-17-cloud-read-path-db-render.md`（纯读取侧 DB 渲染 + 云端不 join 媒体路径，无 schema、无删数据）。
+- **Phase 1b/2/3/4** 各自另立需求与计划；Phase 2/3 为架构需求另行评审。
+- 任何涉及部署与列删除的步骤须走保护区流程（人工 / 子代理批准；reviewer=none 时 blocked）。
