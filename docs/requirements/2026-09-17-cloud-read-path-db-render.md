@@ -1,6 +1,6 @@
 # 需求：总结读取侧改为从云 DB 渲染（Phase 1a）
 
-> 来源：拆自 `docs/requirements/2026-09-17-cloud-nas-responsibility-split.md`（Phase 1a）
+> 来源：拆自 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Phase 1a）
 > Owner Doc：`docs/design/app-overview.md`
 > 关联分析：`docs/analysis/2026-09-17-cloud-nas-split-feasibility.md`；审计：`docs/audits/2026-09-17-requirement-reaudit-cloud-nas-and-phase1a.md`
 > 保护区：无（不改数据模型、不删数据、不改部署、不涉 auth）。需 plan audit（reviewer=none 时非保护区可用 cold-replay）。

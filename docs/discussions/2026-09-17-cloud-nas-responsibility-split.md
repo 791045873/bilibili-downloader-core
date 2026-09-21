@@ -1,6 +1,6 @@
-# 需求草案：云端 / NAS 职责重划分与总结内容云端单一真源
+# 云端 / NAS 职责重划分与总结内容云端单一真源（设计讨论与裁决记录）
 
-> 状态：**草稿（draft）**，未激活。需人工确认并拆分为分阶段需求与计划后再实施。
+> 状态：**设计讨论 / 裁决记录（umbrella）**。实现按 Phase 拆分：Phase 1a 已实现就绪，见 `docs/requirements/2026-09-17-cloud-read-path-db-render.md`；Phase 1b/2/3/4 各自另立需求与计划。
 > 来源：2026-09-17 用户多轮讨论；分析依据 `docs/analysis/2026-09-17-cloud-nas-split-feasibility.md`
 > 拟 Owner Docs：`docs/design/app-overview.md`、`docs/architecture/system-baseline.md`、`docs/architecture/module-boundaries.md`
 > 保护区：部署（`ask-first`）、数据迁移 / 删除（`ask-first` / `plan-first`）。reviewer availability = `none`，closure 需人工或子代理评审。
@@ -168,7 +168,7 @@ packages/
 - **截图源顺序**：本地已下载高清优先 → 缺失时 NAS 下载高清 → 仍不可得时远端流截图兜底；降级须显式标记。送 LLM 分析仍用低清优先。
 - **触发与执行分离**：云端只写作业；执行、磁盘校验、ffmpeg 可用性判断在 NAS。
 - **不变量优先**：任何方案不得引入云端对 NAS 的入站调用。
-- **B站接口调用最小化**：B站接口调用尽量集中在云端（解析 / 触发阶段）；NAS 只保留执行下载所必需、且因时效无法提前解析的调用，并用进程内内存缓存减少重复。**结论（已定）**：非下载类解析全部前移云端；持久化 `task.resource_type`；创作者 mid / 提示词解析在云端完成并随作业负载下发；NAS 仅剩 **playurl 与字幕** 两类下载固有调用（均不可缓存 / 时效敏感）。不引入云端 B站网关。
+- **B站接口调用最小化**：B站接口调用尽量集中在云端（解析 / 触发阶段）；NAS 只保留执行下载所必需、且因时效无法提前解析的调用，并用进程内内存缓存减少重复。**结论（已定）**：非下载类解析全部前移云端；`resource_type` 随作业负载下发（不加列）；创作者 mid / 提示词解析在云端完成并随作业负载下发；NAS 仅剩 **playurl 与字幕** 两类下载固有调用（均不可缓存 / 时效敏感）。不引入云端 B站网关。
 
 ## Roles / Permissions
 
@@ -184,15 +184,15 @@ packages/
 ## Data / Model Impact（需 Prisma contract + migration）
 
 - 新增 `worker_job` 表（字段见 Q3）与 `worker_heartbeat` 表。
-- `ai_summary_task`：`summary_output` 去留，`knowledge_status` / `knowledge_error` 去留，完整性三列语义变更（判据从"本地 md/截图"改为"云端记录 ↔ NAS 视频 / COS 可达"）。
+- `ai_summary_task`：`summary_output` 去留，`knowledge_status` / `knowledge_error` 去留；**完整性列语义变更**：`integrity_status` 扩为 `complete` / `partial` / `missing`，`integrity_detail` 改为结构化 JSON（`contentMissing[]` / `screenshotMissing[]` / `videoMissing[]`），`integrity_checked_at` 不变。
 - **B站登录 Cookie（已定）**：真源为**云数据库的 `app_settings` 表**（云 PostgreSQL 的 key/value 表，见 `contract.prisma:102-107`、`database.service.ts:738-760`，**不是云服务器本地目录**），存 cookie JSON + `updated_at` 版本。各主机读取并物化为本地文件 / 内存串。登录（扫码或手动粘贴）由云端 API 承接并写库；NAS worker 需支持**运行时刷新**（现状为启动时加载一次：`parse.service.ts:50-56`、`download.service.ts:108-114`，且登录后 `ParseService` 的客户端不会自动刷新）。
 - **B站接口缓存（已定）**：云端保留 `FileCacheStore`（每缓存项一个本地 JSON 文件，`cacheStore.ts:64-81`）；**NAS 不保留磁盘缓存**——SDK 客户端不传 `cacheStore` 时默认使用 `MemoryCacheStore`（`client.ts:106-108`），即进程内缓存、无磁盘文件。
   - 依据：NAS 的 B站调用主要是 playurl 解析，而 playurl **明确不缓存**（`cacheStore.ts:203-209`）；其余可缓存调用（`getVideoInfo`、字幕列表）频率低，磁盘缓存收益边际。
   - 注意：NAS 并非"只传字节"，仍会调用 B站接口——下载需 info + playurl + 字幕列表；分析触发需 `getVideoInfo` 取创作者 mid（`analysis-trigger.service.ts:334`）；远端截图兜底需 playurl（`analysis-video-resolver.ts:182,253`）。**已定**：mid / 提示词解析移到云端触发阶段，解析好的 `promptId` 随作业负载下发，NAS 不再为此调 B站接口。
-- **`task.resource_type`（前移解析，已定）**：新增列（或随下载作业负载下发）存 `ResourceType`，云端创建任务时写入；NAS 执行时直接使用，免去执行期 `resourceParser.parse` 的 B站调用。parse 已实现全部 6 类（video / bangumi / cheese / favorites / user-space / ugc-season，见各 matcher 与 `resource-parser.ts`），故该字段对番剧 / 课堂等非 `video` 资源有实际意义，不可默认 `video`。
-- **截图完备性表示**：可由 `summary_segment.screenshot_url` 派生（全部非空 = 完整；部分为空 = 部分缺失），或新增 `image_status` 列；供前端展示与"重试截图"入口（实现时定）。
+- **`resource_type` 前移解析（已定，方案 B）**：云端创建任务时解析 `ResourceType`，**随下载作业负载（`worker_job.payload`）下发**；NAS 执行时直接使用，免去执行期 `resourceParser.parse` 的 B站调用。**不新增 `task.resource_type` 列**；若任务经其他路径执行而 payload 缺失，则由该路径**重新解析后下发**。parse 已实现全部 6 类（video / bangumi / cheese / favorites / user-space / ugc-season，见各 matcher 与 `resource-parser.ts`），故该类型对番剧 / 课堂等非 `video` 资源有实际意义。
+- **截图完备性表示（已定）**：由 `summary_segment.screenshot_url` **派生**（全部非空 = 完整；部分为空 = 部分缺失），**不新增 `image_status` 列**；供前端展示与"重试截图"入口。
 - 删除 / 重总结的级联语义（`summary` / `summary_segment` / COS 截图）。
-- **用户系统（auth 保护区）**：新增 `user` 表（`id/username/password_hash/role/created_at/updated_at`）；`conversation` 新增 `user_id` 外键（QA 会话按用户隔离）。需独立需求与计划。
+- **用户系统（auth 保护区）**：新增 `user` 表（`id/username/password_hash/role/created_at/updated_at`）；`conversation` 新增 `user_id` 外键（QA 会话按用户隔离），**存量会话统一归 admin**（迁移回填）。需独立需求与计划。
 - 所有变更须走 `contract → emit → migration plan → db migrate`，additive 优先；删除列属数据保护区，需人工批准。
 
 ## API / Integration Impact
@@ -202,6 +202,7 @@ packages/
 - **段 ↔ 截图结构化映射（审计 B3）**：`AnalysisEngine` 对外输出 `segments[].screenshotFiles`（现仅暴露扁平 `screenshotFiles`），内联发布按结构上传 COS 并记录 `screenshot_url`，不再从本地 md 反解。
 - `POST /api/summary-tasks/:id/rebuild` 语义收窄为 **"重试截图"**（NAS 作业）：从本地视频按已存时间戳重截、上传 COS、回写 `screenshot_url`，不重跑分析、不重调 LLM；`/retrigger`（重跑分析）与 `POST /api/summary-tasks/integrity-check`（及其 status）语义改为作业投递 + 轮询 DB 状态。
 - 下线 `POST /api/summary-tasks/:id/publish`（`analysis-task.controller.ts:401`）与 `POST/GET /api/knowledge/backfill`（`knowledge-backfill.controller.ts`）：内联发布取代前者，回填已完成、能力保留但不作为常规入口。
+- 下线 `POST /api/summary-tasks/repair`：截图缺失由 `screenshot_retry`（可批量）承担，视频缺失由下载作业承担。
 - 云端 LLM 客户端为新增 `openai` SDK 调用（不扩展 `QwenClient`）；`QwenClient` 仅保留 NAS 经代理模式（本地视频）。
 - **云端 LLM 客户端**：引入 `openai` Node.js SDK 作为云端 LLM 调用通道，指向同一端点的 OpenAI 兼容面；模型 / 端点 / 配置不变。需确认兼容基址路径（现原生基址为 `.../api/v1`）、处理 DashScope 专有参数 `enable_thinking` 与 `response_format` 的差异、保留 Base64 禁用约束。
 - **NAS 视频路径不适用 OpenAI SDK**：本地视频不受支持，NAS 分析继续经 vision-proxy。
@@ -238,18 +239,23 @@ packages/
 13. ~~NAS 视频分析是否迁离 DashScope~~ 已定（技术必然）：本地视频不属 OpenAI SDK 能力范围，NAS 分析继续经 vision-proxy。
 14. ~~Embedding 是否更换~~ 已定：embedding 本就走独立的 OpenAI 兼容客户端（`EmbeddingClient`，`embedding.service.ts:58-63`），本次**不动**，无向量重算。
 15. ~~Cookie 真源与登录流程归属~~ 已确认（见 Q15）：登录在云端，写 `app_settings`；NAS 物化 + 版本刷新。**补充（用户）：除扫码登录自动提取 cookie 外，支持用户手动粘贴 cookie。**
-16. ~~是否为 NAS 的 B站读接口引入云端网关~~ **已定：不引入网关，采用"前移解析 + 持久化 `resource_type`"。** 云端在创建任务时解析并落库资源类型（`ResourceType`，`ResourceParserPort.ts:35-42`），NAS 下载执行时直接读取以构造 `resolveStreams`，免去执行期 `resourceParser.parse`（`download.service.ts:528-534`）。结论：NAS 仅保留 playurl 与字幕两类下载固有 B站调用（均不可缓存 / 时效敏感）；未来若出现可缓存的 B站读需求，再评估网关（需服务鉴权，属保护区）。
+16. ~~是否为 NAS 的 B站读接口引入云端网关~~ **已定：不引入网关，采用"前移解析 + `resource_type` 随作业负载下发"。** 云端在创建任务时解析 `ResourceType`（`ResourceParserPort.ts:35-42`）并放入 `worker_job.payload`，NAS 下载执行时直接读取以构造 `resolveStreams`，免去执行期 `resourceParser.parse`（`download.service.ts:528-534`）。结论：NAS 仅保留 playurl 与字幕两类下载固有 B站调用（均不可缓存 / 时效敏感）；未来若出现可缓存的 B站读需求，再评估网关（需服务鉴权，属保护区）。
 
 ## 遗留问题（Open Items，2026-09-17）
 
 以下为尚未裁决 / 尚未撰写的项，均为**非阻塞**（不阻塞 Phase 1a 转计划）：
 
-1. **H5 — `conversation.user_id` 存量会话归属**：归 admin，还是 nullable legacy？**待用户裁决**。
-2. **H5 — Migration & Rollback 段**：待上条裁决后补写。拟口径：迁移顺序"先加可空列 → 幂等回填 → 稳定后收紧"；部署顺序"先 schema 后代码"；回滚"保留 additive 列、不执行 down migration"；回填脚本幂等且可报告剩余量。
-3. **目录 / backlog 处置**：主需求为 umbrella draft。建议**方案 3**——主需求移 `docs/discussions/`、Phase 1a 留 `docs/requirements/` 并登记 backlog（`project-context.md` 的 active requirement 暂不动）。**待用户裁决**。
-4. **Phase 2 / Phase 3 详细需求未撰写**：`worker_job` 认领 / 租约细节、项目拆分（`server-common` 抽离）与部署计划。
+1. ~~H5 — `conversation.user_id` 存量会话归属~~ 已确认：**存量会话统一归 admin**（迁移回填）。
+2. ~~H5 — Migration & Rollback 段~~ 已确认并写入 `## Migration & Rollback` 段。
+3. ~~目录 / backlog 处置~~ 已确认并执行：**方案 3**——主需求移至 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`，Phase 1a 留 `docs/requirements/` 并登记 backlog。
+4. ~~Phase 2 / Phase 3 详细需求未撰写~~ 已撰写：Phase 1b `docs/requirements/2026-09-17-cloud-inline-publish-local-retire.md`、Phase 2 `docs/requirements/2026-09-17-cloud-worker-jobs.md`、Phase 3 `docs/requirements/2026-09-17-cloud-project-split.md`、Phase 4 `docs/requirements/2026-09-17-cloud-cleanup.md`。
 5. **Q12 遗留细节**：`enable_thinking`（DashScope 专有）与 `response_format` 在新 OpenAI SDK 下的替代与语义。
 6. **H2 已解决**：由"拆成两个独立 NestJS 项目"物理分离，无需再定角色路由白名单。
+7. ~~`POST /api/summary-tasks/repair` 的归宿~~ 已确认：**下线该端点**——截图缺失由 `screenshot_retry`（可批量）承担，视频缺失由下载作业承担。
+8. ~~完整性检查报告结构~~ 已确认：`integrity_status` 扩为 `complete` / `partial` / `missing`；`integrity_detail` 改为结构化 JSON（`contentMissing[]` / `screenshotMissing[]` / `videoMissing[]`）；视频缺失仅告警。
+9. ~~`cos_cleanup` 的 `queue` 路由~~ 已确认：**`api`（云端）**（只调 COS，无需本地文件，且删除应不依赖 NAS 在线）。
+10. ~~用户系统实现细节~~ 已拆为独立需求 `docs/requirements/2026-09-17-user-auth.md`（密码哈希算法实现时定）。
+11. ~~`project-context.md` active requirement~~ 已确认：**暂不切换**；先闭合 `qa-chat-soft-delete`，Phase 1a 可先出计划（`plan-first`）但不动 active requirement。
 
 ## 裁决记录（Decisions Log，2026-09-17）
 
@@ -274,7 +280,7 @@ packages/
 | --- | --- | --- |
 | `id` | bigserial PK | 作业标识 |
 | `kind` | text | download / low_res_download / analyze / retrigger / screenshot_retry / integrity_check / cos_cleanup |
-| `queue` | text | 目标消费者（默认 `nas`；`cos_cleanup` 可为 `api`），用于路由 |
+| `queue` | text | 目标消费者（默认 `nas`；`cos_cleanup` 为 `api`），用于路由 |
 | `ref_type` / `ref_id` | text? / bigint? | 关联领域行（task / ai_summary_task / summary） |
 | `dedup_key` | text? | 防重复：同一逻辑工作的**活跃**作业唯一（部分唯一索引） |
 | `status` | text | queued / leased / running / succeeded / failed / canceled |
@@ -319,13 +325,13 @@ packages/
   1. **内容**（云）：`summary` + 至少一条 `summary_segment`（或 raw_response 可解析）；
   2. **截图**（COS）：各 `screenshot_url` 可达（HEAD 200）；
   3. **视频**（NAS）：按该资源的**已完成下载任务**（`findCompletedTaskByBvidAndCid`）的 `outputFile` 相对锚点在本机存在；同资源多条时优先取文件实际存在的一条，全部缺失才判为视频缺失。
-- 报告：沿用 `integrity_status`（`complete`/`missing`）+ `integrity_detail`（按类别列出缺失）+ `integrity_checked_at`；**视频缺失单列为告警类别**，避免把"用户有意删除视频"误判为损坏。
+- 报告：`integrity_status` 扩为 **`complete` / `partial` / `missing`**（内容缺失→`missing`；内容完整但部分截图缺失→`partial`；全齐→`complete`）；`integrity_detail` 改为**结构化 JSON**（`contentMissing[]` / `screenshotMissing[]` / `videoMissing[]`）；`integrity_checked_at` 不变。**视频缺失仅作告警**（用户可能主动删），不影响整体 verdict。
 - 执行：由 NAS worker 认领作业执行（需读本机文件），云端只展示 DB 结果。
 - 注意：这是契约级变更（旧判据是"本地 md/截图"），需更新 owner doc 与测试。
 
 **Q6. 角色拆分形态？—— 已确认：拆成两个独立 NestJS 项目。**
 - 决策（用户）：**把 NAS 服务与云端服务拆成两个独立的 NestJS 项目**，物理分离，边界更清晰。
-- 目标结构（建议命名，可调整）：
+- 目标结构（已确认命名）：
   - `packages/cloud-server`（`@bilibili-downloader/cloud-server`）：云端 api。
   - `packages/nas-worker`（`@bilibili-downloader/nas-worker`）：NAS worker。
   - `packages/server-common`（`@bilibili-downloader/server-common`）：**必须新增的共享包**，避免 DB / 日志 / 作业仓储等重复。
@@ -389,6 +395,13 @@ packages/
 3. **停止写入本地 md / 截图**（Phase 1b 之后）。
 4. **验证通过后删除本地副本**（Phase 4 清理）。
 - 历史回填已由用户手动完成；本地文件在验证通过前保留为只读备份。
+
+## Migration & Rollback
+
+- **迁移顺序**：先加**可空列**（`conversation.user_id` 等）→ 单独**幂等回填**（存量会话归 admin）→ 稳定后按需收紧 NOT NULL；新表（`worker_job` / `worker_heartbeat` / `user`）纯 additive、无存量。
+- **部署顺序**：先 schema、后代码（additive 下旧代码兼容新 schema）。
+- **回滚**：保留 additive 列，**不执行 down migration**；删列留到 Phase 4 且需人工批准（数据保护区）。
+- **回填脚本**：幂等（如 `WHERE user_id IS NULL`），可重复执行并报告剩余未完成量。
 
 ## Deployment / Config
 

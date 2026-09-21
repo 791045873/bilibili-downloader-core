@@ -3,7 +3,7 @@
 ## 1. 对象与方式
 
 - 对象：
-  - `docs/requirements/2026-09-17-cloud-nas-responsibility-split.md`（主需求，Q1–Q16 定稿后）
+  - `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（主需求，Q1–Q16 定稿后）
   - `docs/requirements/2026-09-17-cloud-read-path-db-render.md`（Phase 1a）
 - 方式：两次独立子代理审计（Pass A 主需求复审；Pass B Phase 1a 审计），关键事实经主执行者用 live repo 复核。
 - 前置：第一轮审计 `docs/audits/2026-09-17-document-audit-cloud-nas-responsibility-split.md`。
@@ -50,7 +50,7 @@
 - **H2**：**已由用户裁决"拆成两个独立 NestJS 项目"解决**——`cloud-server` 物理上不含 ffmpeg / analysis 执行 / vision-proxy 代码；包边界见主需求 `Target Package Layout` 与 Q6。原"角色→路由白名单"不再需要。
 - **H5**：迁移/回填的半成功恢复与 rollback 未写（回填已手动完成，风险降低）。
 - **COS 公网/签名 URL 的可达性与安全**：**已澄清（用户）**——COS 公网可读是既有设计，截图 URL 为公网直链，无签名过期问题，不构成风险项。
-- **目录定位与 backlog 登记**：主需求仍是 umbrella draft 置于 `docs/requirements/`，未登记 backlog；建议保留 Phase 1a 于 requirements，umbrella 视情况移入 `docs/discussions/` 或补登记。
+- **目录定位与 backlog 登记**：**已解决（方案 3）**——主需求移入 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`，Phase 1a 留 `docs/requirements/` 并登记 `docs/backlog/README.md`。
 
 ## 4. Phase 1a：审计发现（已修正）
 

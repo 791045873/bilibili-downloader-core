@@ -47,6 +47,30 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 - Next: 人工设备矩阵验证 → 确认/裁决 testing 方向 → 独立 closure audit 后闭合（plan audit 证据：`docs/audits/2026-09-14-plan-audit-qa-mobile-adaptation.md`）
 - Last Checked: `2026-09-14`
 
+### 待实现：云端/NAS 职责重划分 Phase 1a（总结读取侧 DB 渲染）
+
+- Priority: P1
+- Item: 总结读取侧改为从云 DB 渲染（Phase 1a）
+- Requirement: `docs/requirements/2026-09-17-cloud-read-path-db-render.md`
+- Owner Doc: `docs/design/app-overview.md`
+- Plan: `none`（待撰写）
+- Status: `ready`
+- AI Autonomy: `plan-first`（新工作需先出需求与计划并过审计）
+- Blocker: `none`
+- Next: 出计划并过 plan audit（非保护区，reviewer=none 可用 cold-replay）后实施
+- Context: 上游设计讨论与其余 Phase 见 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`
+- Last Checked: `2026-09-17`
+
+### 待实现：云端/NAS 拆分后续阶段（Phase 1b / 2 / 3 / 4）与 auth
+
+| Priority | Item | Requirement | Owner Doc | Plan | Status | AI Autonomy | Blocker | Last Checked |
+|----------|------|-------------|-----------|------|--------|-------------|---------|--------------|
+| P1 | Phase 1b 内联发布 + 本地文件下线 | `docs/requirements/2026-09-17-cloud-inline-publish-local-retire.md` | `docs/design/app-overview.md` | none | `ready` | `plan-first` | `依赖 Phase 1a` | 2026-09-17 |
+| P1 | Phase 2 持久化作业与跨主机触发 | `docs/requirements/2026-09-17-cloud-worker-jobs.md` | `docs/architecture/system-baseline.md` | none | `ready` | `plan-first` | `none` | 2026-09-17 |
+| P1 | Phase 3 拆分为 cloud-server / nas-worker | `docs/requirements/2026-09-17-cloud-project-split.md` | `docs/architecture/module-boundaries.md` | none | `needs-plan` | `ask-first`（部署保护区） | `部署需人工批准（reviewer=none）` | 2026-09-17 |
+| P2 | Phase 4 收敛与清理 | `docs/requirements/2026-09-17-cloud-cleanup.md` | `docs/design/app-overview.md` | none | `blocked` | `ask-first`（数据删除保护区） | `数据删除需人工批准；依赖前序 Phase` | 2026-09-17 |
+| P1 | 小用户系统与写操作鉴权（auth） | `docs/requirements/2026-09-17-user-auth.md` | `docs/design/app-overview.md` | none | `blocked` | `plan-first`（auth 保护区） | `auth 需人工/子代理评审（reviewer=none）` | 2026-09-17 |
+
 ### 已完成与历史项
 
 | Priority | Item | Requirement | Owner Doc | Plan | Status | AI Autonomy | Blocker | Last Checked |

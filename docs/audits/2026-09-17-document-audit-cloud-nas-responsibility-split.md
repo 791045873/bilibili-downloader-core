@@ -2,7 +2,7 @@
 
 ## 1. 审计对象与方式
 
-- 对象：`docs/requirements/2026-09-17-cloud-nas-responsibility-split.md`，支撑文档 `docs/analysis/2026-09-17-cloud-nas-split-feasibility.md`
+- 对象：`docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（审计时为 `docs/requirements/`，后按方案 3 移入 discussions），支撑文档 `docs/analysis/2026-09-17-cloud-nas-split-feasibility.md`
 - 方式：两次**独立子代理**审计（用户明确要求，补足 `reviewer availability=none` 的限制）
   - Pass A：事实与技术准确性（逐条 `file:line` 复核 + 代码行为核验）
   - Pass B：需求质量、内部一致性、范围、流程与保护区合规
