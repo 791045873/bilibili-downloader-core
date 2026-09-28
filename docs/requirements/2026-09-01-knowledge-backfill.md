@@ -1,5 +1,7 @@
 # 需求：历史 AI 总结知识回填（一次性触发）
 
+> 取代提示（2026-09-23，人工确认）：本需求为**一次性回填**，已于 2026-09-09 手动执行完成；其端点 `POST/GET /api/knowledge/backfill` 将随 Phase 1b 下线——见 `docs/requirements/2026-09-17-cloud-inline-publish-local-retire.md`。任务使命已完成，能力保留至下线前，未废弃。
+
 > 来源：Phase 2 讨论中的顺序决策（2026-09-01）——向量化需要真实知识数据，89 条历史总结需先经 Phase 1 发布管道入库；用户确认**回填操作独立拆出**，部署镜像后由用户手动触发一次。
 > 依赖：Phase 1 发布管道（`docs/requirements/2026-08-24-cos-summary-knowledge-publish.md`）已上线，`POST /api/summary-tasks/:id/publish` 已存在。
 

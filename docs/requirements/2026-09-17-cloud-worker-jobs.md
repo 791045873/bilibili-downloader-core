@@ -1,9 +1,9 @@
 # 需求：持久化作业与跨主机触发（Phase 2）
 
 > 来源：拆自 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Phase 2）
-> Owner Doc：`docs/architecture/system-baseline.md`、`docs/design/app-overview.md`
+> Owner Doc：`docs/architecture/system-baseline.md`、`docs/architecture/module-boundaries.md`（移除进程内 scheduler/回调改变模块边界）、`docs/design/app-overview.md`
 > 前置：Phase 1a / 1b（读取与内联发布）
-> 保护区：数据模型变更（additive 表 / 列）。部署改动在 Phase 3；本切片不改部署。
+> 保护区：无（按 `docs/context/ai-autonomy-policy.md`，保护区仅 auth/数据删除/支付/部署；新增 additive 表不属其列）；因涉数据模型新增，按 `plan-first` 从严处理并需 plan audit。部署改动在 Phase 3；本切片不改部署。
 > 状态：实现就绪（字段与语义见讨论 Q3；1 项实现时细节见 Open Questions）
 
 ## Goal
@@ -22,7 +22,7 @@
 
 ### 作业种类（kind）
 
-- `low_res_download`、`analyze`、`retrigger`、`screenshot_retry`、`integrity_check`、`cos_cleanup`。
+- `low_res_download`、`analyze`、`retrigger`、`screenshot_retry`、`integrity_check`、`cos_cleanup`（`cos_cleanup` 的 `queue=api`；本切片仅定义枚举，其生产者在 Phase 4 删除级联才出现，本阶段不产生该作业）。
 - `download`：**本切片暂沿用 `claimNextCreatedTask`**（讨论 Q3 分阶段），稳定后迁移；迁移后 kind 生效。
 
 ### 认领 / 租约 / 心跳 / 恢复

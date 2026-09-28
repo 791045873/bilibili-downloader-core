@@ -4,7 +4,11 @@
 > Owner Doc：`docs/architecture/system-baseline.md`、`docs/architecture/module-boundaries.md`、`docs/design/app-overview.md`
 > 前置：Phase 2（持久化作业与跨主机触发）已落地
 > 保护区：**部署（`ask-first`）**——需 owner doc + Dockerfile 验证 + 人工批准；reviewer availability=none 时实现 blocked
-> 状态：实现就绪（部署细节需人工批准）
+> 状态：`needs-plan`。实现前置门（人工裁决 2026-09-23）：
+> - LLM 客户端（已澄清，非冲突）：`QWEN_VISION_PROXY_URL` 为所有部署形态所需（与 `docs/architecture/2026-07-06-video-analysis-baseline.md:40,69` 一致）；本需求仅把云端调用库由 `QwenClient` 换为 `openai` SDK 去连接**所配置的 `QWEN_VISION_PROXY_URL`**，模型/端点/配置不变。
+> - `server-common` 抽离为独立前置阶段：讨论稿定其（约 1780 行 `DatabaseService` 等）“必须独立阶段”；实施计划须先切出 server-common 抽离子阶段，不与项目拆分/镜像三改并为单一切片。
+> - 部署细节需人工批准（部署保护区，reviewer=none）。
+> - 鉴权前置（已裁决：auth 先行）：auth 须在本阶段公网暴露前完成，见 `docs/requirements/2026-09-17-user-auth.md`。
 
 ## Goal
 
@@ -28,10 +32,10 @@
 
 ### LLM / 缓存 / Cookie
 
-- 云端多模态改用 **OpenAI 官方 Node.js SDK**（`openai` 包）直连同一端点；`QwenClient` 仅保留 NAS 经代理模式。
-- 云端 `QWEN_VISION_PROXY_URL` 不再强制；vision-proxy 仅 NAS。
+- 云端多模态改用 **OpenAI 官方 Node.js SDK**（`openai` 包）连接**所配置的 `QWEN_VISION_PROXY_URL`**（仅换调用库，模型/端点/配置不变）；NAS 侧本地视频仍经 `QwenClient` / vision-proxy。
+- `QWEN_VISION_PROXY_URL` 为所有部署形态所需（含云端）；vision-proxy（Python 组件）仅 NAS 用于读取本地视频文件。
 - 云端用 `FileCacheStore`；NAS 不落磁盘缓存（SDK 默认 `MemoryCacheStore`）。
-- Cookie 真源 `app_settings`；NAS 启动物化 + 作业前按版本刷新。
+- Cookie 真源 `app_settings`；云端 API 承接扫码登录写库、并支持**手动粘贴 cookie 入口**；NAS 启动物化 + 作业前按版本刷新（含 `ParseService` 客户端刷新，非仅 `DownloadService`）。
 
 ### 部署（保护区）
 
@@ -59,6 +63,7 @@
 - **NAS 仅出站**：worker 只出站连 DB / COS / 模型 / B站。
 - **媒体命名空间仅 NAS**：云端不 join 媒体路径。
 - **共享不复制**：DB/logging/作业仓储只在 `server-common`。
+- **截图源顺序（承接讨论 Business Rule）**：本地已下载高清优先 → 缺失时 NAS 下载高清 → 仍不可得远端流截图兜底，降级须显式标记；分析送 LLM 仍低清优先。与既有 `2026-07-07-screenshot-source-fallback-3a/3b.md` 及 `2026-09-17-screenshot-retry.md` 一致。
 
 ## Roles / Permissions
 
@@ -82,14 +87,15 @@
 
 ## Open Questions
 
-- 无阻塞项（部署细节在计划中展开，需人工批准）。
+- Q12 兼容细节（承接讨论遗留）：`enable_thinking`（DashScope 专有）与 `response_format` 在 `openai` SDK 下的替代与语义，实现时确认（不影响端点 / 模型 / 配置）。
+- 部署细节在计划中展开，需人工批准（无其他阻塞项）。
 
 ## Acceptance Criteria
 
 - [ ] 存在三个独立包：`server-common`、`cloud-server`、`nas-worker`，依赖方向正确。
 - [ ] 云端镜像**不含** ffmpeg / Python / vision-proxy；NAS 镜像含 ffmpeg。
 - [ ] 云端在无 NAS 卷条件下可完成读 / 问答 / 触发；NAS worker 可认领并执行作业。
-- [ ] 云端多模态经 OpenAI SDK；`QWEN_VISION_PROXY_URL` 仅 NAS 使用。
+- [ ] 云端多模态经 `openai` SDK 连接所配置的 `QWEN_VISION_PROXY_URL`（该 URL 所有部署形态均需配置）。
 - [ ] 云端用 `FileCacheStore`，NAS 用内存缓存（无磁盘缓存）。
 - [ ] Cookie 由 `app_settings` 物化并支持版本刷新。
 - [ ] `pnpm typecheck`、`pnpm build`、`pnpm docker:build`、`docker compose config` 通过。

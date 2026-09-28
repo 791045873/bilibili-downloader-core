@@ -1,5 +1,7 @@
 # 需求：AI 总结截图上传腾讯云 COS 与知识发布管道（Phase 1）
 
+> 取代提示（2026-09-23，人工确认）：本需求的**独立发布 / 影子双写 / `knowledge_status` / `POST /api/summary-tasks/:id/publish`** 将被 Phase 1b（内联发布）取代——见 `docs/requirements/2026-09-17-cloud-inline-publish-local-retire.md`。随 Phase 1b 实现下线；当前功能仍在线，未废弃。
+
 ## Goal
 
 分析完成（AI 总结）后，将截图上传腾讯云 COS，并把总结知识（summary + summary_segment）写入云端 PostgreSQL，供后续向量化 / RAG 问答使用；本地文件保留作备份（影子双写）。对应 `docs/discussions/2026-08-21-summary-cloud-knowledge-base.md` 目标第 2、3 点与方案 B Phase 1（知识发布管道）。

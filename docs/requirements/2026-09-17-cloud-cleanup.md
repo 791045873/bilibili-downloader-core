@@ -56,8 +56,8 @@
 
 ## Open Questions
 
-- `knowledge_status` / `knowledge_error` 最终去留（保留重试态 vs 删除）。
-- `worker_job` 终态保留期具体值。
+- `knowledge_status` / `knowledge_error` 最终去留（保留重试态 vs 删除）——与 Phase 1b 悬置项同一决策，统一由讨论稿总纲裁决后执行。
+- `worker_job` 终态保留期具体值——与 Phase 2 悬置项同一决策，同上。
 
 ## Acceptance Criteria
 

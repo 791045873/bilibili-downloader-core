@@ -2,6 +2,8 @@
 
 > 来源：拆自 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Phase 1a）
 > Owner Doc：`docs/design/app-overview.md`
+> Supersedes（本切片读路径部分，需人工确认）：`docs/requirements/2026-08-17-ai-summary-view-markdown.md` 的 API Contract（读本地 md、文件缺失→404、`summary_output` 空→409、`/summary-files` 图片重写）实施后过时，须在其头部加“读路径已被 Phase 1a 取代”指针。
+> Owner-Doc Deltas：`docs/design/app-overview.md` 读取来源/错误码；`docs/design/feature-inventory.md` 补“查看总结/markdown 渲染”条目并更新数据源。
 > 关联分析：`docs/analysis/2026-09-17-cloud-nas-split-feasibility.md`；审计：`docs/audits/2026-09-17-requirement-reaudit-cloud-nas-and-phase1a.md`
 > 保护区：无（不改数据模型、不删数据、不改部署、不涉 auth）。需 plan audit（reviewer=none 时非保护区可用 cold-replay）。
 > 状态：实现就绪（本切片无阻塞性开放问题）
@@ -79,7 +81,7 @@
 
 ## Edge Cases
 
-- `completed` 但无 `summary` 行（历史 / 未发布）→ 回退 `raw_response` 渲染纯文本、无图。
+- `completed` 但无 `summary` 行（历史 / 未发布）→ 回退 `raw_response` 渲染纯文本、无图。这是相对现状本地 md 渲染（含图）的一次有意丢图回归；Phase 1a 无补救（截图重试 `screenshot_retry` 属 Phase 1b+），owner doc 须记录此有意行为。本兜底还依赖“`completed` ⇒ `raw_response` 为模型 JSON”不变量，该不变量由 Phase 1b 的 H4 修复保证；用户已于 2026-09-23 人工检视存量数据，确认无 `completed` 且 `raw_response` 非 JSON 的记录，窗口风险已消解。
 - `raw_response` 为空 / 非合法 JSON / `summary` 空数组 → 409。
 - `summary` 存在、`summary_segment` 为空 → 200，标题 + 空正文。
 - `frameDescription` / `screenshot_url` 为 null → 该段无图片说明 / 无图。

@@ -1,5 +1,7 @@
 # 2026-08-17 AI 总结列表查看总结文档（Markdown 预览）
 
+> 取代提示（2026-09-23，人工确认）：本需求的**读路径契约**（读本地 md、文件缺失→404、`summary_output` 空→409、`/summary-files` 图片重写）将被 Phase 1a（DB 渲染）取代——见 `docs/requirements/2026-09-17-cloud-read-path-db-render.md`。随 Phase 1a 实现，读路径改为从云 DB 渲染；当前功能仍在线，未废弃。
+
 ## Source
 
 - Owner Doc: `docs/design/app-overview.md`

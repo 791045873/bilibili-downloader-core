@@ -1,5 +1,7 @@
 # Requirement: AI 总结本地原始内容完整性检查
 
+> 取代提示（2026-09-23，人工确认）：本需求（仅校验本地原始内容完整性）将被**完整性检查重定义**取代——见 `docs/requirements/2026-09-17-integrity-check-rescope.md`（改以云 DB + COS + NAS 视频为判据、结果分级、作业化）。随其实现下线；当前功能仍在线，未废弃。
+
 - Date: 2026-09-07
 - Source: 用户直接请求（对话，原文见本文件"原始需求"节）
 - Status: ready

@@ -18,7 +18,7 @@
 3. **`raw_response` / 错误分离（审计 H4）**：`raw_response` 只放模型 JSON；失败写 `error_message`；LLM 成功后的失败不得覆盖 `raw_response`。
 4. **停止写本地 md 与截图**：分析不再产出对外 md 文件与本地截图副本；`summary_output` 不再写入（列保留待 Phase 4 清理）。
 5. **移除 `/summary-files` 静态挂载**（`main.ts`）与相关重写 helper（`summary-dir.ts` 的 `rewriteMarkdownImageUrls` / `rewriteMarkdownImages` 等按裁剪范围处理）。
-6. **下线独立发布 / 回填子系统**：`POST /api/summary-tasks/:id/publish`、`POST/GET /api/knowledge/backfill`；`knowledge_status` / `knowledge_error` 影子状态按计划裁剪（保留重试态由实现定）。
+6. **下线独立发布 / 回填 / 本地修复子系统**：`POST /api/summary-tasks/:id/publish`、`POST/GET /api/knowledge/backfill`，以及 `POST /api/summary-tasks/repair`（`summary-repair.service.ts` 重建本地 md/截图，与“停止写本地”直接冲突，须一并下线/改造——已裁决 2026-09-23 纳入本阶段范围（选项 A），Phase 4 AC 与此一致）；`knowledge_status` / `knowledge_error` 影子状态按计划裁剪（保留重试态由实现定；最终去留统一由讨论稿总纲裁决）。
 7. 更新 owner doc 与测试。
 
 ## Out Of Scope
@@ -46,7 +46,7 @@
 - **截图缺失可重试**：`screenshot_url` 允许为空；缺失可由 `screenshot_retry` 补齐（不在本切片实现）。
 - **幂等**：重跑分析按 `(summary_id, seq)` upsert（删多余尾行；文本变更清向量——见讨论 Q10）。
 - **不写本地**：不再产出对外 md / 本地截图副本。
-- **错误不覆盖内容**：失败只写 `error_message`。
+- **错误不覆盖内容**：失败只写 `error_message`（对应讨论 H4；修正 `analysis-trigger.service.ts:152-156`/`:531-535` 现将 `rawResponse` 写成错误串的行为）。注：此修复亦是 Phase 1a `raw_response` 兜底可靠性的必要前提——1a 上线、1b 未上线的窗口内，历史 `completed` 且 `raw_response` 被污染的记录会由 200（本地 md）退化为 409，须在实施排期中知晓。
 
 ## Roles / Permissions
 

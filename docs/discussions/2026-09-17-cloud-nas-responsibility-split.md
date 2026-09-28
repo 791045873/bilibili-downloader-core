@@ -4,10 +4,53 @@
 > 来源：2026-09-17 用户多轮讨论；分析依据 `docs/analysis/2026-09-17-cloud-nas-split-feasibility.md`
 > 拟 Owner Docs：`docs/design/app-overview.md`、`docs/architecture/system-baseline.md`、`docs/architecture/module-boundaries.md`
 > 保护区：部署（`ask-first`）、数据迁移 / 删除（`ask-first` / `plan-first`）。reviewer availability = `none`，closure 需人工或子代理评审。
-> 审计：`docs/audits/2026-09-17-document-audit-cloud-nas-responsibility-split.md`（独立子代理双通道）。裁决：**未达实现就绪门槛**，实现 blocked 直至人工裁决与拆分。
-> Owner-doc 冲突（待人工批准更新）：`docs/architecture/2026-07-06-video-analysis-baseline.md:40,69` 现规定"所有部署形态均需配置 `QWEN_VISION_PROXY_URL`，无公网 URL 直连路径"，与本草案云端直连裁决冲突。
+> 审计：`docs/audits/2026-09-17-document-audit-cloud-nas-responsibility-split.md`（第一轮）；`docs/audits/2026-09-17-requirement-reaudit-cloud-nas-and-phase1a.md`（第二轮）；`docs/audits/2026-09-23-document-audit-cloud-nas-family.md`（子需求族逐份复核）。
+> 裁决（2026-09-23）：第一轮“未达实现就绪、实现 blocked”已由第二轮消解——Q1–Q16 全裁决、拆成 8 份子需求（1a/1b/2/3/4 + auth + 完整性检查重定义 + 重试截图）；本文自此为总纲/裁决之源，不再作单一计划实现。Phase 1a/1b/2 `ready`（1b 依赖 1a）；**auth 先行**（已裁决 2026-09-23，须先于 Phase 3 公网暴露）；Phase 3 `needs-plan`（部署保护区 + `server-common` 独立前置阶段；QWEN 已澄清非冲突）；Phase 4 `blocked`（数据删除保护区，reviewer=none）。
+> Owner-doc（已澄清 2026-09-23，非冲突）：`docs/architecture/2026-07-06-video-analysis-baseline.md:40,69` 现规定"所有部署形态均需配置 `QWEN_VISION_PROXY_URL`，无公网 URL 直连路径"；云端仅改用 `openai` SDK 连接该 `QWEN_VISION_PROXY_URL`（换库不换端点，模型/端点/配置不变），不构成冲突。
 > Supersedes（待人工确认）：`2026-09-07-summary-integrity-check.md`（其 Non-Goals 明确不检查视频本体 / COS 对象）、`2026-08-24-cos-summary-knowledge-publish.md`（影子双写 / `knowledge_status` / publish）、`2026-09-01-knowledge-backfill.md`（回填子系统）。
 > 相关既有产出：`docs/discussions/2026-08-21-summary-cloud-knowledge-base.md`、`docs/requirements/2026-08-24-cos-summary-knowledge-publish.md`、`docs/requirements/2026-09-07-summary-integrity-check.md`、`docs/requirements/2026-09-01-knowledge-backfill.md`
+> 跨阶段未决（统一由本总纲裁决，避免各子需求重复悬置）：① `knowledge_status`/`knowledge_error` 最终去留（保留重试态 vs 删除，见 Phase 1b/4）；② `worker_job` 终态保留期（见 Phase 2/4）。
+
+## 子需求关系与实现顺序
+
+> 补充（2026-09-23）：本节为 8 份子需求（Phase 1a/1b/2/3/4 + auth + 完整性检查重定义 + 重试截图）的依赖拓扑与顺序约束，供排期直接引用。
+
+依赖拓扑（`A ──► B` 表示 B 依赖 A）：
+
+```
+内容/存储轨:  Phase 1a ──► Phase 1b ───────────────┐
+             (读走DB)     (停写本地/内联发布/H4)     │
+                                                   ├──► Phase 4
+执行/部署轨:  Phase 2 ──► [server-common 抽离] ──► Phase 3 ──┘  (收敛清理)
+             (作业持久化)   (前置子阶段)          (拆两项目/三镜像)
+                                                     ▲
+横切门:                           auth ──────────────┘
+                                 (先于 Phase 3 公网暴露)
+
+作业化叶子:  (依赖 1b + 2)  完整性检查重定义 / 重试截图  ──► 建议先于 Phase 4
+```
+
+硬顺序约束：
+
+- `1a → 1b`：先让读取走 DB，才能停写本地。
+- `2 → 3`：先把触发/执行解耦为持久化作业，才能把执行搬到 NAS。
+- `1a + 1b → 3`：云端无本地卷，读/发布须已脱离本地。
+- `server-common 抽离 → 3`：先切独立子阶段，再拆 cloud-server / nas-worker。
+- `auth → 3`：auth 须先于 Phase 3 公网暴露完成（已裁决 2026-09-23，互为门控）。
+- `1a + 1b + 2 + 3 → 4`：全部前置落地并验证后才做清理与删除。
+- `1b + 2 → 完整性检查重定义 / 重试截图`：两份叶子需求依赖内容入 DB（1b）与作业化（2）；**建议先于 Phase 4**（删本地副本前用新完整性检查确认云端 / 视频完备）。
+
+并行性：内容轨（1a→1b）与执行轨（2→3）之间无强耦合，可并行推进，至 Phase 4 汇合。三次 additive 数据模型演进互不冲突（Phase 2 的 `worker_job`/`worker_heartbeat`、auth 的 `user`/`user_session`/`conversation.user_id`）。
+
+推荐顺序：`1a → 1b →（2 可与 1a/1b 并行）→ {完整性检查重定义, 重试截图}（依赖 1b+2，可并行）→ auth →（server-common 抽离）→ 3 → 4`。
+
+旧需求下线时点（新子需求实现即旧需求下线）：
+
+- `publish`（cos-summary-knowledge-publish）、`backfill`（knowledge-backfill）、`repair`（summary-repair）：**Phase 1b** 下线（`repair` 的截图补齐能力由「重试截图」需求承接）。
+- `/summary-files` 与本地 md 读取：读侧 **Phase 1a**、写侧 **Phase 1b** 退出。
+- 废弃列 `summary_output` / `knowledge_status` / `knowledge_error`：**Phase 4** 删除。
+- `2026-08-17-ai-summary-view-markdown` 读路径契约：**Phase 1a** 取代。
+- `2026-09-07-summary-integrity-check`（旧完整性检查，仅查本地）：由「完整性检查重定义」取代（需人工确认 Supersedes）。
 
 ## Goal
 
@@ -36,7 +79,7 @@
 - `docs/requirements/2026-08-24-cos-summary-knowledge-publish.md`：其"影子双写 + `knowledge_status` + 独立发布"设计，被本草案"分析内联写云 DB + 直传 COS"取代；`knowledge_status` / `knowledge_error` 去留见清理项。
 - `docs/requirements/2026-09-01-knowledge-backfill.md`：历史回填已由用户手动完成，本草案**不再实施该子系统**。
 - `docs/requirements/2026-09-04-summary-output-relative-path.md`、`2026-09-09-outputfile-relative-anchor.md`：其"相对 `DOWNLOAD_ROOT` 锚点"仍是 **NAS 侧约定**；云端读取不再 join 媒体路径，属对既有语义的收窄，不推翻锚点本身。
-- `docs/architecture/2026-07-06-video-analysis-baseline.md`：其"所有部署形态均需 `QWEN_VISION_PROXY_URL`、无公网 URL 直连"被"云端 OpenAI SDK 直连（NAS 仍经代理）"取代 → 需人工批准更新 owner doc。
+- `docs/architecture/2026-07-06-video-analysis-baseline.md`：其"所有部署形态均需 `QWEN_VISION_PROXY_URL`、无公网 URL 直连"被"云端 OpenAI SDK 直连（NAS 仍经代理）"**已澄清 2026-09-23：非取代/非冲突**——`QWEN_VISION_PROXY_URL` 仍为所有形态所需，云端仅换调用库为 `openai` SDK 连接同一 URL。
 
 ## Owner-Doc Deltas
 
@@ -104,7 +147,7 @@ packages/
 - 抽出共享包 `server-common`（DB/Prisma、logging、作业仓储、settings/cookie、共享类型）。
 - 拆出 `cloud-server`（api）与 `nas-worker`（worker）两个独立 NestJS 项目；各自 Dockerfile。
 - NAS worker 承担下载 / 分析 / 截图 / 重建 / 完整性检查；云端 api 承担读 / 检索 / 问答 / 设置 / 触发。
-- 云端多模态改用 **OpenAI 官方 Node.js SDK**（`openai` 包）直连同一端点；`QwenClient` 仅保留 NAS 经代理路径（本地视频）。
+- 云端多模态改用 **OpenAI 官方 Node.js SDK**（`openai` 包）连接**所配置的 `QWEN_VISION_PROXY_URL`**（仅换调用库，模型/端点/配置不变）；`QwenClient` 仅保留 NAS 经代理路径（本地视频）。
 - 截图源改为本地高清优先；远端流截图**降级保留为最后兜底**。
 
 ### Phase 4：收敛与清理
@@ -249,10 +292,10 @@ packages/
 2. ~~H5 — Migration & Rollback 段~~ 已确认并写入 `## Migration & Rollback` 段。
 3. ~~目录 / backlog 处置~~ 已确认并执行：**方案 3**——主需求移至 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`，Phase 1a 留 `docs/requirements/` 并登记 backlog。
 4. ~~Phase 2 / Phase 3 详细需求未撰写~~ 已撰写：Phase 1b `docs/requirements/2026-09-17-cloud-inline-publish-local-retire.md`、Phase 2 `docs/requirements/2026-09-17-cloud-worker-jobs.md`、Phase 3 `docs/requirements/2026-09-17-cloud-project-split.md`、Phase 4 `docs/requirements/2026-09-17-cloud-cleanup.md`。
-5. **Q12 遗留细节**：`enable_thinking`（DashScope 专有）与 `response_format` 在新 OpenAI SDK 下的替代与语义。
+5. **Q12 遗留细节**：`enable_thinking`（DashScope 专有）与 `response_format` 在新 OpenAI SDK 下的替代与语义——已登记至 Phase 3 Open Questions。
 6. **H2 已解决**：由"拆成两个独立 NestJS 项目"物理分离，无需再定角色路由白名单。
-7. ~~`POST /api/summary-tasks/repair` 的归宿~~ 已确认：**下线该端点**——截图缺失由 `screenshot_retry`（可批量）承担，视频缺失由下载作业承担。
-8. ~~完整性检查报告结构~~ 已确认：`integrity_status` 扩为 `complete` / `partial` / `missing`；`integrity_detail` 改为结构化 JSON（`contentMissing[]` / `screenshotMissing[]` / `videoMissing[]`）；视频缺失仅告警。
+7. ~~`POST /api/summary-tasks/repair` 的归宿~~ 已确认：**Phase 1b 下线该端点**；截图缺失由 `screenshot_retry`（`docs/requirements/2026-09-17-screenshot-retry.md`，可批量）承担，视频缺失由下载作业承担。
+8. ~~完整性检查报告结构~~ 已确认并**已立需求** `docs/requirements/2026-09-17-integrity-check-rescope.md`：`integrity_status` 扩为 `complete` / `partial` / `missing`；`integrity_detail` 结构化 JSON（`contentMissing[]` / `screenshotMissing[]` / `videoMissing[]`）；视频缺失仅告警。
 9. ~~`cos_cleanup` 的 `queue` 路由~~ 已确认：**`api`（云端）**（只调 COS，无需本地文件，且删除应不依赖 NAS 在线）。
 10. ~~用户系统实现细节~~ 已拆为独立需求 `docs/requirements/2026-09-17-user-auth.md`（密码哈希算法实现时定）。
 11. ~~`project-context.md` active requirement~~ 已确认：**暂不切换**；先闭合 `qa-chat-soft-delete`，Phase 1a 可先出计划（`plan-first`）但不动 active requirement。
@@ -407,7 +450,7 @@ packages/
 
 - **两个独立 NestJS 项目 + 两个镜像**：`cloud-server`（云端：Node，无 ffmpeg / 无 Python）与 `nas-worker`（NAS：Node + ffmpeg + vision-proxy），共享代码抽到 `server-common`。各自独立 Dockerfile。
 - **新增 / 变更配置**：`ROLE`、轮询间隔、租约 TTL、心跳间隔、worker 专用最小权限 `DATABASE_URL`（独立角色）、`ADMIN_INITIAL_PASSWORD`、云端多模态 SDK 配置（OpenAI 兼容 baseURL）、COS（截图存储）。
-- **vision-proxy 仅 NAS**；云端移除对 `QWEN_VISION_PROXY_URL` 的强制依赖。
+- **vision-proxy（Python 组件）仅 NAS**（用于本地视频文件）；`QWEN_VISION_PROXY_URL` 仍为所有部署形态所需，云端经 `openai` SDK 连接该 URL。
 - **Cookie**：真源 `app_settings`；NAS 物化 `COOKIE_FILE_PATH` 并支持版本刷新。
 - **验证**：`pnpm docker:build`、`docker compose config`（经 `node compose.mjs config`）。
 
@@ -427,7 +470,7 @@ packages/
 - [ ] 下载、分析、重试截图、完整性检查均以 DB 作业形式触发；NAS 离线时作业排队且状态可见。
 - [ ] 进程内互斥 / 回调不再承担跨主机触发；租约超时可恢复。
 - [ ] NAS 仅出站：可在无端口映射、无 DDNS 条件下运行。
-- [ ] NAS 侧 vision-proxy 保留；云端多模态经 OpenAI Node SDK 直连，不强制要求 `QWEN_VISION_PROXY_URL`。
+- [ ] NAS 侧 vision-proxy 保留；云端多模态经 `openai` SDK 连接所配置的 `QWEN_VISION_PROXY_URL`（该 URL 所有形态均需配置）。
 - [ ] 截图源为本地高清优先；缺失时经 NAS 下载作业补足后再截图。
 - [ ] `pnpm typecheck`、`pnpm build` 通过；数据层测试与新增作业测试通过。
 - [ ] 部署与数据模型变更经人工批准；相关 owner docs 同步更新。
