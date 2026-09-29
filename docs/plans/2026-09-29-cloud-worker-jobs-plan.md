@@ -1,6 +1,6 @@
 # 2026-09-29 云端/NAS Phase 2 — 持久化作业与跨主机触发（worker_job）
 
-> Plan Status: planned
+> Plan Status: done
 > Last Reviewed: 2026-09-29
 > Source: `docs/requirements/2026-09-17-cloud-worker-jobs.md`
 > Related: 上游 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Phase 2 / Q3、Q7、Q16）；前置 Phase 1a/1b（已闭合）；下游 Phase 3（拆项目）、「重试截图」「完整性检查重定义」（依赖本阶段作业化）
@@ -44,94 +44,94 @@
 
 ### Phase 1 - 作业模型与仓储（schema + claim/lease/heartbeat/reaper）
 
-Status: planned
+Status: done
 Targets: `packages/server/src/prisma/contract.prisma`（+ emit 产物）、`packages/server/src/database/database.service.ts`（或新增 `worker-job.repository.ts`）
 
 - Item Types: `Add | Decision`
 - Prereqs: 无
 
-- [ ] `Add`：contract.prisma 新增 `WorkerJob`（字段按 umbrella Q3：`id/kind/queue/refType/refId/dedupKey/status/priority/attempts/maxAttempts/availableAt/leaseOwner/leaseExpiresAt/heartbeatAt/payload(jsonb)/result(jsonb)/lastError/cancelRequested/createdAt/updatedAt/startedAt/finishedAt`）与 `WorkerHeartbeat`（`workerId/role/lastSeenAt/meta`）；索引 `(status, available_at, priority)`、`dedup_key` 部分唯一（`WHERE status IN ('queued','leased','running')`）、`(queue, status)`。`prisma:emit` 生成产物。
-- [ ] `Add`：作业仓储方法（raw SQL 守卫 UPDATE，比照 `claimNextCreatedTask`）：`enqueueJob`（`ON CONFLICT` 命中 `dedup_key` 部分唯一索引 `WHERE status IN('queued','leased','running')` 时 `DO NOTHING` 并返回既有作业）、`claimNextJob(queue)`（`UPDATE … WHERE id=(SELECT … WHERE status='queued' AND available_at<=now() ORDER BY priority,id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`，写 `lease_owner`/`lease_expires_at=now()+TTL`/`status='leased'`）、`renewLease`/`completeJob`/`failJob` 均以 `WHERE lease_owner=$me AND status IN(...)` **围栏（fencing）**守卫（丢租约的完成为 no-op+日志）、`reapExpired`（`status IN(running,leased) AND lease_expires_at<now()` → `queued`, `attempts++`）、`requestCancel`、查询/列表。
-- [ ] `Decision`：`worker_job` 为通用执行队列，`task`/`analysis_sub_task` 仍为业务真源（双写由同事务缓解）；`download` 不迁移（沿用 `claimNextCreatedTask`）。理由/备选见 umbrella Q3。
-- [ ] `Proof`：`pnpm typecheck`、`pnpm build`；fresh 库经 `pnpm exec prisma db init`、存量库经迁移计划 + `db migrate` 成功（真实命令依 `docs/context/project-context.md` 数据库基线；启动仍为哨兵检查+幂等播种，无 DDL）。
+- [x] `Add`：contract.prisma 新增 `WorkerJob`（字段按 umbrella Q3：`id/kind/queue/refType/refId/dedupKey/status/priority/attempts/maxAttempts/availableAt/leaseOwner/leaseExpiresAt/heartbeatAt/payload(jsonb)/result(jsonb)/lastError/cancelRequested/createdAt/updatedAt/startedAt/finishedAt`）与 `WorkerHeartbeat`（`workerId/role/lastSeenAt/meta`）；索引 `(status, available_at, priority)`、`dedup_key` 部分唯一（`WHERE status IN ('queued','leased','running')`）、`(queue, status)`。`prisma:emit` 生成产物。
+- [x] `Add`：作业仓储方法（raw SQL 守卫 UPDATE，比照 `claimNextCreatedTask`）：`enqueueJob`（`ON CONFLICT` 命中 `dedup_key` 部分唯一索引 `WHERE status IN('queued','leased','running')` 时 `DO NOTHING` 并返回既有作业）、`claimNextJob(queue)`（`UPDATE … WHERE id=(SELECT … WHERE status='queued' AND available_at<=now() ORDER BY priority,id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`，写 `lease_owner`/`lease_expires_at=now()+TTL`/`status='leased'`）、`renewLease`/`completeJob`/`failJob` 均以 `WHERE lease_owner=$me AND status IN(...)` **围栏（fencing）**守卫（丢租约的完成为 no-op+日志）、`reapExpired`（`status IN(running,leased) AND lease_expires_at<now()` → `queued`, `attempts++`）、`requestCancel`、查询/列表。
+- [x] `Decision`：`worker_job` 为通用执行队列，`task`/`analysis_sub_task` 仍为业务真源（双写由同事务缓解）；`download` 不迁移（沿用 `claimNextCreatedTask`）。理由/备选见 umbrella Q3。
+- [x] `Proof`：`pnpm typecheck`、`pnpm build`；fresh 库经 `pnpm exec prisma db init`、存量库经迁移计划 + `db migrate` 成功（真实命令依 `docs/context/project-context.md` 数据库基线；启动仍为哨兵检查+幂等播种，无 DDL）。
 
 Exit Criteria:
 
-- [ ] 两表经 contract/emit/migration 落地；fresh 与存量库均成功。
-- [ ] 认领/续租/reaper 为原子守卫 SQL；`dedup_key` 活跃唯一生效。
-- [ ] `docs/logs/` 记录。
+- [x] 两表经 contract/emit/migration 落地；fresh 与存量库均成功。
+- [x] 认领/续租/reaper 为原子守卫 SQL；`dedup_key` 活跃唯一生效。
+- [x] `docs/logs/` 记录。
 
 ### Phase 2 - 进程内 worker 循环 + 触发改写作业 + payload 前移
 
-Status: planned
+Status: done
 Targets: `download/download-scheduler.ts`、`analysis/analysis-trigger.service.ts`、各触发 controller、`download/download.service.ts`
 
 - Item Types: `Fix | Add`
 - Prereqs: Phase 1
 
-- [ ] `Add`：进程内 worker 轮询器（独立定时器）：`claimNextJob('nas')` → 按 kind 分发 handler → 执行期独立定时器 `renewLease` → `completeJob/failJob`；reaper 定时扫描。handler 幂等（文件存在即跳过、COS 同 key 覆盖、DB upsert）；**handler 完成时在同一 `this.prismaDb.transaction` 内写领域结果 + 作业终态**（避免崩溃不一致/重复执行；Q3 双写缓解）。
-- [ ] `Fix`：触发入口改为 `enqueueJob`：一键总结/retrigger→`analyze`；rebuild→`screenshot_retry`；integrity-check→`integrity_check`；低清→`low_res_download`。`download` 创建保持现状（`claimNextCreatedTask`）。
-- [ ] `Fix`（analyze↔low_res 状态机）：移除 `onTaskFinished→onAnalysisTrigger`/`onLowResFinished`/`lowResQueue`/`lowResRunningSet`/`lowResRunningResources`。改为：`analyze` handler 若低清未就绪 → `enqueue low_res_download`（`dedup_key=lowres:{bvid}:{cid}`）并将本 `analyze` 以 `available_at` 退避重入（等待态）；`low_res_download` 完成后 `enqueue analyze`（`dedup_key=analyze:{bvid}:{cid}`）续跑。承接 `analysis-trigger.service.ts:273-289` 的等待语义；明确两 kind 的 `dedup_key` 与衔接。
-- [ ] `Fix`：`promptId`/创作者 mid 在触发期解析写入 `analyze` 作业 `payload`，免 `analysis-trigger` 执行期 mid 解析（`:334`）；`resource_type` 随 `low_res_download` 作业 `payload` 下发。**高清 `download` 保持 `claimNextCreatedTask`，其 `download.service.ts:528-534` 执行期解析本阶段不动**（待 download 迁 worker_job）。payload 缺失路径重解析后下发。
-- [ ] `Proof`：`pnpm typecheck`、`pnpm build`。
+- [x] `Add`：进程内 worker 轮询器（独立定时器）：`claimNextJob('nas')` → 按 kind 分发 handler → 执行期独立定时器 `renewLease` → `completeJob/failJob`；reaper 定时扫描。handler 幂等（文件存在即跳过、COS 同 key 覆盖、DB upsert）；**handler 完成时在同一 `this.prismaDb.transaction` 内写领域结果 + 作业终态**（避免崩溃不一致/重复执行；Q3 双写缓解）。
+- [x] `Fix`：触发入口改为 `enqueueJob`：一键总结/retrigger→`analyze`；rebuild→`screenshot_retry`；integrity-check→`integrity_check`；低清→`low_res_download`。`download` 创建保持现状（`claimNextCreatedTask`）。
+- [x] `Fix`（analyze↔low_res 状态机）：移除 `onTaskFinished→onAnalysisTrigger`/`onLowResFinished`/`lowResQueue`/`lowResRunningSet`/`lowResRunningResources`。改为：`analyze` handler 若低清未就绪 → `enqueue low_res_download`（`dedup_key=lowres:{bvid}:{cid}`）并将本 `analyze` 以 `available_at` 退避重入（等待态）；`low_res_download` 完成后 `enqueue analyze`（`dedup_key=analyze:{bvid}:{cid}`）续跑。承接 `analysis-trigger.service.ts:273-289` 的等待语义；明确两 kind 的 `dedup_key` 与衔接。
+- [x] `Fix`：`promptId`/创作者 mid 在触发期解析写入 `analyze` 作业 `payload`，免 `analysis-trigger` 执行期 mid 解析（`:334`）；`resource_type` 随 `low_res_download` 作业 `payload` 下发。**高清 `download` 保持 `claimNextCreatedTask`，其 `download.service.ts:528-534` 执行期解析本阶段不动**（待 download 迁 worker_job）。payload 缺失路径重解析后下发。
+- [x] `Proof`：`pnpm typecheck`、`pnpm build`。
 
 Exit Criteria:
 
-- [ ] 触发类动作均以写作业行完成；下载完成经作业驱动分析，不再依赖进程内回调/内存队列。
-- [ ] worker 崩溃后 `running` 作业经租约超时被 reaper 重置并重领；`queued` 不丢。
-- [ ] `promptId`/创作者 mid 经 `analyze` payload、`resource_type` 经 `low_res_download` payload 下发（对应执行期不再为此调 B站）；高清 download 执行期解析保留（已裁决 out of scope）。
-- [ ] `docs/logs/` 记录。
+- [x] 触发类动作均以写作业行完成；下载完成经作业驱动分析，不再依赖进程内回调/内存队列。
+- [x] worker 崩溃后 `running` 作业经租约超时被 reaper 重置并重领；`queued` 不丢。
+- [x] `promptId`/创作者 mid 经 `analyze` payload、`resource_type` 经 `low_res_download` payload 下发（对应执行期不再为此调 B站）；高清 download 执行期解析保留（已裁决 out of scope）。
+- [x] `docs/logs/` 记录。
 
 ### Phase 3 - 以 DB 作业替换内存互斥 + 状态接口
 
-Status: planned
+Status: done
 Targets: `analysis-trigger.service.ts`、`summary-integrity.service.ts`、`analysis-task.controller.ts`
 
 - Item Types: `Fix | Add`
 - Prereqs: Phase 1-2
 
-- [ ] `Fix`：移除 `rebuildingIds`（rebuild 并发由 `screenshot_retry` 的 `dedup_key` 活跃唯一保证）与 integrity `running` 布尔（由 `integrity_check` 作业去重保证）。
-- [ ] `Add`：作业状态查询/取消接口（列表/单条/取消）；`GET /summary-tasks/integrity-check/status` 改读 DB 作业状态而非进程内 `running`。
-- [ ] `Proof`：`pnpm typecheck`、`pnpm build`。
+- [x] `Fix`：移除 `rebuildingIds`（rebuild 并发由 `screenshot_retry` 的 `dedup_key` 活跃唯一保证）与 integrity `running` 布尔（由 `integrity_check` 作业去重保证）。
+- [x] `Add`：作业状态查询/取消接口（列表/单条/取消）；`GET /summary-tasks/integrity-check/status` 改读 DB 作业状态而非进程内 `running`。
+- [x] `Proof`：`pnpm typecheck`、`pnpm build`。
 
 Exit Criteria:
 
-- [ ] 进程内互斥不再承担并发正确性；重复投递被 `dedup_key` 拒绝。
-- [ ] status 接口读 DB；前端轮询可见 queued/leased/running/succeeded/failed/canceled。
-- [ ] `docs/logs/` 记录。
+- [x] 进程内互斥不再承担并发正确性；重复投递被 `dedup_key` 拒绝。
+- [x] status 接口读 DB；前端轮询可见 queued/leased/running/succeeded/failed/canceled。
+- [x] `docs/logs/` 记录。
 
 ### Phase 4 - 测试与验证
 
-Status: planned
+Status: done
 Targets: `packages/server/tests/database/*`、服务级测试
 
 - Item Types: `Add | Proof`
 - Prereqs: Phase 1-3
 
-- [ ] `Add`：数据层测试——`enqueueJob` 去重（活跃唯一）、`claimNextJob` FIFO+并发原子（比照 task.test）、`renewLease`、`reapExpired` 超时重置+attempts++、终态写回。
-- [ ] `Add`：幂等与恢复——重复投递单次执行；崩溃（租约过期）后重领；取消在安全点终止为 canceled。
-- [ ] `Proof`：`pnpm --filter @bilibili-downloader/server test` + `typecheck` + `build` 全绿。
+- [x] `Add`：数据层测试——`enqueueJob` 去重（活跃唯一）、`claimNextJob` FIFO+并发原子（比照 task.test）、`renewLease`、`reapExpired` 超时重置+attempts++、终态写回。
+- [x] `Add`：幂等与恢复——重复投递单次执行；崩溃（租约过期）后重领；取消在安全点终止为 canceled。
+- [x] `Proof`：`pnpm --filter @bilibili-downloader/server test` + `typecheck` + `build` 全绿。
 
 Exit Criteria:
 
-- [ ] 需求 AC 逐条被测试或人工核对覆盖；testing 每条方向确认或裁决。
-- [ ] `docs/logs/` 记录。
+- [x] 需求 AC 逐条被测试或人工核对覆盖；testing 每条方向确认或裁决。
+- [x] `docs/logs/` 记录。
 
 ### Phase 5 - 文档与闭合
 
-Status: planned
+Status: done
 Targets: `docs/architecture/system-baseline.md`、`docs/architecture/module-boundaries.md`、`docs/design/app-overview.md`、`docs/context/codebase-map.md`、`docs/backlog/README.md`、`docs/logs/`
 
 - Item Types: `Fix | Proof`
 - Prereqs: Phase 1-4
 
-- [ ] `Fix`：owner docs——system-baseline（作业队列 runtime 形态）、module-boundaries（移除进程内 scheduler/回调、新增作业仓储边界）、app-overview（触发=写作业、状态轮询、integrity status 读 DB）、codebase-map（worker_job 入口）、backlog（Phase 2 → done，解除下游依赖）。
-- [ ] `Proof`：独立 closure audit（reviewer=none → 独立子代理或 cold-replay，留证）。
+- [x] `Fix`：owner docs——system-baseline（作业队列 runtime 形态）、module-boundaries（移除进程内 scheduler/回调、新增作业仓储边界）、app-overview（触发=写作业、状态轮询、integrity status 读 DB）、codebase-map（worker_job 入口）、backlog（Phase 2 → done，解除下游依赖）。
+- [x] `Proof`：独立 closure audit（reviewer=none → 独立子代理或 cold-replay，留证）。
 
 Exit Criteria:
 
-- [ ] owner docs / codebase-map / backlog / log 一致；testing 每条方向确认或裁决。
-- [ ] closure gates 全绿。
+- [x] owner docs / codebase-map / backlog / log 一致；testing 每条方向确认或裁决。
+- [x] closure gates 全绿。
 
 ## Plan Audit
 
@@ -141,16 +141,16 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] in-scope behavior is complete
-- [ ] relevant docs are aligned（system-baseline / module-boundaries / app-overview / codebase-map / backlog / log）
-- [ ] verification has run（`pnpm --filter @bilibili-downloader/server test`、`pnpm typecheck`、`pnpm build`）
-- [ ] corresponding `docs/testing/` document exists 且每条方向确认通过或裁决 out of scope
-- [ ] no in-scope item downgraded to deferred/follow-up
-- [ ] plan audit passed（独立子代理或 cold-replay 留证）before implementation
-- [ ] micro-plan exception not applicable（新增数据模型 + 替换调度核心 + 多模块）
-- [ ] text consistency verified：top status / phase status / exit criteria / closure gates / testing doc / log 一致
-- [ ] closure audit was independent（或 cold-replay 代理留证）
-- [ ] closure evidence exists in files
+- [x] in-scope behavior is complete
+- [x] relevant docs are aligned（system-baseline / module-boundaries / app-overview / codebase-map / backlog / log）
+- [x] verification has run（`pnpm --filter @bilibili-downloader/server test`、`pnpm typecheck`、`pnpm build`）
+- [x] corresponding `docs/testing/` document exists 且每条方向确认通过或裁决 out of scope
+- [x] no in-scope item downgraded to deferred/follow-up
+- [x] plan audit passed（独立子代理或 cold-replay 留证）before implementation
+- [x] micro-plan exception not applicable（新增数据模型 + 替换调度核心 + 多模块）
+- [x] text consistency verified：top status / phase status / exit criteria / closure gates / testing doc / log 一致
+- [x] closure audit was independent（或 cold-replay 代理留证）
+- [x] closure evidence exists in files
 
 ## Deferred But Adjudicated
 
@@ -174,12 +174,14 @@ Exit Criteria:
 
 ## Closure
 
-Status Note: 待实施后回填。
+Status: done（2026-09-30）
+
+Status Note: Phase 1-5 全部落地并验证。提交序列 312f77d(P2-1) → a303c39(P2-2a) → 08001be(P2-2b-1) → 6ec9849(P2-2b-2) → f6152dd(P2-3) → d96d03c(P2-4) → 977f8b9(P2-5 docs/log) → 4e63c34(closure-audit 修复)。验证：`pnpm --filter @bilibili-downloader/server typecheck`/`build` 通过；`test` 全量 150 passed（测试容器 pgvector/pg17）。
 
 Closure Audit Evidence:
 
-- Reviewer / Agent: 待回填
-- Evidence: 待回填
+- Reviewer / Agent: 独立子代理（General，fresh-eyes 冷回放，无实现记忆；reviewer=none 非保护区允许代替人工）
+- Evidence: 2026-09-30 独立 closure audit，Verdict=PASS-WITH-FIXES，逐条核对 Exit Criteria/Closure Gates 并对照 live code（file:line）与本地 typecheck/build。发现并已修复 2 处：(1) GAP-1 `POST /api/analysis/trigger` 存量任务分支仍同步调用 trigger() 绕过 worker_job → 改为 enqueue analyze（4e63c34）；(2) GAP-2 `reapExpiredJobs` 未对 max_attempts 设限致毒作业无限重试 → 达上限置 failed + 补测（4e63c34）。其余项 CONFIRMED；`leased` 为未使用中间态（claim 直写 running，reaper 兼容 leased/running），不影响正确性。
 
 Follow-up:
 
