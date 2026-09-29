@@ -7,9 +7,9 @@
 > 审计：`docs/audits/2026-09-17-document-audit-cloud-nas-responsibility-split.md`（第一轮）；`docs/audits/2026-09-17-requirement-reaudit-cloud-nas-and-phase1a.md`（第二轮）；`docs/audits/2026-09-23-document-audit-cloud-nas-family.md`（子需求族逐份复核）。
 > 裁决（2026-09-23）：第一轮“未达实现就绪、实现 blocked”已由第二轮消解——Q1–Q16 全裁决、拆成 8 份子需求（1a/1b/2/3/4 + auth + 完整性检查重定义 + 重试截图）；本文自此为总纲/裁决之源，不再作单一计划实现。Phase 1a/1b/2 `ready`（1b 依赖 1a）；**auth 先行**（已裁决 2026-09-23，须先于 Phase 3 公网暴露）；Phase 3 `needs-plan`（部署保护区 + `server-common` 独立前置阶段；QWEN 已澄清非冲突）；Phase 4 `blocked`（数据删除保护区，reviewer=none）。
 > Owner-doc（已澄清 2026-09-23，非冲突）：`docs/architecture/2026-07-06-video-analysis-baseline.md:40,69` 现规定"所有部署形态均需配置 `QWEN_VISION_PROXY_URL`，无公网 URL 直连路径"；云端仅改用 `openai` SDK 连接该 `QWEN_VISION_PROXY_URL`（换库不换端点，模型/端点/配置不变），不构成冲突。
-> Supersedes（待人工确认）：`2026-09-07-summary-integrity-check.md`（其 Non-Goals 明确不检查视频本体 / COS 对象）、`2026-08-24-cos-summary-knowledge-publish.md`（影子双写 / `knowledge_status` / publish）、`2026-09-01-knowledge-backfill.md`（回填子系统）。
+> Supersedes（已确认 2026-09-23，被取代文档头部均已加取代指针）：`2026-09-07-summary-integrity-check.md`（其 Non-Goals 明确不检查视频本体 / COS 对象）、`2026-08-24-cos-summary-knowledge-publish.md`（影子双写 / `knowledge_status` / publish）、`2026-09-01-knowledge-backfill.md`（回填子系统）。
 > 相关既有产出：`docs/discussions/2026-08-21-summary-cloud-knowledge-base.md`、`docs/requirements/2026-08-24-cos-summary-knowledge-publish.md`、`docs/requirements/2026-09-07-summary-integrity-check.md`、`docs/requirements/2026-09-01-knowledge-backfill.md`
-> 跨阶段未决（统一由本总纲裁决，避免各子需求重复悬置）：① `knowledge_status`/`knowledge_error` 最终去留（保留重试态 vs 删除，见 Phase 1b/4）；② `worker_job` 终态保留期（见 Phase 2/4）。
+> 跨阶段未决（尚待裁决，登记于本总纲以避免各子需求重复悬置；决策位点＝本总纲，目前均未定案）：① `knowledge_status`/`knowledge_error` 最终去留（保留重试态 vs 删除，见 Phase 1b/4）；② `worker_job` 终态保留期（见 Phase 2/4）。
 
 ## 子需求关系与实现顺序
 
@@ -221,7 +221,7 @@ packages/
   - **普通用户仅 QA 问答**：创建/查看/删除自己的会话、上传照片、发送消息；以及 QA 回答来源所需的"AI 总结"整页读取（按 `(bvid,cid)`）。
   - 其余读接口（下载列表、总结任务列表、设置等）仅 admin。
 - **NAS↔云服务身份**：NAS 不调云端业务 API；直连云 DB 用**独立最小权限 DB 角色**、直连 COS 用专用密钥。无需服务令牌。
-- **限流**：本期不做（用户明确先不考虑），保留为后续可选。
+- **限流**：通用请求限流本期不做；已裁决（2026-09-23）实现**最小登录防护**——同一 IP 连续多次登录失败后临时封禁一段时间（详见 `docs/requirements/2026-09-17-user-auth.md`）；通用限流保留为后续可选。
 - 备注：auth 属保护区域（`plan-first`），reviewer availability = `none` 时实现保持 blocked，需人工/子代理评审。
 
 ## Data / Model Impact（需 Prisma contract + migration）
@@ -277,7 +277,7 @@ packages/
 8. ~~未发布 / 失败总结在云端是否必须可读~~ 已确认（见 Q8）：仅 `completed` 可读；`completed` 仅保证内容完备，图片可缺省并重试。
 9. ~~历史回填范围与时机~~ **已由用户手动完成，本期不再实施回填**（保留能力，不作为 Phase 1 门控）。
 10. ~~删除 / 重总结级联~~ 已确认（见 Q10）：删除 `summary` 级联 segments + 异步清 COS 前缀；重总结原地 upsert + 删尾行 + 文本变更清向量。
-11. ~~对外访问鉴权~~ 已确认（见 Q11）：两个层面——NAS↔云用最小权限服务身份（无云端业务 API 令牌）；前端访问用**小用户系统 + 内置 admin**，仅 admin 可写，普通用户仅 QA 问答。属 auth 保护区，需独立 owner doc + 测试。**限流本期不做。**
+11. ~~对外访问鉴权~~ 已确认（见 Q11）：两个层面——NAS↔云用最小权限服务身份（无云端业务 API 令牌）；前端访问用**小用户系统 + 内置 admin**，仅 admin 可写，普通用户仅 QA 问答。属 auth 保护区，需独立 owner doc + 测试。**通用请求限流本期不做；已裁决（2026-09-23）实现最小登录防护——同一 IP 登录失败锁定，见 Q11 与 auth 需求。**
 12. ~~云端 LLM 提供方 / 模型~~ 已确认：**仅换调用方式（OpenAI Node SDK），模型 / 端点 / 配置不变**。兼容基址已在 `docs/discussions/2026-08-18-proxy-auth-from-db.md` 记录为 `.../compatible-mode/v1`；剩余细节：`enable_thinking`（DashScope 专有）与 `response_format` 在新 SDK 下的替代与语义。
 13. ~~NAS 视频分析是否迁离 DashScope~~ 已定（技术必然）：本地视频不属 OpenAI SDK 能力范围，NAS 分析继续经 vision-proxy。
 14. ~~Embedding 是否更换~~ 已定：embedding 本就走独立的 OpenAI 兼容客户端（`EmbeddingClient`，`embedding.service.ts:58-63`），本次**不动**，无向量重算。
@@ -417,7 +417,7 @@ packages/
   4. **会话机制**：**服务端 session（HttpOnly Cookie）**，可吊销；与现有 B站 扫码登录 cookie 隔离（命名 / 路径分离）。
   5. **QA 会话归属**：`conversation` 新增 `user_id`（外键），QA 会话按用户隔离（现状无归属、所有会话共享；存量会话归属需迁移策略，见 Edge Cases）。
   6. **权限矩阵**：admin = 全部；user = QA（自己的会话 CRUD、照片上传、发消息）+ 按 `(bvid,cid)` 读"AI 总结"整页；其余接口（下载/总结管理、设置、提示词、重建、完整性）仅 admin。
-  7. ~~限流~~ 本期不做（用户明确先不考虑），保留为后续可选。
+  7. **限流（已细化 2026-09-23）**：通用请求限流本期不做；实现**最小登录防护**——同一 IP 连续多次登录失败后临时封禁一段时间（Node 内实现不新增依赖，阈值/时长实现时定），见 `docs/requirements/2026-09-17-user-auth.md`。
 - 备注：本项属 auth 保护区，需**独立需求与计划**（owner doc + 测试）；`reviewer availability=none` 时实现保持 blocked。
 
 **Q15. Cookie 真源、登录归属与 NAS 刷新机制？—— 已确认。**

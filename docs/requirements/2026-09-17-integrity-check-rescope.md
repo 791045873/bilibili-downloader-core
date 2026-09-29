@@ -3,7 +3,7 @@
 > 来源：拆自 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Q5 / 遗留问题 8；补全 2026-09-23）
 > Owner Doc：`docs/design/app-overview.md`、`docs/architecture/system-baseline.md`
 > 前置：Phase 1b（内容入 DB、截图入 COS、停写本地）、Phase 2（`integrity_check` 作业化）
-> Supersedes（需人工确认）：`docs/requirements/2026-09-07-summary-integrity-check.md`（旧版仅校验本地原始内容完整性；本需求以云 DB + COS + NAS 视频为判据取而代之）
+> Supersedes（已确认 2026-09-23，被取代文档头部已加取代指针）：`docs/requirements/2026-09-07-summary-integrity-check.md`（旧版仅校验本地原始内容完整性；本需求以云 DB + COS + NAS 视频为判据取而代之）
 > 保护区：无（不删数据 / 不改部署 / 不涉 auth；仅既有 `integrity_*` 列语义变更，无新增列）。需 plan audit（reviewer=none 可 cold-replay）。
 > 状态：实现就绪（依赖 Phase 1b / 2）
 

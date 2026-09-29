@@ -2,7 +2,7 @@
 
 > 来源：拆自 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Phase 1a）
 > Owner Doc：`docs/design/app-overview.md`
-> Supersedes（本切片读路径部分，需人工确认）：`docs/requirements/2026-08-17-ai-summary-view-markdown.md` 的 API Contract（读本地 md、文件缺失→404、`summary_output` 空→409、`/summary-files` 图片重写）实施后过时，须在其头部加“读路径已被 Phase 1a 取代”指针。
+> Supersedes（已确认 2026-09-23，指针已加）：`docs/requirements/2026-08-17-ai-summary-view-markdown.md` 的 API Contract（读本地 md、文件缺失→404、`summary_output` 空→409、`/summary-files` 图片重写）实施后过时；其头部已加“读路径已被 Phase 1a 取代”取代指针。
 > Owner-Doc Deltas：`docs/design/app-overview.md` 读取来源/错误码；`docs/design/feature-inventory.md` 补“查看总结/markdown 渲染”条目并更新数据源。
 > 关联分析：`docs/analysis/2026-09-17-cloud-nas-split-feasibility.md`；审计：`docs/audits/2026-09-17-requirement-reaudit-cloud-nas-and-phase1a.md`
 > 保护区：无（不改数据模型、不删数据、不改部署、不涉 auth）。需 plan audit（reviewer=none 时非保护区可用 cold-replay）。
