@@ -162,6 +162,33 @@ describe("内联发布向量化集成（Phase 1b）", () => {
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.no_vec)).toBe(true);
   });
+
+  it("结构化截图映射：screenshotFiles → COS 上传并回写 screenshot_url（B3）", async () => {
+    embedTexts.mockResolvedValue([]);
+    const publisher = new KnowledgePublisherService(
+      db,
+      {
+        isConfigured: () => true,
+        upload: vi.fn(async () => "https://cos.example/seg0.jpg"),
+      } as never,
+      embeddingStub,
+    );
+    await publisher.publishInline({
+      bvid: "BV1",
+      cid: 1,
+      videoTitle: "视频标题",
+      rawResponse: baseInput.rawResponse,
+      segments: [
+        { title: "技巧一", content: "内容一", timestamp: "00:01", frameDescription: "d1", screenshotFiles: ["/tmp/seg0.jpg"] },
+        { title: "技巧二", content: "内容二", timestamp: "00:02", frameDescription: "d2", screenshotFiles: [] },
+      ],
+    });
+    const { rows } = await pool().query(
+      `SELECT seq, screenshot_url FROM summary_segment ORDER BY seq`,
+    );
+    expect(rows[0].screenshot_url).toBe("https://cos.example/seg0.jpg");
+    expect(rows[1].screenshot_url).toBeNull();
+  });
 });
 
 describe("pgvector 检索", () => {
