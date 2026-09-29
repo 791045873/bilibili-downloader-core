@@ -1,7 +1,7 @@
 # 2026-09-28 云端/NAS Phase 1b — 内联发布 + 本地 md/截图下线
 
-> Plan Status: planned
-> Last Reviewed: 2026-09-28
+> Plan Status: done
+> Last Reviewed: 2026-09-29
 > Source: `docs/requirements/2026-09-17-cloud-inline-publish-local-retire.md`
 > Related: 前置 Phase 1a `docs/plans/2026-09-23-cloud-read-path-db-render-plan.md`（已闭合）；上游 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Phase 1b）；下游 Phase 2/4 与「重试截图」需求
 > Audit: required（非保护区：不改部署/auth；**不删除既有本地文件**——删除属 Phase 4 数据删除保护区；reviewer availability=none → 允许 cold-replay 或独立子代理代替）
@@ -47,99 +47,99 @@
 
 ### Phase 1 - 内联发布 + H4 修复 + 段↔截图结构化
 
-Status: planned
+Status: done
 Targets: `packages/server/src/analysis/analysis-engine.ts`、`packages/server/src/analysis/analysis-trigger.service.ts`、`packages/server/src/knowledge/knowledge-publisher.service.ts`
 
 - Item Types: `Fix | Add | Decision`
 - Prereqs: Phase 1a（已闭合）
 
-- [ ] `Add`（B3）：`AnalysisEngine` 输出增加 `segments[].screenshotFiles: string[]`（每段对应截图本地路径列表），与既有扁平 `screenshotFiles` 并存或替代；发布方按段消费。**接口契约**：`AnalysisOutput.segments: Array<{ title; content; timestamp; frameDescription; screenshotFiles: string[] }>`；发布器输入契约随之去除 `KnowledgePublishInput.summaryPath`（`knowledge-publisher.service.ts:37`）、改传结构化 `segments[].screenshotFiles`。
-- [ ] `Fix`：发布器改为**按结构映射**上传 COS 并回写 `summary_segment.screenshot_url`，删除"读本地 md + 正则反解 imageUrls"路径（`knowledge-publisher.service.ts` :123-162）。COS key 方案不变（`summary/<bvid>-<cid>/screenshots/...`）。
-- [ ] `Fix`：完成门槛改为**内容入库成功才 `completed`**——完成事务写入 `summary`+`summary_segment`（`screenshot_url` **允许为空**）成功即置 `completed`；**COS 截图上传+回写 `screenshot_url`、embedding 生成均为入库后独立 best-effort**（各自单独 UPDATE，失败仅留空对应字段，**绝不回退 `failed`**）。移除发布器 COS 未配置的**提前 return**（`knowledge-publisher.service.ts` :70-78）使其不再跳过内容入库；解除“发布抛错即 `knowledge_status=failed` 并 rethrow”（:199-210）对 `completed` 的影响。崩溃安全：内容事务与置 `completed` 为两次写，其间崩溃由 `reconcileStaleAnalysisState`（:76）标 failed、重跑经 `(summary_id,seq)` upsert 自愈。（`analysis-trigger.service.ts` :481-517）
-- [ ] `Fix`（H4）：失败路径不再写 `rawResponse`——LLM 成功后步骤失败 `status=failed`、保留模型 JSON 于 `rawResponse`、错误入 `error_message`（:529-536）；LLM 本身失败 `rawResponse=NULL`、`error_message`=错误（:150-156）。
-- [ ] `Fix`（rebuild 连带，**独立审计 blocker**）：发布器改结构化后，第二个 `publish` 调用方——rebuild 路径（`analysis-trigger.service.ts` 约 :845-873，调用点 :853）——须一并改为传 `buildOutput` 产出的结构化 `segments[].screenshotFiles`，避免其因失去 md 反解而写空 `screenshot_url` 或类型不符。**仅为发布器契约变更的必要连带，非 rebuild 语义收窄**（收窄仍属独立需求）。
-- [ ] `Decision`：`knowledge_status`/`knowledge_error` 裁剪——内联后发布即完成的一部分，**停止写影子发布态**（不再 pending/synced 流转）；列暂保留（Phase 4 决定去留，与 umbrella 跨阶段未决项一致）。备选：保留写入用于重试态——因内联发布无独立重试子系统，暂不保留；残留风险：前端 `knowledge_status` 标签将恒为空/历史值，Phase 3 一并处理 UI。
-- [ ] `Proof`：`pnpm typecheck`、`pnpm build`。
+- [x] `Add`（B3）：`AnalysisEngine` 输出增加 `segments[].screenshotFiles: string[]`（每段对应截图本地路径列表），与既有扁平 `screenshotFiles` 并存或替代；发布方按段消费。**接口契约**：`AnalysisOutput.segments: Array<{ title; content; timestamp; frameDescription; screenshotFiles: string[] }>`；发布器输入契约随之去除 `KnowledgePublishInput.summaryPath`（`knowledge-publisher.service.ts:37`）、改传结构化 `segments[].screenshotFiles`。
+- [x] `Fix`：发布器改为**按结构映射**上传 COS 并回写 `summary_segment.screenshot_url`，删除"读本地 md + 正则反解 imageUrls"路径（`knowledge-publisher.service.ts` :123-162）。COS key 方案不变（`summary/<bvid>-<cid>/screenshots/...`）。
+- [x] `Fix`：完成门槛改为**内容入库成功才 `completed`**——完成事务写入 `summary`+`summary_segment`（`screenshot_url` **允许为空**）成功即置 `completed`；**COS 截图上传+回写 `screenshot_url`、embedding 生成均为入库后独立 best-effort**（各自单独 UPDATE，失败仅留空对应字段，**绝不回退 `failed`**）。移除发布器 COS 未配置的**提前 return**（`knowledge-publisher.service.ts` :70-78）使其不再跳过内容入库；解除“发布抛错即 `knowledge_status=failed` 并 rethrow”（:199-210）对 `completed` 的影响。崩溃安全：内容事务与置 `completed` 为两次写，其间崩溃由 `reconcileStaleAnalysisState`（:76）标 failed、重跑经 `(summary_id,seq)` upsert 自愈。（`analysis-trigger.service.ts` :481-517）
+- [x] `Fix`（H4）：失败路径不再写 `rawResponse`——LLM 成功后步骤失败 `status=failed`、保留模型 JSON 于 `rawResponse`、错误入 `error_message`（:529-536）；LLM 本身失败 `rawResponse=NULL`、`error_message`=错误（:150-156）。
+- [x] `Fix`（rebuild 连带，**独立审计 blocker**）：发布器改结构化后，第二个 `publish` 调用方——rebuild 路径（`analysis-trigger.service.ts` 约 :845-873，调用点 :853）——须一并改为传 `buildOutput` 产出的结构化 `segments[].screenshotFiles`，避免其因失去 md 反解而写空 `screenshot_url` 或类型不符。**仅为发布器契约变更的必要连带，非 rebuild 语义收窄**（收窄仍属独立需求）。
+- [x] `Decision`：`knowledge_status`/`knowledge_error` 裁剪——内联后发布即完成的一部分，**停止写影子发布态**（不再 pending/synced 流转）；列暂保留（Phase 4 决定去留，与 umbrella 跨阶段未决项一致）。备选：保留写入用于重试态——因内联发布无独立重试子系统，暂不保留；残留风险：前端 `knowledge_status` 标签将恒为空/历史值，Phase 3 一并处理 UI。
+- [x] `Proof`：`pnpm typecheck`、`pnpm build`。
 
 Exit Criteria:
 
-- [ ] 分析成功后 `summary`+`summary_segment`（含 `screenshot_url`）已入云 DB，且**内容入库成功才** `completed`；截图上传失败仍 `completed` 且 `screenshot_url` 为空。
-- [ ] 发布不再读本地 md；段↔截图按结构映射。
-- [ ] 失败路径不污染 `rawResponse`；模型 JSON 在后续步骤失败时保留。
-- [ ] `docs/logs/` 记录本相位进展。
+- [x] 分析成功后 `summary`+`summary_segment`（含 `screenshot_url`）已入云 DB，且**内容入库成功才** `completed`；截图上传失败仍 `completed` 且 `screenshot_url` 为空。
+- [x] 发布不再读本地 md；段↔截图按结构映射。
+- [x] 失败路径不污染 `rawResponse`；模型 JSON 在后续步骤失败时保留。
+- [x] `docs/logs/` 记录本相位进展。
 
 ### Phase 2 - 停止写本地 md/截图 + 移除 /summary-files 挂载 + helper 裁剪
 
-Status: planned
+Status: done
 Targets: `packages/server/src/analysis/analysis-engine.ts`、`packages/server/src/main.ts`、`packages/server/src/analysis/summary-dir.ts`
 
 - Item Types: `Fix`
 - Prereqs: Phase 1
 
-- [ ] `Fix`：分析引擎不再 `writeFile` 本地 md、不再写本地截图副本作为对外产物（:447/:509 相关）；截图仅用于上传 COS 后即可清理临时件（不留对外副本）；`summaryOutput` 不再写入（列保留）。
-- [ ] `Fix`：移除 `main.ts` 的 `/summary-files` 静态挂载（:24-27，含 `mkdirSync` 与 :37-43 启动日志块）与 `SUMMARY_STATIC_PREFIX` 引用。
-- [ ] `Fix`：删除确认无调用方的死代码 helper：`rewriteMarkdownImageUrls`（已无调用方）、`rewriteMarkdownImages`（publisher 改结构化后不再用）、`SUMMARY_STATIC_PREFIX`（挂载移除后）。**保留** `listLocalImageRefs` 与 `resolveSummaryOutputPath`——二者仍被 out-of-scope 的 `summary-integrity.service.ts`（:117/:105）引用。
-- [ ] `Proof`：`pnpm typecheck`、`pnpm build`；全局 grep 确认无残留 `/summary-files`、无悬空 import。
+- [x] `Fix`：分析引擎不再 `writeFile` 本地 md、不再写本地截图副本作为对外产物（:447/:509 相关）；截图仅用于上传 COS 后即可清理临时件（不留对外副本）；`summaryOutput` 不再写入（列保留）。
+- [x] `Fix`：移除 `main.ts` 的 `/summary-files` 静态挂载（:24-27，含 `mkdirSync` 与 :37-43 启动日志块）与 `SUMMARY_STATIC_PREFIX` 引用。
+- [x] `Fix`：删除确认无调用方的死代码 helper：`rewriteMarkdownImageUrls`（已无调用方）、`rewriteMarkdownImages`（publisher 改结构化后不再用）、`SUMMARY_STATIC_PREFIX`（挂载移除后）。**保留** `listLocalImageRefs` 与 `resolveSummaryOutputPath`——二者仍被 out-of-scope 的 `summary-integrity.service.ts`（:117/:105）引用。
+- [x] `Proof`：`pnpm typecheck`、`pnpm build`；全局 grep 确认无残留 `/summary-files`、无悬空 import。
 
 Exit Criteria:
 
-- [ ] 分析不再产出对外 md 与本地截图副本；既有历史文件**未删除**（Phase 4）。
-- [ ] `/summary-files` 挂载移除；服务端无该前缀产出；无悬空 helper import。
-- [ ] `docs/logs/` 记录本相位进展。
+- [x] 分析不再产出对外 md 与本地截图副本；既有历史文件**未删除**（Phase 4）。
+- [x] `/summary-files` 挂载移除；服务端无该前缀产出；无悬空 helper import。
+- [x] `docs/logs/` 记录本相位进展。
 
 ### Phase 3 - 下线 publish/backfill/repair 端点 + 前端引用 + knowledge_status UI
 
-Status: planned
+Status: done
 Targets: `analysis-task.controller.ts`、`knowledge-backfill.controller.ts`、`summary-repair.service.ts`、对应 module、`packages/frontend/src/api/index.ts`、`packages/frontend/src/pages/AiSummaryTasks.tsx`
 
 - Item Types: `Fix`
 - Prereqs: Phase 1（内联发布取代 publish）
 
-- [ ] `Fix`：移除 `POST /api/summary-tasks/:id/publish`（:421-482）及其 DI；移除 `POST/GET /api/knowledge/backfill` 控制器与 provider。
-- [ ] `Fix`：移除 `POST /api/summary-tasks/repair`（:119-143）与 `SummaryRepairService`（含 module provider 与构造器注入）。**不删 `listLocalImageRefs`**——其仍被 out-of-scope 的 `summary-integrity.service.ts:117` 使用（与基线/Phase 2 保留决策一致）。
-- [ ] `Fix`：前端移除 `publishAiSummaryTask`（api :271）、`repairSummaryTasks`（api :306）调用与入口按钮；`AiSummaryTasks.tsx` 移除 `knowledge_status` 相关 UI（helper :57-74、Tag :403-405、错误显示 :414、publish 按钮 :521-530）。
-- [ ] `Proof`：`pnpm typecheck`、`pnpm build`（前后端）；grep 确认无残留端点/前端引用。
+- [x] `Fix`：移除 `POST /api/summary-tasks/:id/publish`（:421-482）及其 DI；移除 `POST/GET /api/knowledge/backfill` 控制器与 provider。
+- [x] `Fix`：移除 `POST /api/summary-tasks/repair`（:119-143）与 `SummaryRepairService`（含 module provider 与构造器注入）。**不删 `listLocalImageRefs`**——其仍被 out-of-scope 的 `summary-integrity.service.ts:117` 使用（与基线/Phase 2 保留决策一致）。
+- [x] `Fix`：前端移除 `publishAiSummaryTask`（api :271）、`repairSummaryTasks`（api :306）调用与入口按钮；`AiSummaryTasks.tsx` 移除 `knowledge_status` 相关 UI（helper :57-74、Tag :403-405、错误显示 :414、publish 按钮 :521-530）。
+- [x] `Proof`：`pnpm typecheck`、`pnpm build`（前后端）；grep 确认无残留端点/前端引用。
 
 Exit Criteria:
 
-- [ ] 三端点均下线，无后端路由与前端引用残留；DI/module 干净。
-- [ ] `docs/logs/` 记录本相位进展。
+- [x] 三端点均下线，无后端路由与前端引用残留；DI/module 干净。
+- [x] `docs/logs/` 记录本相位进展。
 
 ### Phase 4 - 测试与验证
 
-Status: planned
+Status: done
 Targets: `packages/server/tests/**`（数据层 + 纯函数/服务单测）
 
 - Item Types: `Add | Proof`
 - Prereqs: Phase 1-3
 
-- [ ] `Add`：数据层/服务测试——内联发布后 `summary`+`summary_segment` 入库且 `completed`；截图上传失败仍 `completed`、`screenshot_url` 为空；重跑按 `(summary_id, seq)` upsert 并清尾行（复用既有 knowledge 测试模式）。
-- [ ] `Add`：H4 回归——LLM 成功后步骤失败 `rawResponse` 保留模型 JSON、`error_message` 记错误；LLM 失败 `rawResponse=NULL`。
-- [ ] `Add`：段↔截图结构化映射纯函数/服务测试（无需读本地 md）。
-- [ ] `Proof`：`pnpm --filter @bilibili-downloader/server test`（测试容器）+ `pnpm typecheck` + `pnpm build` 全绿。
+- [x] `Add`：数据层/服务测试——内联发布后 `summary`+`summary_segment` 入库且 `completed`；截图上传失败仍 `completed`、`screenshot_url` 为空；重跑按 `(summary_id, seq)` upsert 并清尾行（复用既有 knowledge 测试模式）。
+- [x] `Add`：H4 回归——LLM 成功后步骤失败 `rawResponse` 保留模型 JSON、`error_message` 记错误；LLM 失败 `rawResponse=NULL`。
+- [x] `Add`：段↔截图结构化映射纯函数/服务测试（无需读本地 md）。
+- [x] `Proof`：`pnpm --filter @bilibili-downloader/server test`（测试容器）+ `pnpm typecheck` + `pnpm build` 全绿。
 
 Exit Criteria:
 
-- [ ] 需求 Acceptance Criteria 逐条被测试或人工核对覆盖；testing 文档每条方向确认或裁决。
-- [ ] 全部验证命令通过。
-- [ ] `docs/logs/` 记录本相位进展。
+- [x] 需求 Acceptance Criteria 逐条被测试或人工核对覆盖；testing 文档每条方向确认或裁决。
+- [x] 全部验证命令通过。
+- [x] `docs/logs/` 记录本相位进展。
 
 ### Phase 5 - 文档与闭合
 
-Status: planned
+Status: done
 Targets: `docs/design/app-overview.md`、`docs/design/feature-inventory.md`、`docs/context/codebase-map.md`、`docs/backlog/README.md`、`docs/logs/`
 
 - Item Types: `Fix | Proof`
 - Prereqs: Phase 1-4
 
-- [ ] `Fix`：owner docs 对齐——`completed`=内容入库、内联发布、`/summary-files` 移除、publish/backfill/repair 下线、`knowledge_status` UI 移除、rebuild 现状说明（见 Deferred）。
-- [ ] `Fix`：`backlog/README.md` 将 Phase 1b 标 done、解除后继（Phase 2/「重试截图」）对 1b 的依赖阻塞；`project-context.md` 同步（active requirement 是否切换按当时裁决）。
-- [ ] `Proof`：独立 closure audit（reviewer=none → 独立子代理或 cold-replay，留证于本计划 Closure 段或 `docs/audits/`）。
+- [x] `Fix`：owner docs 对齐——`completed`=内容入库、内联发布、`/summary-files` 移除、publish/backfill/repair 下线、`knowledge_status` UI 移除、rebuild 现状说明（见 Deferred）。
+- [x] `Fix`：`backlog/README.md` 将 Phase 1b 标 done、解除后继（Phase 2/「重试截图」）对 1b 的依赖阻塞；`project-context.md` 同步（active requirement 是否切换按当时裁决）。
+- [x] `Proof`：独立 closure audit（reviewer=none → 独立子代理或 cold-replay，留证于本计划 Closure 段或 `docs/audits/`）。
 
 Exit Criteria:
 
-- [ ] owner docs / codebase-map / backlog / log 一致；testing 每条方向确认或裁决 out of scope。
-- [ ] closure gates 全绿。
+- [x] owner docs / codebase-map / backlog / log 一致；testing 每条方向确认或裁决 out of scope。
+- [x] closure gates 全绿。
 
 ## Plan Audit
 
@@ -149,16 +149,16 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] in-scope behavior is complete
-- [ ] relevant docs are aligned（app-overview / feature-inventory / codebase-map / backlog / log）
-- [ ] verification has run（`pnpm --filter @bilibili-downloader/server test`、`pnpm typecheck`、`pnpm build`）
-- [ ] corresponding `docs/testing/` document exists 且每条方向确认通过或裁决 out of scope
-- [ ] no in-scope item downgraded to deferred/follow-up
+- [x] in-scope behavior is complete
+- [x] relevant docs are aligned（app-overview / feature-inventory / codebase-map / backlog / log）
+- [x] verification has run（`pnpm --filter @bilibili-downloader/server test`、`pnpm typecheck`、`pnpm build`）
+- [x] corresponding `docs/testing/` document exists 且每条方向确认通过或裁决 out of scope
+- [x] no in-scope item downgraded to deferred/follow-up
 - [x] plan audit passed（独立子代理留证）before implementation
-- [ ] micro-plan exception not applicable（跨 API 下线 + 完成语义变更 + 多模块）
-- [ ] text consistency verified：top status / phase status / exit criteria / closure gates / testing doc / log 一致
-- [ ] closure audit was independent（或 cold-replay 代理留证）
-- [ ] closure evidence exists in files
+- [x] micro-plan exception not applicable（跨 API 下线 + 完成语义变更 + 多模块）
+- [x] text consistency verified：top status / phase status / exit criteria / closure gates / testing doc / log 一致
+- [x] closure audit was independent（或 cold-replay 代理留证）
+- [x] closure evidence exists in files
 
 ## Deferred But Adjudicated
 
@@ -182,13 +182,14 @@ Exit Criteria:
 
 ## Closure
 
-Status Note: 待实施后回填。
+Status Note: 已闭合（2026-09-29）。实施顺序调整为 P1→P3→P2→P4→P5（P2 依赖 P3 先删旧 publish/helper）。内联发布、完成语义门槛、H4、B3、停写本地/移除挂载、端点与前端下线、rebuild 连带适配、测试与文档全部落地并验证。
 
 Closure Audit Evidence:
 
-- Reviewer / Agent: 待回填
-- Evidence: 待回填
+- Reviewer / Agent: 独立子代理 closure audit（fresh-eyes，无实现记忆）；实现前另有独立子代理 plan audit（两轮）。
+- Evidence: Verdict=PASS-WITH-FIXES；逐项 1–10 CONFIRMED。should-fix 已处理：删除 vite `/summary-files` 代理、清理临时文件、更正发布器注释、回填本计划闭合元数据。验证：`pnpm typecheck`/`build` 通过、`pnpm --filter server test` 18 文件/128 项通过。
 
 Follow-up:
 
-- Phase 2（作业化）后推进「重试截图」与「完整性检查重定义」。
+- Phase 2（作业化）后推进「重试截图」与「完整性检查重定义」（后者承接：本地 md 停写后旧本地完整性检查会误报缺失）。
+- `database.service` 的 `updateSummaryKnowledgeStatus` / `listAiSummaryTasksForKnowledgeBackfill` 成无调用方死方法，随 `knowledge_status` 列一并留待 Phase 4 清理（列删除属数据保护区）。

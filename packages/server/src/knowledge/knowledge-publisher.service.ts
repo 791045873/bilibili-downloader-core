@@ -1,15 +1,13 @@
 /**
- * 知识发布管道：把一份完成的 AI 总结发布到云端知识库（COS 截图 + summary/summary_segment）。
+ * 知识发布管道（Phase 1b 起内联，publishInline）：把一份完成的 AI 总结写入云端知识库
+ * （summary/summary_segment + COS 截图）。
  *
  * 流程：
- *   1. 读取 md，提取其中图片引用（相对路径与已存在的 COS 绝对 URL）；
- *   2. 对本地仍存在的相对路径截图，上传 COS 并得到公网 URL；
- *   3. 解析 raw_response → summary segments，为每段确定 screenshot_url（本地重传或沿用既有 COS URL）；
- *   4. 事务内 upsert 云端 summary + summary_segment；
- *   5. 重写本地 md 相对图片链接为 COS 公网 URL；
- *   6. 更新 ai_summary_task.knowledge_status（pending → synced/failed）。
+ *   1. 按结构化 segments[].screenshotFiles 上传截图至 COS（best-effort，失败留空 screenshot_url）；
+ *   2. 事务内 upsert 云端 summary + summary_segment（内容入库=完成门槛，失败向上抛由调用方置 failed）；
+ *   3. 生成/复用段向量（best-effort，失败不阻塞完成）。
  *
- * 幂等：云端按 (bvid,cid) 删旧插新；重试已发布总结时，md 已含 COS 绝对 URL，沿用不重传。
+ * 幂等：云端按 (bvid,cid) 删旧插新；文本未变复用向量。不读本地 md、不写 knowledge_status。
  */
 
 import { Injectable, Logger } from "@nestjs/common";
@@ -128,7 +126,7 @@ export class KnowledgePublisherService {
 
   /**
    * 两段写第二段：复用未变更向量 → 补算缺失向量 → raw 回写。
-   * 缺 embedding 配置/调用失败抛错，由 publish 的 failed 语义承接（可重试）。
+   * 缺 embedding 配置/调用失败时抛错，由 publishInline 以 best-effort 捕获（不阻塞完成，向量留空）。
    */
   private async writeSegmentEmbeddings(
     summaryId: number,

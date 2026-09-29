@@ -65,7 +65,7 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 
 | Priority | Item | Requirement | Owner Doc | Plan | Status | AI Autonomy | Blocker | Last Checked |
 |----------|------|-------------|-----------|------|--------|-------------|---------|--------------|
-| P1 | Phase 1b 内联发布 + 本地文件下线 | `docs/requirements/2026-09-17-cloud-inline-publish-local-retire.md` | `docs/design/app-overview.md` | none | `ready` | `plan-first` | `none（Phase 1a 已完成 2026-09-28）` | 2026-09-28 |
+| P1 | Phase 1b 内联发布 + 本地文件下线 | `docs/requirements/2026-09-17-cloud-inline-publish-local-retire.md` | `docs/design/app-overview.md` | `docs/plans/2026-09-28-cloud-inline-publish-local-retire-plan.md` | `done` | `plan-first` | `none（2026-09-28 完成）` | 2026-09-28 |
 | P1 | Phase 2 持久化作业与跨主机触发 | `docs/requirements/2026-09-17-cloud-worker-jobs.md` | `docs/architecture/system-baseline.md` | none | `ready` | `plan-first` | `none` | 2026-09-17 |
 | P1 | Phase 3 拆分为 cloud-server / nas-worker | `docs/requirements/2026-09-17-cloud-project-split.md` | `docs/architecture/module-boundaries.md` | none | `needs-plan` | `ask-first`（部署保护区） | `部署需人工批准（reviewer=none）` | 2026-09-17 |
 | P2 | Phase 4 收敛与清理 | `docs/requirements/2026-09-17-cloud-cleanup.md` | `docs/design/app-overview.md` | none | `blocked` | `ask-first`（数据删除保护区） | `数据删除需人工批准；依赖前序 Phase` | 2026-09-17 |

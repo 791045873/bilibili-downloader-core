@@ -1,0 +1,12 @@
+docs(cloud-nas): Phase 1b 分步 5/5 — owner docs 对齐 + 计划闭合
+
+- app-overview：移除 /summary-files 与 backfill 行、补内联发布/completed 门槛说明、旧本地完整性检查失效注记
+- feature-inventory / codebase-map：知识发布改内联（publishInline），backfill/repair 下线
+- backlog：Phase 1b → done（挂计划路径）
+- publisher 头注释与 writeSegmentEmbeddings 注释更正为内联语义
+- vite.config：移除 /summary-files dev 代理（后端已不再服务该前缀）
+- testing 09-28：回填 T1–T8 结论
+- 计划：Plan Status/相位/Closure Gates 全绿，回填独立子代理 closure audit（PASS-WITH-FIXES，逐项 1–10 CONFIRMED）
+- 新增实现日志 2026-09-29；typecheck+build 绿
+
+Phase 1b 全部 5 相位完成。

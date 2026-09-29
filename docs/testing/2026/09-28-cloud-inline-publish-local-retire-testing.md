@@ -57,4 +57,12 @@
 
 ## 结论
 
-- 状态：待实施后回填每条方向的通过/裁决结论。
+- 状态：**通过（2026-09-29）**。
+- T1/T2（内联发布、内容入库=completed、截图不阻塞）：由 `publishInline` 服务测试与 trigger 代码路径覆盖（内容 upsert 成功即 completed；COS/embedding best-effort 不回退 failed）；单测见 `tests/knowledge/vector-search.test.ts`。
+- T3（B3 结构化映射）：新增用例断言 `screenshotFiles → COS 上传并回写 screenshot_url`，空段回写 null。
+- T4（H4）：trigger 三处失败路径已移除 `rawResponse` 写入（代码级）；由 `upsertAiSummaryTask` 语义（未传即保留/NULL）保证不写错误串。**运行级组合断言留待部署后人工确认**（E2E=none，trigger 集成层不做重型 mock）。
+- T5（重跑 upsert 清尾行）：由既有 `tests/database/knowledge.test.ts` 覆盖。
+- T6（停写本地 + 移除挂载）：engine 去 writeFile、main.ts 去 useStaticAssets（代码级）；grep 无 `/summary-files` 产出。
+- T7（端点下线）：publish/backfill/repair 路由与前端引用均已删除（typecheck/build 绿、grep 无残留）；运行级 404 留待部署后确认。
+- T8（无回归）：全套 server 测试 18 文件 / 128 项通过；rebuild 仅连带适配发布器契约、语义未改。
+- 已知副作用（已裁决）：本地 md 停写后，旧"本地完整性检查"会误报缺失，由「完整性检查重定义」需求承接（Phase 1b Non-Goal）。
