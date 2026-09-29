@@ -44,9 +44,19 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 - 页面支持按下载状态过滤现有任务，并移除了“清空已完成”这种本地隐藏语义。
 - 页面轮询仅覆盖当前页中的非终态任务；翻页、切换过滤和切换每页条数时会释放旧轮询集合。
 - 删除语义：`DELETE /api/tasks/:id` 删除下载任务及其下载子任务记录；`DELETE /api/summary-tasks/:id` 删除 AI 总结记录。两者都只删数据库记录、不删除磁盘上的媒体文件/总结输出文件，且互不联动；AI 总结记录处于 `pending`/`analyzing` 时禁止删除（返回 409）。
-- AI 总结记录的本地原始内容完整性（`integrity_status`: `complete`/`missing`、`integrity_detail`、`integrity_checked_at`，NULL=未检查）仅由用户手动触发的一键检查（`POST /api/summary-tasks/integrity-check`）写入：只读磁盘判定 md 与相对截图是否存在于当前环境，只读不改文件；记录被重新触发/重新构建总结后重置为未检查。AI 总结任务表格展示"本地文件"列（完整/缺失/未检查，缺失 tooltip 含明细与检查时间），检查进行中按钮禁用，结束后刷新列表可见最新结果。
+- AI 总结记录的本地原始内容完整性（`integrity_status`: `complete`/`missing`、`integrity_detail`、`integrity_checked_at`，NULL=未检查）由用户手动触发的一键检查（`POST /api/summary-tasks/integrity-check`）入队 `integrity_check` 作业写入：只读磁盘判定 md 与相对截图是否存在于当前环境，只读不改文件；记录被重新触发/重新构建总结后重置为未检查。AI 总结任务表格展示"本地文件"列（完整/缺失/未检查，缺失 tooltip 含明细与检查时间），检查进行中按钮禁用，结束后刷新列表可见最新结果。
 - DB 相对路径锚点约定（无例外）：DB 中所有磁盘路径（`task.outputFile`、`analysis_sub_task.output_file`、`ai_summary_task.summary_output` 等）一律相对下载根目录 `DOWNLOAD_ROOT` 存储，读取时 `join(DOWNLOAD_ROOT, value)`，`summary_output` 值自带 `summary/` 段；读侧恒按相对锚点 join，不透传绝对值（2026-09-09 起语义收敛，`/abc` 等根相对形态同样按根拼接；遗留绝对值须由迁移脚本/人工清理）。`SUMMARY_BASE_DIR` 等派生目录仅用于运行时定位/静态挂载，不是 DB 值的锚点。写侧锚点 helper 统一在 `packages/server/src/paths/path-anchor.ts`（summary_output 的 summary-dir 同名函数为其委托）。
 - 总结内容真源（Phase 1b，2026-09-28 起）：分析成功后**内联**写云 DB（`summary`+`summary_segment`）+ 截图直传 COS；`completed` = 内容入库成功（截图/向量为入库后 best-effort，失败不阻塞完成、`screenshot_url` 可暂空）。**不再写本地 md**、不再写 `summary_output`；`/summary-files` 静态挂载与 `publish`/`backfill`/`repair` 端点已下线；`raw_response` 仅存模型输出（失败不写入，H4）。
+- 作业队列驱动的触发链路（Phase 2，2026-09 起）：AI 分析等后台工作改由持久化 `worker_job` 表 + 进程内 worker 循环执行，触发方一律**入队作业**而非直接调用服务（技术形态见 `docs/architecture/system-baseline.md`）：
+  - 高清下载完成 → `onAnalysisTrigger` 钩子入队 `analyze`（`promptId` 于触发时解析并写入 payload）。
+  - 一键总结 / 重新总结（retrigger）端点 → 入队 `analyze`。
+  - 重建（rebuild）端点 → 入队 `screenshot_retry`。
+  - 完整性检查（integrity-check）端点 → 入队 `integrity_check`。
+  - 分析需要低清视频时 → `AnalysisVideoResolver` 入队 `low_res_download`（去重键 `lowres:{bvid}:{cid}`）；完成后入队一个跳过 `ai_summary_task` claim 的续跑 `analyze`。
+  - 并发/去重由 `worker_job.dedup_key` active-unique 在库层强制，旧的进程内低清队列与内存互斥已移除。
+  - 前端状态轮询：作业状态经 `GET /api/worker-jobs`、`GET /api/worker-jobs/:id` 查询；`GET /api/summary-tasks/integrity-check/status` 改为读取 DB 中最新 `integrity_check` 作业状态（不再是内存标志）。
+  - 高清 `download` 尚未迁移，仍由下载调度器 `claimNextCreatedTask` 领取。
+- 说明（Phase 2 裁决）：`integrity_check` 执行体当前处于 **gated** 状态（执行判据延后至「完整性检查重定义」需求），以避免 Phase 1b 停写本地 md 后旧的本地判定误报全部缺失。
 
 ### 穿搭问答（Web）
 
@@ -67,6 +77,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 - `Stream` — 视频流或音频流的播放地址和编码信息
 - `DownloadArtifact` — 下载完成后的产物（文件路径、大小等）
 - `DownloadTask` — 下载任务的状态、进度和结果
+- `WorkerJob` — 持久化后台作业（analyze/low_res_download/screenshot_retry/integrity_check/retrigger，预留 cos_cleanup），含 `dedup_key`、`status`、`lease_*`、`attempts` 等，由进程内 worker 领取执行
 
 ## Integration Points
 
@@ -74,28 +85,31 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | --- | --- | --- |
 | Bilibili API | 获取视频信息、播放流地址 | `packages/adapters/src/bilibili/` |
 | FFmpeg | 音视频合并 | 系统依赖（容器内置或宿主机安装） |
-| PostgreSQL | 下载任务、AI 总结、设置、提示词持久化（经 `DATABASE_URL` 连接，本地与云端统一使用）；知识库 `summary`/`summary_segment` 同库 | `packages/server/src/database/database.service.ts` |
+| PostgreSQL | 下载任务、AI 总结、设置、提示词持久化（经 `DATABASE_URL` 连接，本地与云端统一使用）；知识库 `summary`/`summary_segment` 同库；后台作业 `worker_job`/`worker_heartbeat` 同库 | `packages/server/src/database/database.service.ts` |
 | 腾讯云 COS | AI 总结截图对象存储（知识发布管道上传，公网 URL 供 md 预览；经 `TENCENT_COS_*` 配置） | `packages/server/src/knowledge/cos-store.service.ts` |
 | POST /api/tasks/check | 按 bvid + cid 批量查询任务状态（入队去重） | `packages/server/src/download/download.controller.ts` |
 | POST /api/download | 创建下载任务，必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；同 (bvid,cid) 存在排队中/下载中任务或已成功下载且磁盘文件存在时拒绝创建并返回 HTTP 409（ConflictException，中文提示，不落库；2026-09-09 创建层去重，有意推翻 2026-08-10"创建层不去重"决策）；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts`、`packages/server/src/download/create-dedup.ts` |
 | GET /api/download/config | 返回当前服务端下载根目录及来源（环境变量或默认目录） | `packages/server/src/download/download.controller.ts` |
 | GET /api/tasks | 返回服务端分页下载任务列表，支持 `page`、`pageSize`、`statusGroup` 查询参数 | `packages/server/src/download/download.controller.ts` |
 | DELETE /api/tasks/:id | 删除下载任务记录（含 `analysis_sub_task`）；仅删数据库、不动磁盘、不联动删 AI 总结记录 | `packages/server/src/download/download.controller.ts` |
-| POST /api/tasks/:id/summary | 对已完成下载任务直接触发 AI 总结，body 可带 `{ promptId? }`（透传触发链路，不覆盖任务创建时设定的 prompt_id）；任务不存在返回 HTTP 404，非已完成任务返回 HTTP 409 | `packages/server/src/analysis/analysis-task.controller.ts` |
+| POST /api/tasks/:id/summary | 对已完成下载任务直接触发 AI 总结（入队 `analyze` 作业），body 可带 `{ promptId? }`（`promptId` 于触发时解析并写入作业 payload，不覆盖任务创建时设定的 prompt_id）；任务不存在返回 HTTP 404，非已完成任务返回 HTTP 409 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | GET /api/summary-tasks | 返回服务端分页 AI 总结任务列表，支持 `page`、`pageSize`、`status`（all/pending/analyzing/failed/completed）、`search`（标题模糊匹配）、`updatedFrom`/`updatedTo`（更新时间闭区间）查询参数；每条记录含 `modelName`（本次使用模型，模型成功返回时写入）与 `promptId`（本次实际使用提示词），不含 `rawResponse`（原始返回仅入库） | `packages/server/src/analysis/analysis-task.controller.ts` |
 | GET /api/summary-tasks/:id/raw-response | 按 id 返回该记录本次模型交互记录 `{ rawResponse: string \| null }`（成功=模型返回 content 原文；失败=错误信息）；非法 id 返回 400，不存在返回 404 | `packages/server/src/analysis/analysis-task.controller.ts` |
-| POST /api/summary-tasks/:id/retrigger | 对 AI 总结记录按资源重新触发总结（全管线重跑，重新调用 LLM，复用该记录 `prompt_id` 作为显式提示词）；非法 id 返回 400，不存在返回 404，`pending`/`analyzing` 返回 409，无对应成功下载任务返回 409；复用 `AnalysisTriggerService.trigger` 链路 | `packages/server/src/analysis/analysis-task.controller.ts` |
-| POST /api/summary-tasks/:id/rebuild | 对已完成的 AI 总结记录用已存储的大模型返回内容（`raw_response`）重建总结报告与截图，**不调用 LLM**；仅 `completed` 且 `raw_response` 非空可触发，非法 id 返回 400，不存在返回 404，非 completed 返回 409，raw 为空返回 409，并发重建返回 409；异步执行，失败不改写记录状态 | `packages/server/src/analysis/analysis-task.controller.ts` |
+| POST /api/summary-tasks/:id/retrigger | 对 AI 总结记录按资源重新触发总结（入队 `analyze` 作业，全管线重跑，重新调用 LLM，复用该记录 `prompt_id` 作为显式提示词）；非法 id 返回 400，不存在返回 404，`pending`/`analyzing` 返回 409，无对应成功下载任务返回 409 | `packages/server/src/analysis/analysis-task.controller.ts` |
+| POST /api/summary-tasks/:id/rebuild | 对已完成的 AI 总结记录用已存储的大模型返回内容（`raw_response`）重建总结报告与截图（入队 `screenshot_retry` 作业），**不调用 LLM**；仅 `completed` 且 `raw_response` 非空可触发，非法 id 返回 400，不存在返回 404，非 completed 返回 409，raw 为空返回 409；并发/去重由 `worker_job.dedup_key` active-unique 强制（旧的 `rebuildingIds` 内存互斥已移除）；异步执行，失败不改写记录状态 | `packages/server/src/analysis/analysis-task.controller.ts` |
 | GET /api/summary-tasks/:id/markdown | 按 id 从**云 DB 渲染**该记录的 Markdown 总结文档并返回 `{ content, meta }`（2026-09-28 Phase 1a 起数据来源由本地 md 文件改为 DB，读侧不触盘、不 join 媒体路径）：优先 `summary` + `summary_segment`（按 `seq` 升序），无 `summary` 行时回退 `ai_summary_task.raw_response`；`content` 为剥离 frontmatter 后的正文，图片用 `summary_segment.screenshot_url`（COS 公网 URL），无该 URL 的段不出图、不输出 timestamp；`meta` 含 `title/videoUrl/model/createdAt`，按取值链从 DB 重建（`createdAt` 取 `last_completed_at`/`created_at`，不信任 md 内文）；`summary` 与 `raw_response` 段数漂移时以 `summary` 展示并记非阻塞 warn；非法 id 返回 400，不存在返回 404，非 `completed` 返回 409，内容不可用（无 summary 且 raw_response 空/非法/空数组）返回 409（**有意移除**“文件缺失 404”与“`summary_output` 空 409”两分支） | `packages/server/src/analysis/analysis-task.controller.ts`、`packages/server/src/analysis/summary-render.ts` |
 | GET /api/summary-tasks/by-resource/:bvid/:cid/markdown | 按视频资源 `(bvid,cid)` 定位 `ai_summary_task` 并从**云 DB 渲染**完整总结 Markdown `{ content, meta }`（语义与按 id 的 markdown 接口一致，供 QA 来源视频"AI 总结"整页消费）；`bvid` 为空或 `cid` 非正整数返回 400，无记录返回 404，非 `completed` 返回 409，内容不可用返回 409；读侧不触盘、不做降级兜底 | `packages/server/src/analysis/analysis-task.controller.ts`、`packages/server/src/analysis/summary-render.ts` |
 | DELETE /api/summary-tasks/:id | 删除 AI 总结任务记录（仅删数据库、不动磁盘）；非法 id 返回 400，不存在返回 404，`pending`/`analyzing` 返回 409 | `packages/server/src/analysis/analysis-task.controller.ts` |
-| POST /api/summary-tasks/integrity-check | 手动触发一键本地原始内容完整性检查：遍历全部 `completed` 的 AI 总结记录，逐条判定 `summary_output` 指向的 md 与 md 内引用的本地相对截图是否存在于当前环境磁盘，结果（`integrity_status`：`complete`/`missing`、`integrity_detail`：缺失明细（>40 项截断并保留总计数）、`integrity_checked_at`）逐条写回 `ai_summary_task`（不触碰 `updated_at`）；进程内全局互斥，运行中重复触发返回 409；异步执行，仅手动触发、无自动/定时路径；只读磁盘不改文件；**注（Phase 1b）**：本地 md/截图已停写，旧本地完整性检查在内容云端化后会误报缺失，待「完整性检查重定义」需求以云 DB+COS+NAS 视频为判据取代 | `packages/server/src/analysis/analysis-task.controller.ts`、`packages/server/src/analysis/summary-integrity.service.ts` |
-| GET /api/summary-tasks/integrity-check/status | 查询完整性检查运行状态 `{ running: boolean }`（供前端轮询） | `packages/server/src/analysis/analysis-task.controller.ts` |
+| POST /api/summary-tasks/integrity-check | 手动触发一键本地原始内容完整性检查：入队 `integrity_check` 作业，遍历全部 `completed` 的 AI 总结记录，逐条判定 `summary_output` 指向的 md 与 md 内引用的本地相对截图是否存在于当前环境磁盘，结果（`integrity_status`：`complete`/`missing`、`integrity_detail`：缺失明细（>40 项截断并保留总计数）、`integrity_checked_at`）逐条写回 `ai_summary_task`（不触碰 `updated_at`）；并发/去重由 `worker_job.dedup_key` active-unique 强制（旧的进程内全局互斥已移除）；仅手动触发、无自动/定时路径；只读磁盘不改文件；**注（Phase 2）**：该 `integrity_check` 执行体当前处于 gated 状态，执行判据延后至「完整性检查重定义」需求（以云 DB+COS+NAS 视频为判据），以避免 Phase 1b 停写本地 md/截图后旧本地判定误报缺失 | `packages/server/src/analysis/analysis-task.controller.ts`、`packages/server/src/analysis/summary-integrity.service.ts` |
+| GET /api/summary-tasks/integrity-check/status | 查询完整性检查运行状态 `{ running: boolean }`（供前端轮询），读取 DB 中最新 `integrity_check` 作业状态判定（不再是内存标志） | `packages/server/src/analysis/analysis-task.controller.ts` |
+| GET /api/worker-jobs | 返回 `worker_job` 作业列表（供前端查询后台作业状态） | `packages/server/src/worker/worker.controller.ts` |
+| GET /api/worker-jobs/:id | 按 id 返回单个 `worker_job` 作业状态 | `packages/server/src/worker/worker.controller.ts` |
+| POST /api/worker-jobs/:id/cancel | 取消指定 `worker_job` 作业 | `packages/server/src/worker/worker.controller.ts` |
 | POST /api/analysis/run | 视频内容分析正式接口，接收 `AnalysisRequest`（videoPath、subtitlePath?、videoTitle、metadata、screenshotVideoPath?、promptId?），按 metadata.type 校验，调用 AnalysisEngine 生成总结文档；未传 promptId 时按系统默认提示词解析 | `packages/server/src/analysis/analysis.controller.ts` |
 | GET/POST/PUT/DELETE /api/analysis/prompts | AI 总结提示词管理：列表（内置排首）、创建、编辑、删除；系统内置不可编辑/删除（409），删除默认（非内置）后默认自动回落内置；`PUT /:id/default` 设为系统默认 | `packages/server/src/analysis/prompt.controller.ts` |
 | GET /api/analysis/prompts/format-snippet | 返回 JSON 格式要求片段 `{ snippet }`（服务端单一来源，前端编辑提示词时"一键插入"） | `packages/server/src/analysis/prompt.controller.ts` |
 | GET/PUT/DELETE /api/analysis/prompts/creator | 创作者绑定：GET ?mid 查询 `{ mid, promptId } | null`；PUT body `{ mid, promptId }` upsert（后写覆盖）；DELETE ?mid 解绑（幂等） | `packages/server/src/analysis/prompt.controller.ts` |
-| POST /api/analysis/trigger | 对 bvid/cid 触发 AI 总结，body 可带 `promptId?`：无任务时创建下载任务并写入 `task.prompt_id`（下载完成后自动总结使用），有任务时透传触发 | `packages/server/src/analysis/analysis.controller.ts` |
+| POST /api/analysis/trigger | 对 bvid/cid 触发 AI 总结（入队 `analyze` 作业），body 可带 `promptId?`：无任务时创建下载任务并写入 `task.prompt_id`（下载完成后自动总结使用），有任务时透传触发 | `packages/server/src/analysis/analysis.controller.ts` |
 | GET /api/knowledge/search?q=&k= | 向量检索：q 归一化后经 DashScope embedding，pgvector 余弦 top-k（k 缺省 10、限 1–50）；返回 `[{ segmentId, title, content, score, screenshotUrl, frameDescription, videoTitle, videoUrl, timestampSeconds, bvid, cid }]`（`bvid/cid` 为 2026-09-15 新增，供 QA 来源"AI 总结"定位）；q 空或 k 非法返回 400，缺 embedding 配置/调用失败返回 503（不降级关键词搜索）；仅 `embedding_model` 与当前配置一致的 segment 参与 | `packages/server/src/knowledge/knowledge-search.controller.ts` |
 | POST /api/chat/conversations | 创建空问答会话，返回 `{ conversationId }` | `packages/server/src/chat/chat.controller.ts` |
 | GET /api/chat/conversations | 会话列表（按 `updated_at` 倒序，`{ conversations: [{ id, title?, createdAt, updatedAt }] }`） | `packages/server/src/chat/chat.controller.ts` |

@@ -34,6 +34,9 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 - Forbidden dependencies: `packages/frontend/`
 - Owner docs: `docs/design/app-overview.md`
 - Logging ownership: server 负责 adapter 失败的高语义日志表达，包括请求、任务状态、编排分支、降级决策和对外错误语义。
+- Async job boundary（2026-09 Phase 2 起）：进程内 worker 循环 `WorkerService`（`src/worker/`）拥有 `worker_job`/`worker_heartbeat` 的 claim（SKIP LOCKED 守卫型原子 UPDATE）、租约续期（`lease_expires_at` 心跳）、`lease_owner` fencing 写终态与 reaper 重置过期租约。触发方（controller / 分析编排）只负责入队 `worker_job`，不再直接调用执行服务。并发/去重由 `worker_job.dedup_key` 的 active-unique 索引在库层强制。
+  - 已移除的进程内调度机制：`DownloadScheduler` 低清队列（`lowResQueue`/`lowResRunningSet`/`lowResRunningResources`/`scheduleLowResDownload`/`tryScheduleLowRes`/`onLowResFinished`）、`AnalysisTriggerService.rebuildingIds`/`tryStartRebuild`、`SummaryIntegrityService` 的 `running`/`tryStart`/`isRunning` 内存互斥。
+  - 未迁移边界：高清 `download` 仍由 `download-scheduler.ts` 的 `claimNextCreatedTask` 领取，不经 `worker_job`。
 
 ### `packages/vision-proxy/`
 

@@ -46,6 +46,13 @@ packages/
 - 下载任务状态通过数据库记录
 - 下载文件通过文件系统管理（输出目录 + 临时目录）
 
+## Async Job Queue (worker_job)
+
+- 持久化作业队列（2026-09 Phase 2 起）：新增 `worker_job`（模型 `WorkerJob`）与 `worker_heartbeat`（模型 `WorkerHeartbeat`）两张表（`src/prisma/contract.prisma`，additive）。`worker_job` 在 `dedup_key` 上有 partial-unique 索引，条件 `WHERE status IN (queued, leased, running)`，据此在库层强制并发/去重（取代旧的进程内互斥与低清队列）。
+- 进程内 worker 轮询：`WorkerService`（`packages/server/src/worker/`，`worker.module.ts`/`worker.controller.ts`/`worker.service.ts`）本阶段仍与 server 同进程运行（无部署拆分）。执行环：轮询 `worker_job` → 以带 SKIP LOCKED 的守卫型原子 `UPDATE` claim 作业 → 心跳续租 `lease_expires_at` → 写终态时以 `lease_owner` fencing 防越权覆盖；reaper 周期性把过期租约的作业重置为 `queued`（`attempts++`）。worker 存活写入 `worker_heartbeat`。
+- 作业类型：`analyze`、`low_res_download`、`screenshot_retry`、`integrity_check`、`retrigger`（当前经 `analyze` 路由），另有预留 `cos_cleanup`（生产者见 Phase 4）。高清 `download` 未迁移，仍走 `download-scheduler.ts` 的 `claimNextCreatedTask`。
+- 配置经环境变量：`WORKER_POLL_INTERVAL_MS`、`WORKER_LEASE_TTL_SEC`、`WORKER_HEARTBEAT_MS`、`WORKER_REAP_INTERVAL_MS`、`WORKER_MAX_CONCURRENT`、`WORKER_QUEUE`、`WORKER_ID`、`WORKER_ENABLED`。
+
 ## Testing Stack
 
 - 数据层行为测试：vitest + 真实 PostgreSQL（见上）；其余包暂无
