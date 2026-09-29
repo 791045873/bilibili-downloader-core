@@ -88,23 +88,24 @@ export class AnalysisTaskController {
 
   @Post("/summary-tasks/integrity-check")
   @HttpCode(HttpStatus.OK)
-  startIntegrityCheck() {
-    if (!this.summaryIntegrityService.tryStart()) {
-      throw new ConflictException("完整性检查进行中");
-    }
-    void this.summaryIntegrityService.run().catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `Summary integrity check failed: ${message}`,
-        err instanceof Error ? err.stack : undefined,
-      );
+  async startIntegrityCheck() {
+    await this.databaseService.enqueueJob({
+      kind: "integrity_check",
+      queue: "nas",
+      dedupKey: "integrity_check",
     });
     return { message: "完整性检查已开始" };
   }
 
   @Get("/summary-tasks/integrity-check/status")
-  getIntegrityCheckStatus() {
-    return { running: this.summaryIntegrityService.isRunning() };
+  async getIntegrityCheckStatus() {
+    const job =
+      await this.databaseService.getLatestWorkerJobByKind("integrity_check");
+    const running =
+      job?.status === "queued" ||
+      job?.status === "leased" ||
+      job?.status === "running";
+    return { running, job: job ?? null };
   }
 
   @Get("/summary-tasks")
@@ -365,10 +366,6 @@ export class AnalysisTaskController {
     if (!record.rawResponse) {
       throw new ConflictException("无可用的大模型返回内容，无法重新构建");
     }
-    if (!this.analysisTriggerService.tryStartRebuild(summaryTaskId)) {
-      throw new ConflictException("正在重新构建中");
-    }
-
     await this.databaseService.enqueueJob({
       kind: "screenshot_retry",
       queue: "nas",

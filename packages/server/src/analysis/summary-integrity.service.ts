@@ -41,58 +41,44 @@ function truncateDetail(missing: string[]): string {
 @Injectable()
 export class SummaryIntegrityService {
   private readonly logger = new Logger(SummaryIntegrityService.name);
-  private running = false;
-
   constructor(
     private readonly db: DatabaseService,
     private readonly paths: PathsService,
   ) {}
 
-  isRunning(): boolean {
-    return this.running;
-  }
-
-  tryStart(): boolean {
-    if (this.running) {
-      return false;
-    }
-    this.running = true;
-    return true;
-  }
-
+  /**
+   * 全量完整性检查。并发去重与状态查询已迁移至 worker_job（integrity_check）。
+   * 注：其执行判据仍读本地 md，随「完整性检查重定义」需求重写；当前经作业 gated。
+   */
   async run(): Promise<void> {
-    try {
-      const records = await this.db.listCompletedAiSummaryTasks();
-      const downloadRoot = this.paths.DOWNLOAD_ROOT;
-      let completeCount = 0;
-      let missingCount = 0;
-      const checkedAt = new Date();
-      for (const record of records) {
-        const verdict = await this.checkRecord(record, downloadRoot);
-        if (verdict.status === INTEGRITY_STATUS.complete) {
-          completeCount++;
-        } else {
-          missingCount++;
-        }
-        await this.db.updateAiSummaryTaskIntegrity([
-          {
-            id: record.id!,
-            status: verdict.status,
-            detail: verdict.detail,
-            checkedAt,
-          },
-        ]);
+    const records = await this.db.listCompletedAiSummaryTasks();
+    const downloadRoot = this.paths.DOWNLOAD_ROOT;
+    let completeCount = 0;
+    let missingCount = 0;
+    const checkedAt = new Date();
+    for (const record of records) {
+      const verdict = await this.checkRecord(record, downloadRoot);
+      if (verdict.status === INTEGRITY_STATUS.complete) {
+        completeCount++;
+      } else {
+        missingCount++;
       }
-      this.logger.log(
-        createLogMessage("Summary integrity check finished", {
-          total: records.length,
-          complete: completeCount,
-          missing: missingCount,
-        }),
-      );
-    } finally {
-      this.running = false;
+      await this.db.updateAiSummaryTaskIntegrity([
+        {
+          id: record.id!,
+          status: verdict.status,
+          detail: verdict.detail,
+          checkedAt,
+        },
+      ]);
     }
+    this.logger.log(
+      createLogMessage("Summary integrity check finished", {
+        total: records.length,
+        complete: completeCount,
+        missing: missingCount,
+      }),
+    );
   }
 
   private async checkRecord(

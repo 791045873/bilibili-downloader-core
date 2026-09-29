@@ -57,8 +57,6 @@ function parseVisionProxyTimeoutMs(value: string | undefined): number | undefine
 export class AnalysisTriggerService implements OnModuleInit {
   private readonly logger = new Logger(AnalysisTriggerService.name);
   private readonly llmVideoDir: string;
-  /** 正在基于已存储内容重建总结的 summary-task id（内存防抖，防并发重复构建） */
-  private readonly rebuildingIds = new Set<number>();
 
   constructor(
     private readonly db: DatabaseService,
@@ -106,6 +104,9 @@ export class AnalysisTriggerService implements OnModuleInit {
     this.worker.registerHandler("screenshot_retry", (job) =>
       this.handleScreenshotRetryJob(job),
     );
+    this.worker.registerHandler("integrity_check", (job) =>
+      this.handleIntegrityCheckJob(job),
+    );
   }
 
   /** 触发期解析 promptId 并入队 analyze 作业（payload 前移 promptId/mid 解析）。 */
@@ -129,6 +130,14 @@ export class AnalysisTriggerService implements OnModuleInit {
       dedupKey: `analyze:${task.bvid}:${task.cid}`,
       payload: { taskId, promptId },
     });
+  }
+
+  private async handleIntegrityCheckJob(_job: WorkerJobRecord): Promise<void> {
+    // 执行判据 deferred 到「完整性检查重定义」需求；当前仅落地投递/去重/状态机制，
+    // 不运行旧的本地 md 判据（Phase 1b 已停写，会误报全缺失）。
+    this.logger.warn(
+      createLogMessage("integrity_check handler is gated; execution deferred", {}),
+    );
   }
 
   private async handleScreenshotRetryJob(job: WorkerJobRecord): Promise<void> {
@@ -834,15 +843,6 @@ export class AnalysisTriggerService implements OnModuleInit {
     return this.db.deleteAiSummaryTask(id);
   }
 
-  /** 尝试抢占"基于已存储内容重建"：本次占用成功返回 true，已被占用返回 false */
-  tryStartRebuild(id: number): boolean {
-    if (this.rebuildingIds.has(id)) {
-      return false;
-    }
-    this.rebuildingIds.add(id);
-    return true;
-  }
-
   /**
    * 使用已存储的 LLM 返回内容（raw_response）重建总结报告与截图，不调用 LLM。
    * 调用方（控制器）应先经 tryStartRebuild 认领；本方法 finally 中统一释放。
@@ -970,8 +970,6 @@ export class AnalysisTriggerService implements OnModuleInit {
         err instanceof Error ? err.stack : undefined,
       );
       // 非破坏性：不改写记录状态
-    } finally {
-      this.rebuildingIds.delete(id);
     }
   }
 

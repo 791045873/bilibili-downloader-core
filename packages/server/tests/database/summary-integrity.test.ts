@@ -55,13 +55,9 @@ describe("listLocalImageRefs", () => {
 });
 
 describe("SummaryIntegrityService", () => {
-  it("tryStart 全局互斥，run 结束后释放", async () => {
-    expect(service.tryStart()).toBe(true);
-    expect(service.tryStart()).toBe(false);
-    expect(service.isRunning()).toBe(true);
+  it("run 可重复调用（进程内互斥已移除，去重改由 worker_job integrity_check 承担）", async () => {
     await service.run();
-    expect(service.isRunning()).toBe(false);
-    expect(service.tryStart()).toBe(true);
+    await service.run();
   });
 
   it("md 与截图齐全 → complete；缺失截图 → missing 含明细", async () => {

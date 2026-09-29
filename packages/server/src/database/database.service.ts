@@ -1647,6 +1647,55 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     return rows.length > 0 ? mapWorkerJobRow(rows[0]) : undefined;
   }
 
+  /** 取消作业：queued 直接置 canceled，其余置 cancel_requested（running 协作式）。 */
+  async cancelWorkerJob(id: number): Promise<WorkerJobRecord | undefined> {
+    const { rows } = await this.pool.query(
+      `UPDATE worker_job
+         SET status = CASE WHEN status = 'queued' THEN 'canceled' ELSE status END,
+             cancel_requested = 1, updated_at = now()
+       WHERE id = $1
+       RETURNING *`,
+      [String(id)],
+    );
+    return rows.length > 0 ? mapWorkerJobRow(rows[0]) : undefined;
+  }
+
+  async listWorkerJobs(
+    filter: { queue?: string; kind?: string; status?: string; limit?: number } = {},
+  ): Promise<WorkerJobRecord[]> {
+    const conds: string[] = [];
+    const vals: unknown[] = [];
+    if (filter.queue) {
+      vals.push(filter.queue);
+      conds.push(`queue = $${vals.length}`);
+    }
+    if (filter.kind) {
+      vals.push(filter.kind);
+      conds.push(`kind = $${vals.length}`);
+    }
+    if (filter.status) {
+      vals.push(filter.status);
+      conds.push(`status = $${vals.length}`);
+    }
+    const where = conds.length > 0 ? `WHERE ${conds.join(" AND ")}` : "";
+    vals.push(Math.min(Math.max(filter.limit ?? 50, 1), 200));
+    const { rows } = await this.pool.query(
+      `SELECT * FROM worker_job ${where} ORDER BY id DESC LIMIT $${vals.length}`,
+      vals,
+    );
+    return rows.map(mapWorkerJobRow);
+  }
+
+  async getLatestWorkerJobByKind(
+    kind: string,
+  ): Promise<WorkerJobRecord | undefined> {
+    const { rows } = await this.pool.query(
+      `SELECT * FROM worker_job WHERE kind = $1 ORDER BY id DESC LIMIT 1`,
+      [kind],
+    );
+    return rows.length > 0 ? mapWorkerJobRow(rows[0]) : undefined;
+  }
+
   /** worker 心跳：upsert worker_heartbeat（last_seen_at=now）。 */
   async upsertWorkerHeartbeat(
     workerId: string,
