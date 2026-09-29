@@ -18,11 +18,7 @@ import type { AiSummaryTaskRecord } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 import { SummaryIntegrityService } from "./summary-integrity.service.js";
-import { SummaryRepairService } from "./summary-repair.service.js";
-import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
-import { resolveSummaryOutputPath } from "./summary-dir.js";
 import type { SummaryMeta } from "./summary-dir.js";
-import { PathsService } from "../paths/paths.service.js";
 import {
   buildSummaryMeta,
   renderRawResponseMarkdown,
@@ -37,10 +33,7 @@ export class AnalysisTaskController {
     private readonly analysisTriggerService: AnalysisTriggerService,
     private readonly databaseService: DatabaseService,
     private readonly downloadService: DownloadService,
-    private readonly knowledgePublisher: KnowledgePublisherService,
     private readonly summaryIntegrityService: SummaryIntegrityService,
-    private readonly summaryRepairService: SummaryRepairService,
-    private readonly paths: PathsService,
   ) {}
 
   @Post("/tasks/:id/summary")
@@ -113,33 +106,6 @@ export class AnalysisTaskController {
   @Get("/summary-tasks/integrity-check/status")
   getIntegrityCheckStatus() {
     return { running: this.summaryIntegrityService.isRunning() };
-  }
-
-  /** 同步修复本地 AI 总结文件并返回报告；视频缺失项仅在末段入队重下（deferred） */
-  @Post("/summary-tasks/repair")
-  @HttpCode(HttpStatus.OK)
-  async repairSummaryTasks() {
-    if (!this.summaryRepairService.tryStart()) {
-      throw new ConflictException("修复流程进行中");
-    }
-    try {
-      const report = await this.summaryRepairService.run();
-      const queuedCount = report.deferred.filter(
-        (d) => typeof d.queuedTaskId === "number",
-      ).length;
-      const message =
-        queuedCount > 0
-          ? `修复完成；${queuedCount} 个任务已入队重新下载，待下载完成后可重新触发本接口`
-          : "修复完成";
-      return { message, report };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `Summary repair failed: ${message}`,
-        err instanceof Error ? err.stack : undefined,
-      );
-      throw err;
-    }
   }
 
   @Get("/summary-tasks")
@@ -418,68 +384,6 @@ export class AnalysisTaskController {
     return { message: "重新构建已开始" };
   }
 
-  @Post("/summary-tasks/:id/publish")
-  @HttpCode(HttpStatus.OK)
-  async publishAiSummaryTask(@Param("id") id: string) {
-    const summaryTaskId = Number.parseInt(id, 10);
-    if (Number.isNaN(summaryTaskId)) {
-      this.logger.warn(
-        `Publish ai summary task rejected due to invalid id: ${id}`,
-      );
-      throw new BadRequestException("无效的任务 ID");
-    }
-
-    const record = await this.databaseService.getAiSummaryTaskById(
-      summaryTaskId,
-    );
-    if (!record) {
-      this.logger.warn(
-        `Publish ai summary task rejected due to not-found: ${summaryTaskId}`,
-      );
-      throw new NotFoundException("AI 总结任务不存在");
-    }
-    if (record.status !== "completed") {
-      throw new ConflictException("仅已完成的 AI 总结可发布到知识库");
-    }
-    if (!record.rawResponse) {
-      throw new ConflictException("无可用的大模型返回内容，无法发布");
-    }
-    if (!record.summaryOutput) {
-      throw new ConflictException("无输出文档，无法发布");
-    }
-    if (!record.bvid || typeof record.cid !== "number") {
-      throw new ConflictException("记录缺少视频资源标识，无法发布");
-    }
-
-    const task = await this.databaseService.findLatestTaskByBvidAndCid(
-      record.bvid,
-      record.cid,
-    );
-
-    void this.knowledgePublisher
-      .publish({
-        bvid: record.bvid,
-        cid: record.cid,
-        videoTitle:
-          task?.title || record.title || `${record.bvid}-${record.cid}`,
-        videoUrl: `https://www.bilibili.com/video/${record.bvid}`,
-        modelName: record.modelName,
-        rawResponse: record.rawResponse,
-        summaryPath: resolveSummaryOutputPath(
-          record.summaryOutput,
-          this.paths.DOWNLOAD_ROOT,
-        ),
-      })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `AI summary publish failed for summary task ${summaryTaskId}: ${message}`,
-          err instanceof Error ? err.stack : undefined,
-        );
-      });
-
-    return { message: "发布已开始" };
-  }
 }
 
 const AI_SUMMARY_STATUSES = [

@@ -69,60 +69,66 @@ afterAll(async () => {
   vi.restoreAllMocks();
 });
 
-describe("发布管道向量化集成（Phase 2）", () => {
-  beforeEach(async () => {
-    await db.upsertAiSummaryTask({
+describe("内联发布向量化集成（Phase 1b）", () => {
+  function inlineInput(
+    segments: Array<{
+      title: string;
+      content: string;
+      timestamp: string;
+      frameDescription: string;
+      screenshotFiles: string[];
+    }>,
+  ) {
+    return {
       bvid: "BV1",
       cid: 1,
-      status: "completed",
+      videoTitle: "视频标题",
+      videoUrl: "https://www.bilibili.com/video/BV1",
+      modelName: "m1",
       rawResponse: baseInput.rawResponse,
-    });
-  });
+      segments,
+    };
+  }
+  const twoSegs = [
+    { title: "技巧一", content: "内容一", timestamp: "00:01", frameDescription: "d1", screenshotFiles: [] },
+    { title: "技巧二", content: "内容二", timestamp: "00:02", frameDescription: "d2", screenshotFiles: [] },
+  ];
 
-  it("发布后 embedding 非空、模型正确、knowledge_status=synced", async () => {
+  it("内联发布后 embedding 非空、模型正确", async () => {
     embedTexts.mockImplementation(async (texts: string[]) =>
       texts.map((_, i) => vec(i === 0 ? 1 : 0, i === 1 ? 1 : 0, 0)),
     );
-    await makePublisher().publish(baseInput);
+    await makePublisher().publishInline(inlineInput(twoSegs));
     const { rows } = await pool().query(
       `SELECT seq, embedding_model, (embedding IS NOT NULL) AS has_vec FROM summary_segment ORDER BY seq`,
     );
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.has_vec && r.embedding_model === MODEL)).toBe(true);
-    const record = await db.getAiSummaryTaskByResource("BV1", 1);
-    expect(record!.knowledgeStatus).toBe("synced");
   });
 
   it("重复发布同内容复用向量（不重算）", async () => {
     embedTexts.mockImplementation(async (texts: string[]) =>
       texts.map((_, i) => vec(i === 0 ? 1 : 0, i === 1 ? 1 : 0, 0)),
     );
-    await makePublisher().publish(baseInput);
+    await makePublisher().publishInline(inlineInput(twoSegs));
     expect(embedTexts).toHaveBeenCalledTimes(1);
-    await makePublisher().publish(baseInput);
+    await makePublisher().publishInline(inlineInput(twoSegs));
     expect(embedTexts).toHaveBeenCalledTimes(1);
-    const record = await db.getAiSummaryTaskByResource("BV1", 1);
-    expect(record!.knowledgeStatus).toBe("synced");
   });
 
   it("内容变化时重算向量", async () => {
     embedTexts.mockImplementation(async (texts: string[]) =>
       texts.map((_, i) => vec(i === 0 ? 1 : 0, i === 1 ? 1 : 0, 0)),
     );
-    await makePublisher().publish(baseInput);
-    const changed = {
-      ...baseInput,
-      rawResponse: JSON.stringify({
-        summary: [
-          { title: "技巧一改", content: "内容一改", timestamp: "00:01", frameDescription: "d1" },
-          { title: "技巧二", content: "内容二", timestamp: "00:02", frameDescription: "d2" },
-        ],
-      }),
-    };
+    await makePublisher().publishInline(inlineInput(twoSegs));
+    const changed = [
+      { title: "技巧一改", content: "内容一改", timestamp: "00:01", frameDescription: "d1", screenshotFiles: [] },
+      { title: "技巧二", content: "内容二", timestamp: "00:02", frameDescription: "d2", screenshotFiles: [] },
+    ];
     embedTexts.mockImplementationOnce(async (texts: string[]) =>
       texts.map(() => vec(0, 0, 1)),
     );
-    await makePublisher().publish(changed);
+    await makePublisher().publishInline(inlineInput(changed));
     expect(embedTexts).toHaveBeenCalledTimes(2);
     const { rows } = await pool().query(
       `SELECT seq, (embedding::text::jsonb ->> 1)::float8 AS y FROM summary_segment ORDER BY seq`,
@@ -131,27 +137,30 @@ describe("发布管道向量化集成（Phase 2）", () => {
     expect(rows[1].y).toBe(1);
   });
 
-  it("空 segments：无 embedding 调用且置 synced", async () => {
-    const empty = { ...baseInput, rawResponse: JSON.stringify({ summary: [] }) };
-    await makePublisher().publish(empty);
+  it("空 segments：无 embedding 调用、内容入库", async () => {
+    await makePublisher().publishInline(inlineInput([]));
     expect(embedTexts).not.toHaveBeenCalled();
-    const record = await db.getAiSummaryTaskByResource("BV1", 1);
-    expect(record!.knowledgeStatus).toBe("synced");
+    const { rows } = await pool().query(
+      `SELECT * FROM summary WHERE bvid = 'BV1' AND cid = 1`,
+    );
+    expect(rows).toHaveLength(1);
   });
 
-  it("缺 embedding 配置：publish 拒绝、置 failed 且错误含提示", async () => {
+  it("embedding 失败不阻塞：内容仍入库、向量为空、不抛错", async () => {
     embedTexts.mockRejectedValue(
       Object.assign(
         new Error("缺少 embedding 配置：请在设置页配置 LLM API Key（llm.apiKey）"),
         { name: "EmbeddingConfigError" },
       ),
     );
-    await expect(makePublisher().publish(baseInput)).rejects.toThrow(
-      "缺少 embedding 配置",
+    await expect(
+      makePublisher().publishInline(inlineInput(twoSegs)),
+    ).resolves.toBeUndefined();
+    const { rows } = await pool().query(
+      `SELECT (embedding IS NULL) AS no_vec FROM summary_segment ORDER BY seq`,
     );
-    const record = await db.getAiSummaryTaskByResource("BV1", 1);
-    expect(record!.knowledgeStatus).toBe("failed");
-    expect(record!.knowledgeError).toContain("缺少 embedding 配置");
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.no_vec)).toBe(true);
   });
 });
 
