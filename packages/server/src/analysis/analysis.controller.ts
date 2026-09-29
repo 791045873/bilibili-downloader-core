@@ -188,7 +188,14 @@ export class AnalysisController {
       }),
     );
 
-    await this.analysisTriggerService.trigger(task.id!, { promptId });
+    await this.databaseService.enqueueJob({
+      kind: "analyze",
+      queue: "nas",
+      refType: "task",
+      refId: task.id!,
+      dedupKey: `analyze:${body.bvid}:${body.cid}`,
+      payload: { taskId: task.id!, promptId },
+    });
     return { message: "AI 总结触发中" };
   }
 

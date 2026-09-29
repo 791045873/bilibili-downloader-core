@@ -1628,8 +1628,13 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   /** reaper：租约过期的 running/leased 重置为 queued（attempts++）。返回回收数量。 */
   async reapExpiredJobs(): Promise<number> {
     const { rowCount } = await this.pool.query(
-      `UPDATE worker_job SET status='queued', attempts=attempts+1,
-         lease_owner=NULL, lease_expires_at=NULL, updated_at=now()
+      `UPDATE worker_job SET
+         attempts = attempts + 1,
+         status = CASE WHEN attempts + 1 >= max_attempts THEN 'failed' ELSE 'queued' END,
+         last_error = CASE WHEN attempts + 1 >= max_attempts
+                           THEN COALESCE(last_error, 'lease expired (reaped)') ELSE last_error END,
+         finished_at = CASE WHEN attempts + 1 >= max_attempts THEN now() ELSE finished_at END,
+         lease_owner = NULL, lease_expires_at = NULL, updated_at = now()
        WHERE status IN ('leased','running') AND lease_expires_at IS NOT NULL AND lease_expires_at < now()`,
     );
     return rowCount ?? 0;

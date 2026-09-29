@@ -123,6 +123,15 @@ describe("worker_job 终态与 fencing", () => {
     expect(read!.attempts).toBe(1);
     expect(read!.leaseOwner).toBeNull();
   });
+
+  it("reapExpiredJobs 达 max_attempts 时置 failed（毒作业不无限重试）", async () => {
+    await db.enqueueJob({ kind: "k", maxAttempts: 1 });
+    const claimed = await db.claimNextJob("nas", "w1", -1);
+    expect(await db.reapExpiredJobs()).toBe(1);
+    const read = await db.getWorkerJobById(claimed!.id);
+    expect(read!.status).toBe("failed");
+    expect(read!.attempts).toBe(1);
+  });
 });
 
 describe("worker_job 取消与查询", () => {
