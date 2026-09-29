@@ -165,3 +165,42 @@ model SummarySegment {
   @@index([summaryId], map: "idx_summary_segment_summary_id")
   @@map("summary_segment")
 }
+
+model WorkerJob {
+  id              BigInt       @id(map: "worker_job_pkey") @default(autoincrement())
+  kind            String
+  queue           String       @default("nas")
+  refType         String?      @map("ref_type")
+  refId           BigInt?      @map("ref_id")
+  dedupKey        String?      @map("dedup_key")
+  status          String       @default("queued")
+  priority        Int          @default(0)
+  attempts        Int          @default(0)
+  maxAttempts     Int          @default(5) @map("max_attempts")
+  availableAt     Timestamptz  @default(now()) @map("available_at")
+  leaseOwner      String?      @map("lease_owner")
+  leaseExpiresAt  Timestamptz? @map("lease_expires_at")
+  heartbeatAt     Timestamptz? @map("heartbeat_at")
+  payload         Jsonb?
+  result          Jsonb?
+  lastError       String?      @map("last_error")
+  cancelRequested Int          @default(0) @map("cancel_requested")
+  createdAt       Timestamptz  @default(now()) @map("created_at")
+  updatedAt       Timestamptz  @default(now()) @map("updated_at")
+  startedAt       Timestamptz? @map("started_at")
+  finishedAt      Timestamptz? @map("finished_at")
+
+  @@index([status, availableAt, priority], map: "idx_worker_job_claim")
+  @@index([queue, status], map: "idx_worker_job_queue_status")
+  @@index([dedupKey], map: "uq_worker_job_dedup_active", where: "(status = ANY (ARRAY['queued'::text, 'leased'::text, 'running'::text]))", unique: true)
+  @@map("worker_job")
+}
+
+model WorkerHeartbeat {
+  workerId   String      @id(map: "worker_heartbeat_pkey") @map("worker_id")
+  role       String
+  lastSeenAt Timestamptz @default(now()) @map("last_seen_at")
+  meta       Jsonb?
+
+  @@map("worker_heartbeat")
+}

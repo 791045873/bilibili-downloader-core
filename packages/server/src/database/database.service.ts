@@ -1513,8 +1513,141 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     }));
   }
 
-  /**
-   * 读侧：按 (bvid,cid) 取 summary 头字段 + 按 seq 升序的全渲染字段 segment。
+  // ==================== worker_job（Phase 2 作业队列，raw SQL） ====================
+
+  /** 入队：dedup_key 命中活跃唯一索引则不重复插入，返回既有活跃作业。 */
+  async enqueueJob(input: {
+    kind: string;
+    queue?: string;
+    refType?: string | null;
+    refId?: number | null;
+    dedupKey?: string | null;
+    priority?: number;
+    maxAttempts?: number;
+    availableInSeconds?: number;
+    payload?: unknown;
+  }): Promise<WorkerJobRecord> {
+    const queue = input.queue ?? "nas";
+    if (input.dedupKey) {
+      const existing = await this.pool.query(
+        `SELECT * FROM worker_job WHERE dedup_key = $1 AND status IN ('queued','leased','running') LIMIT 1`,
+        [input.dedupKey],
+      );
+      if (existing.rows.length > 0) return mapWorkerJobRow(existing.rows[0]);
+    }
+    const { rows } = await this.pool.query(
+      `INSERT INTO worker_job
+         (kind, queue, ref_type, ref_id, dedup_key, status, priority, attempts, max_attempts,
+          available_at, payload, cancel_requested, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,'queued',$6,0,$7, now() + ($8 || ' seconds')::interval, $9::jsonb, 0, now(), now())
+       ON CONFLICT (dedup_key) WHERE status IN ('queued','leased','running') DO NOTHING
+       RETURNING *`,
+      [
+        input.kind, queue, input.refType ?? null,
+        input.refId != null ? String(input.refId) : null,
+        input.dedupKey ?? null, input.priority ?? 0, input.maxAttempts ?? 5,
+        String(input.availableInSeconds ?? 0),
+        input.payload != null ? JSON.stringify(input.payload) : null,
+      ],
+    );
+    if (rows.length > 0) return mapWorkerJobRow(rows[0]);
+    const again = await this.pool.query(
+      `SELECT * FROM worker_job WHERE dedup_key = $1 AND status IN ('queued','leased','running') LIMIT 1`,
+      [input.dedupKey],
+    );
+    return mapWorkerJobRow(again.rows[0]);
+  }
+
+  /** 原子认领下一个可执行作业（SKIP LOCKED 守卫 UPDATE），置 running + 租约。 */
+  async claimNextJob(
+    queue: string,
+    owner: string,
+    ttlSeconds: number,
+  ): Promise<WorkerJobRecord | undefined> {
+    const { rows } = await this.pool.query(
+      `UPDATE worker_job SET status='running', lease_owner=$2,
+         lease_expires_at = now() + ($3 || ' seconds')::interval,
+         heartbeat_at = now(), started_at = COALESCE(started_at, now()), updated_at = now()
+       WHERE id = (
+         SELECT id FROM worker_job
+         WHERE queue = $1 AND status = 'queued' AND available_at <= now() AND cancel_requested = 0
+         ORDER BY priority DESC, id ASC
+         FOR UPDATE SKIP LOCKED LIMIT 1
+       )
+       RETURNING *`,
+      [queue, owner, String(ttlSeconds)],
+    );
+    return rows.length > 0 ? mapWorkerJobRow(rows[0]) : undefined;
+  }
+
+  /** 续租（fencing：仅本 owner 且 running）。 */
+  async renewLease(id: number, owner: string, ttlSeconds: number): Promise<boolean> {
+    const { rowCount } = await this.pool.query(
+      `UPDATE worker_job SET heartbeat_at = now(),
+         lease_expires_at = now() + ($3 || ' seconds')::interval, updated_at = now()
+       WHERE id = $1 AND lease_owner = $2 AND status = 'running'`,
+      [String(id), owner, String(ttlSeconds)],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
+  /** 完成（fencing）。返回是否本 owner 生效（丢租约为 false）。 */
+  async completeJob(id: number, owner: string, result?: unknown): Promise<boolean> {
+    const { rowCount } = await this.pool.query(
+      `UPDATE worker_job SET status='succeeded', result=$3::jsonb, finished_at=now(),
+         lease_owner=NULL, lease_expires_at=NULL, updated_at=now()
+       WHERE id=$1 AND lease_owner=$2 AND status='running'`,
+      [String(id), owner, result != null ? JSON.stringify(result) : null],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
+  /** 失败（fencing）：attempts++，超 max 则 failed，否则退避重回 queued。 */
+  async failJob(
+    id: number,
+    owner: string,
+    error: string,
+    backoffSeconds = 30,
+  ): Promise<"failed" | "requeued" | "lost"> {
+    const { rows } = await this.pool.query(
+      `UPDATE worker_job SET
+         attempts = attempts + 1,
+         last_error = $3,
+         status = CASE WHEN attempts + 1 >= max_attempts THEN 'failed' ELSE 'queued' END,
+         available_at = CASE WHEN attempts + 1 >= max_attempts THEN available_at ELSE now() + ($4 || ' seconds')::interval END,
+         finished_at = CASE WHEN attempts + 1 >= max_attempts THEN now() ELSE finished_at END,
+         lease_owner = NULL, lease_expires_at = NULL, updated_at = now()
+       WHERE id=$1 AND lease_owner=$2 AND status='running'
+       RETURNING status`,
+      [String(id), owner, error, String(backoffSeconds)],
+    );
+    if (rows.length === 0) return "lost";
+    return rows[0].status === "failed" ? "failed" : "requeued";
+  }
+
+  /** reaper：租约过期的 running/leased 重置为 queued（attempts++）。返回回收数量。 */
+  async reapExpiredJobs(): Promise<number> {
+    const { rowCount } = await this.pool.query(
+      `UPDATE worker_job SET status='queued', attempts=attempts+1,
+         lease_owner=NULL, lease_expires_at=NULL, updated_at=now()
+       WHERE status IN ('leased','running') AND lease_expires_at IS NOT NULL AND lease_expires_at < now()`,
+    );
+    return rowCount ?? 0;
+  }
+
+  async requestCancelJob(id: number): Promise<void> {
+    await this.pool.query(
+      `UPDATE worker_job SET cancel_requested=1, updated_at=now() WHERE id=$1`,
+      [String(id)],
+    );
+  }
+
+  async getWorkerJobById(id: number): Promise<WorkerJobRecord | undefined> {
+    const { rows } = await this.pool.query(`SELECT * FROM worker_job WHERE id=$1`, [String(id)]);
+    return rows.length > 0 ? mapWorkerJobRow(rows[0]) : undefined;
+  }
+
+  /** 读侧：按 (bvid,cid) 取 summary 头字段 + 按 seq 升序的全渲染字段 segment。
    * 供 Phase 1a 云 DB 渲染消费；无匹配 summary 行返回 undefined。
    */
   async getSummaryWithSegmentsByResource(
@@ -1769,6 +1902,58 @@ export async function verifySchemaTables(query: {
         `Run: pnpm --filter @bilibili-downloader/server exec prisma db update --db <DATABASE_URL> then prisma db sign --db <DATABASE_URL>.`,
     );
   }
+}
+
+export interface WorkerJobRecord {
+  id: number;
+  kind: string;
+  queue: string;
+  refType: string | null;
+  refId: number | null;
+  dedupKey: string | null;
+  status: string;
+  priority: number;
+  attempts: number;
+  maxAttempts: number;
+  availableAt: string | null;
+  leaseOwner: string | null;
+  leaseExpiresAt: string | null;
+  heartbeatAt: string | null;
+  payload: unknown;
+  result: unknown;
+  lastError: string | null;
+  cancelRequested: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+function mapWorkerJobRow(row: any): WorkerJobRecord {
+  return {
+    id: Number(row.id),
+    kind: row.kind,
+    queue: row.queue,
+    refType: row.ref_type ?? null,
+    refId: row.ref_id != null ? Number(row.ref_id) : null,
+    dedupKey: row.dedup_key ?? null,
+    status: row.status,
+    priority: Number(row.priority),
+    attempts: Number(row.attempts),
+    maxAttempts: Number(row.max_attempts),
+    availableAt: toIsoString(row.available_at),
+    leaseOwner: row.lease_owner ?? null,
+    leaseExpiresAt: toIsoString(row.lease_expires_at),
+    heartbeatAt: toIsoString(row.heartbeat_at),
+    payload: row.payload ?? null,
+    result: row.result ?? null,
+    lastError: row.last_error ?? null,
+    cancelRequested: Number(row.cancel_requested) === 1,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+    startedAt: toIsoString(row.started_at),
+    finishedAt: toIsoString(row.finished_at),
+  };
 }
 
 function bigintToNumber(value: bigint | number | null | undefined): number | undefined {
