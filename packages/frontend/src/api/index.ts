@@ -268,46 +268,12 @@ export async function rebuildAiSummaryTask(
   return request(`/summary-tasks/${id}/rebuild`, { method: "POST" });
 }
 
-export async function publishAiSummaryTask(
-  id: number,
-): Promise<{ message: string }> {
-  return request(`/summary-tasks/${id}/publish`, { method: "POST" });
-}
-
 export async function startIntegrityCheck(): Promise<{ message: string }> {
   return request("/summary-tasks/integrity-check", { method: "POST" });
 }
 
 export async function getIntegrityCheckStatus(): Promise<{ running: boolean }> {
   return request("/summary-tasks/integrity-check/status");
-}
-
-export interface SummaryRepairItem {
-  id?: number;
-  bvid?: string;
-  cid?: number;
-  title?: string;
-  reason?: string;
-  summaryPath?: string;
-  segmentCount?: number;
-  empty?: boolean;
-  queuedTaskId?: number;
-}
-
-export interface SummaryRepairReport {
-  totalCompleted: number;
-  pendingCount: number;
-  repaired: SummaryRepairItem[];
-  skipped: SummaryRepairItem[];
-  failed: SummaryRepairItem[];
-  deferred: SummaryRepairItem[];
-}
-
-export async function repairSummaryTasks(): Promise<{
-  message: string;
-  report: SummaryRepairReport;
-}> {
-  return request("/summary-tasks/repair", { method: "POST" });
 }
 
 // ==================== LLM 配置 ====================
