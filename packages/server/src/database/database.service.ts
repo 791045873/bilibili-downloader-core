@@ -1647,6 +1647,21 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     return rows.length > 0 ? mapWorkerJobRow(rows[0]) : undefined;
   }
 
+  /** worker 心跳：upsert worker_heartbeat（last_seen_at=now）。 */
+  async upsertWorkerHeartbeat(
+    workerId: string,
+    role: string,
+    meta?: unknown,
+  ): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO worker_heartbeat (worker_id, role, last_seen_at, meta)
+       VALUES ($1, $2, now(), $3::jsonb)
+       ON CONFLICT (worker_id)
+       DO UPDATE SET role = EXCLUDED.role, last_seen_at = now(), meta = EXCLUDED.meta`,
+      [workerId, role, meta != null ? JSON.stringify(meta) : null],
+    );
+  }
+
   /** 读侧：按 (bvid,cid) 取 summary 头字段 + 按 seq 升序的全渲染字段 segment。
    * 供 Phase 1a 云 DB 渲染消费；无匹配 summary 行返回 undefined。
    */

@@ -9,6 +9,7 @@ import { AnalysisModule } from "./analysis/analysis.module.js";
 import { ParseModule } from "./parse/parse.module.js";
 import { NotificationModule } from "./notification/notification.module.js";
 import { ChatModule } from "./chat/chat.module.js";
+import { WorkerModule } from "./worker/worker.module.js";
 import { RequestLoggingInterceptor } from "./logging/request-logging.interceptor.js";
 
 @Module({
@@ -25,6 +26,7 @@ import { RequestLoggingInterceptor } from "./logging/request-logging.interceptor
     ParseModule,
     NotificationModule,
     ChatModule,
+    WorkerModule,
   ],
   providers: [
     {
