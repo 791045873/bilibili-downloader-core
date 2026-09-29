@@ -13,7 +13,6 @@ import {
   Query,
   Body,
 } from "@nestjs/common";
-import { readFile } from "node:fs/promises";
 import { DatabaseService } from "../database/database.service.js";
 import type { AiSummaryTaskRecord } from "../database/database.service.js";
 import { DownloadService } from "../download/download.service.js";
@@ -21,13 +20,14 @@ import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 import { SummaryIntegrityService } from "./summary-integrity.service.js";
 import { SummaryRepairService } from "./summary-repair.service.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
-import {
-  extractSummaryMeta,
-  resolveSummaryOutputPath,
-  rewriteMarkdownImageUrls,
-} from "./summary-dir.js";
+import { resolveSummaryOutputPath } from "./summary-dir.js";
 import type { SummaryMeta } from "./summary-dir.js";
 import { PathsService } from "../paths/paths.service.js";
+import {
+  buildSummaryMeta,
+  renderRawResponseMarkdown,
+  renderSummaryFromDb,
+} from "./summary-render.js";
 
 @Controller("api")
 export class AnalysisTaskController {
@@ -237,7 +237,10 @@ export class AnalysisTaskController {
     return this.renderSummaryMarkdown(record, `${bvid}-${parsedCid}`);
   }
 
-  /** 校验完成态并读取 summary_output 指向的 Markdown（剥离 frontmatter、重写相对图片链接） */
+  /**
+   * 校验完成态后从云 DB 渲染总结 markdown：优先 summary + summary_segment，
+   * 无 summary 行时回退 ai_summary_task.raw_response。不读本地文件、不 join 媒体路径。
+   */
   private async renderSummaryMarkdown(
     record: AiSummaryTaskRecord,
     logRef: string,
@@ -245,30 +248,47 @@ export class AnalysisTaskController {
     if (record.status !== "completed") {
       throw new ConflictException("仅已完成的 AI 总结可查看总结文档");
     }
-    if (!record.summaryOutput) {
-      throw new ConflictException("该总结无输出文档");
-    }
 
-    const mdAbsPath = resolveSummaryOutputPath(
-      record.summaryOutput,
-      this.paths.DOWNLOAD_ROOT,
+    const summary = await this.databaseService.getSummaryWithSegmentsByResource(
+      record.bvid,
+      record.cid,
     );
-    let content: string;
-    try {
-      content = await readFile(mdAbsPath, "utf-8");
-    } catch (err) {
-      this.logger.warn(
-        `Get ai summary task markdown rejected because file is missing: ${logRef} ${mdAbsPath}`,
-        err instanceof Error ? err.stack : undefined,
-      );
-      throw new NotFoundException("总结文档不存在或已被删除");
+    const meta = buildSummaryMeta(summary ?? null, record, record.bvid);
+
+    if (summary) {
+      this.warnOnSummaryDrift(record, summary.segments.length, logRef);
+      return { content: renderSummaryFromDb(summary).content, meta };
     }
 
-    const { meta, body } = extractSummaryMeta(content);
     return {
-      content: rewriteMarkdownImageUrls(body, mdAbsPath, this.paths.SUMMARY_BASE_DIR),
+      content: renderRawResponseMarkdown(record.rawResponse, meta.title ?? "")
+        .content,
       meta,
     };
+  }
+
+  /** 漂移告警（非阻塞）：summary 与 raw_response 段数不一致时以 summary 为准并记录 */
+  private warnOnSummaryDrift(
+    record: AiSummaryTaskRecord,
+    summarySegmentCount: number,
+    logRef: string,
+  ): void {
+    if (!record.rawResponse) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(record.rawResponse) as { summary?: unknown };
+      const rawLen = Array.isArray(parsed.summary)
+        ? parsed.summary.length
+        : undefined;
+      if (rawLen !== undefined && rawLen !== summarySegmentCount) {
+        this.logger.warn(
+          `Summary/raw_response drift for ${logRef}: summary segments=${summarySegmentCount} raw=${rawLen}; rendering from summary`,
+        );
+      }
+    } catch {
+      // raw_response 非合法 JSON：以 summary 为准，不阻塞
+    }
   }
 
   @Delete("/summary-tasks/:id")

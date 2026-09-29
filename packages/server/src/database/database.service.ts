@@ -1513,6 +1513,54 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     }));
   }
 
+  /**
+   * 读侧：按 (bvid,cid) 取 summary 头字段 + 按 seq 升序的全渲染字段 segment。
+   * 供 Phase 1a 云 DB 渲染消费；无匹配 summary 行返回 undefined。
+   */
+  async getSummaryWithSegmentsByResource(
+    bvid: string,
+    cid: number,
+  ): Promise<
+    | {
+        videoTitle: string;
+        videoUrl: string | null;
+        modelName: string | null;
+        createdAt: Date;
+        segments: Array<{
+          seq: number;
+          title: string;
+          content: string;
+          frameDescription: string | null;
+          screenshotUrl: string | null;
+        }>;
+      }
+    | undefined
+  > {
+    const summary = await this.prismaDb.orm.public.Summary
+      .where({ bvid, cid: BigInt(cid) })
+      .first();
+    if (!summary) {
+      return undefined;
+    }
+    const segmentRows = await this.prismaDb.orm.public.SummarySegment
+      .where({ summaryId: summary.id })
+      .orderBy((m) => m.seq.asc())
+      .all();
+    return {
+      videoTitle: summary.videoTitle,
+      videoUrl: summary.videoUrl ?? null,
+      modelName: summary.modelName ?? null,
+      createdAt: new Date(toIsoString(summary.createdAt) ?? 0),
+      segments: segmentRows.map((row) => ({
+        seq: Number(row.seq),
+        title: row.title,
+        content: row.content,
+        frameDescription: row.frameDescription ?? null,
+        screenshotUrl: row.screenshotUrl ?? null,
+      })),
+    };
+  }
+
   /** 两段写的第二段：按 (summaryId, seq) 写回向量与生成模型（raw SQL，vector 列在 contract 外） */
   async updateSummarySegmentEmbeddings(
     summaryId: number,

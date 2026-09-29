@@ -60,4 +60,4 @@
 
 ## 结论
 
-- 状态：待实施后回填每条方向的通过/裁决结论。
+- 状态：**通过（2026-09-28）**。T1/T2/T3/T4/T5/T6/T8 由数据层测试 + 渲染纯函数单测 + controller 轻量单测覆盖并全绿（`tests/database/summary-render-read.test.ts`、`tests/analysis/summary-render.test.ts`、`tests/analysis/summary-markdown-controller.test.ts`；全套 18 文件 / 127 项通过）。T7（`/summary-files` 保留、前端整页渲染）为运行级人工观察项，留待部署后确认，不阻塞本切片闭合（挂载与前端引用本切片未改动）。

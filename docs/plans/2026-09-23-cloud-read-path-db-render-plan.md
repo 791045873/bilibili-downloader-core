@@ -1,7 +1,7 @@
 # 2026-09-23 云端/NAS Phase 1a — 总结读取侧改为从云 DB 渲染
 
-> Plan Status: planned
-> Last Reviewed: 2026-09-23
+> Plan Status: done
+> Last Reviewed: 2026-09-28
 > Source: `docs/requirements/2026-09-17-cloud-read-path-db-render.md`
 > Related: 上游 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Phase 1a）；下游依赖本切片：Phase 1b `docs/requirements/2026-09-17-cloud-inline-publish-local-retire.md`
 > Audit: required（非保护区：不改数据模型/不删数据/不改部署/不涉 auth；reviewer availability=none → 允许 cold-replay 代替）
@@ -50,7 +50,7 @@
 
 ### Phase 1 - 数据层只读查询方法
 
-Status: planned
+Status: done
 Targets: `packages/server/src/database/database.service.ts`
 
 - Item Types: `Add`
@@ -68,7 +68,7 @@ Exit Criteria:
 
 ### Phase 2 - 渲染管线（DB → markdown）与 raw 回退
 
-Status: planned
+Status: done
 Targets: `packages/server/src/analysis/analysis-task.controller.ts`, `packages/server/src/analysis/document-generator.ts`（仅复用，如需导出纯函数则新增）
 
 - Item Types: `Fix | Add | Decision`
@@ -95,7 +95,7 @@ Exit Criteria:
 
 ### Phase 3 - 测试与验证
 
-Status: planned
+Status: done
 Targets: `packages/server/tests/database/*.test.ts`（新增/扩展一处），渲染纯函数单测，controller 单测
 
 - Item Types: `Add | Proof`
@@ -115,7 +115,7 @@ Exit Criteria:
 
 ### Phase 4 - 文档与闭合
 
-Status: planned
+Status: done
 Targets: `docs/design/app-overview.md`, `docs/context/codebase-map.md`, `docs/context/project-context.md`, `docs/backlog/README.md`, `docs/logs/`
 
 - Item Types: `Add | Proof`
@@ -139,16 +139,16 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] in-scope behavior is complete
-- [ ] relevant docs are aligned（app-overview / codebase-map / project-context / backlog / log）
-- [ ] verification has run（`pnpm --filter @bilibili-downloader/server test`、`pnpm typecheck`、`pnpm build`）
-- [ ] corresponding `docs/testing/` document exists 且每条方向确认通过或裁决 out of scope
-- [ ] no in-scope item downgraded to deferred/follow-up
+- [x] in-scope behavior is complete
+- [x] relevant docs are aligned（app-overview / codebase-map / project-context / backlog / log）
+- [x] verification has run（`pnpm --filter @bilibili-downloader/server test`、`pnpm typecheck`、`pnpm build`）
+- [x] corresponding `docs/testing/` document exists 且每条方向确认通过或裁决 out of scope
+- [x] no in-scope item downgraded to deferred/follow-up
 - [x] plan audit passed（cold-replay 代理留证）before implementation
-- [ ] micro-plan exception not applicable（跨两端点 API 行为 + 错误码变更 + 新数据层方法）
-- [ ] text consistency verified：top status / phase status / exit criteria / closure gates / testing doc / log 一致
-- [ ] closure audit was independent（或 cold-replay 代理留证）
-- [ ] closure evidence exists in files
+- [x] micro-plan exception not applicable（跨两端点 API 行为 + 错误码变更 + 新数据层方法）
+- [x] text consistency verified：top status / phase status / exit criteria / closure gates / testing doc / log 一致
+- [x] closure audit was independent（或 cold-replay 代理留证）
+- [x] closure evidence exists in files
 
 ## Deferred But Adjudicated
 
@@ -160,12 +160,12 @@ Exit Criteria:
 
 ## Closure
 
-Status Note: 未闭合——计划已过 plan audit（cold-replay 代理），尚未实施。
+Status Note: 已闭合（2026-09-28）。四相位全部实现并验证。
 
 Closure Audit Evidence:
 
-- Reviewer / Agent: 待回填
-- Evidence: 待回填
+- Reviewer / Agent: cold-replay 自查（reviewer availability=none，非保护区允许；对照计划/需求/真实 diff/验证命令）
+- Evidence: `pnpm typecheck`、`pnpm build` 通过；`pnpm --filter @bilibili-downloader/server test` 全绿（18 文件 / 127 项，含新增 `tests/database/summary-render-read.test.ts`、`tests/analysis/summary-render.test.ts`、`tests/analysis/summary-markdown-controller.test.ts`）；testing 文档 T1–T8 已确认；owner docs（app-overview/codebase-map/feature-inventory/project-context/backlog）已对齐。真实改动：`database.service.ts` 新增 `getSummaryWithSegmentsByResource`、新增 `analysis/summary-render.ts`、`analysis-task.controller.ts` 改 DB 渲染 + 漂移告警并移除读盘分支。
 
 Follow-up:
 

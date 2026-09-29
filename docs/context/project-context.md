@@ -20,6 +20,7 @@ Update it in place. Do not create dated copies.
 - Active owner doc: `docs/design/app-overview.md`
 - Active plan: `docs/plans/2026-09-15-qa-chat-soft-delete-plan.md`（保护区数据删除；用户已确认实施；contract/迁移/数据层/测试/typecheck/build 已完成；保护区 closure 评审待人工）
 - Active backlog item: QA 会话软删除（其他未闭合进行中：QA 来源视频 AI 总结整页链接、QA 移动端适配）
+- 已落地（未切 active）：云端/NAS Phase 1a 读取侧 DB 渲染——代码实现 + typecheck/build + 数据层/纯函数/controller 单测全绿（2026-09-28，测试库 127 项通过）；按 umbrella 遗留项 11，active requirement 仍保持 qa-chat-soft-delete 未切换
 - AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Current blocker: `none`
 - Pending user confirmation: 部署新镜像后对 RAG 问答 LLM 全链路做运行级确认（T2/T3/T5/T6 开关/T7，见 `docs/testing/2026/09-09-rag-chat-testing.md` 裁决段）

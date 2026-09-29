@@ -22,6 +22,7 @@ Track the stable feature map for the application.
 | AI 总结知识发布（COS + 云端知识库） | done | `docs/design/app-overview.md` | `docs/requirements/2026-08-24-cos-summary-knowledge-publish.md` | 分析完成后截图上传 COS、summary/summary_segment 入库（影子双写） |
 | 知识向量化与向量检索 API | done | `docs/design/app-overview.md` | `docs/requirements/2026-09-01-knowledge-vector-search.md` | pgvector top-k（`GET /api/knowledge/search`），chunk=summary_segment |
 | RAG 穿搭问答（服务 + 前端） | done | `docs/design/app-overview.md` | `docs/requirements/2026-09-09-rag-chat-service.md` | 双场景、多轮、三段式引用、照片压缩存 COS 专属目录、严格兜底 |
+| AI 总结查看（Markdown DB 渲染） | done | `docs/design/app-overview.md` | `docs/requirements/2026-09-17-cloud-read-path-db-render.md` | Phase 1a：两 markdown 端点从云 DB 渲染（summary/segment，回退 raw_response），图片用 COS URL，读侧不触盘 |
 
 ## Rule
 
