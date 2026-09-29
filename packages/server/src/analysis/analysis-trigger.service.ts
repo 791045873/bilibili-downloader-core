@@ -151,7 +151,7 @@ export class AnalysisTriggerService implements OnModuleInit {
             status: "failed",
             summaryOutput: "",
             errorMessage: result.error,
-            rawResponse: result.error,
+            // H4：失败不写 rawResponse
             lastCompletedAt: new Date().toISOString(),
           });
           void this.notificationService.sendSummaryNotification({
@@ -478,6 +478,46 @@ export class AnalysisTriggerService implements OnModuleInit {
           emptySummary: result.emptySummary,
         }),
       );
+      // Phase 1b：内联发布，内容入库成功才置 completed；截图/向量为入库后 best-effort
+      try {
+        await this.knowledgePublisher.publishInline({
+          bvid: effectiveBvid,
+          cid: effectiveCid,
+          videoTitle: task.title || `${effectiveBvid}-${effectiveCid}`,
+          videoUrl: metadataVideoUrl,
+          modelName: result.modelName,
+          rawResponse: result.rawResponse,
+          segments: result.segments,
+        });
+      } catch (publishErr) {
+        const pMsg =
+          publishErr instanceof Error ? publishErr.message : String(publishErr);
+        this.logger.error(
+          createLogMessage("Inline knowledge publish failed; content not persisted", {
+            taskId,
+            bvid: effectiveBvid,
+            cid: effectiveCid,
+            error: pMsg,
+          }),
+          publishErr instanceof Error ? publishErr.stack : undefined,
+        );
+        await this.upsertAiSummaryTask(task, {
+          status: "failed",
+          errorMessage: pMsg,
+          executionTiming: JSON.stringify(result.timing),
+          rawResponse: result.rawResponse,
+          modelName: result.modelName,
+          lastTriggeredAt: now,
+          lastCompletedAt: new Date().toISOString(),
+        });
+        await this.notificationService.sendSummaryNotification({
+          title: input.videoTitle,
+          success: false,
+          videoUrl: input.metadata.videoUrl,
+          errorMessage: pMsg,
+        });
+        return;
+      }
       await this.upsertAiSummaryTask(task, {
         status: "completed",
         summaryOutput: result.summaryPath,
@@ -494,27 +534,6 @@ export class AnalysisTriggerService implements OnModuleInit {
         videoUrl: input.metadata.videoUrl,
         markdownPath: result.summaryPath,
       });
-      void this.knowledgePublisher
-        .publish({
-          bvid: effectiveBvid,
-          cid: effectiveCid,
-          videoTitle: task.title || `${effectiveBvid}-${effectiveCid}`,
-          videoUrl: metadataVideoUrl,
-          modelName: result.modelName,
-          rawResponse: result.rawResponse,
-          summaryPath: result.summaryPath,
-        })
-        .catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : String(err);
-          this.logger.error(
-            createLogMessage("Knowledge publish trigger failed", {
-              taskId,
-              bvid: effectiveBvid,
-              cid: effectiveCid,
-              error: message,
-            }),
-          );
-        });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(
@@ -530,7 +549,7 @@ export class AnalysisTriggerService implements OnModuleInit {
         status: "failed",
         summaryOutput: "",
         errorMessage: msg,
-        rawResponse: msg,
+        // H4：失败不写 rawResponse（只放模型输出；LLM 失败保持 NULL）
         lastTriggeredAt: now,
         lastCompletedAt: new Date().toISOString(),
       });
@@ -851,14 +870,14 @@ export class AnalysisTriggerService implements OnModuleInit {
         lastCompletedAt: new Date().toISOString(),
       });
       void this.knowledgePublisher
-        .publish({
+        .publishInline({
           bvid: record.bvid,
           cid: record.cid,
           videoTitle: task.title || `${record.bvid}-${record.cid}`,
           videoUrl: `https://www.bilibili.com/video/${record.bvid}`,
-          modelName: record.modelName,
+          modelName: record.modelName ?? undefined,
           rawResponse: record.rawResponse,
-          summaryPath: result.summaryPath,
+          segments: result.segments,
         })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);

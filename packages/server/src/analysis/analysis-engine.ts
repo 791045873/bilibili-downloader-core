@@ -64,6 +64,14 @@ export interface AnalysisOutput {
   summaryPath: string;
   /** 所有截图文件路径 */
   screenshotFiles: string[];
+  /** 按段的截图本地路径（供内联发布结构化上传，B3） */
+  segments: Array<{
+    title: string;
+    content: string;
+    timestamp: string;
+    frameDescription: string;
+    screenshotFiles: string[];
+  }>;
   /** 分析的段落数 */
   segmentCount: number;
   /** 是否为空内容文档 */
@@ -313,6 +321,7 @@ export class AnalysisEngine {
     }
 
     const processedSegments: DocumentInput["segments"] = [];
+    const outputSegments: AnalysisOutput["segments"] = [];
 
     // 按 LLM 返回的精确时间戳直接截图，仅一次多模态调用，无二次图像选择
     const screenshotStartMs = Date.now();
@@ -425,6 +434,13 @@ export class AnalysisEngine {
           relativePath: `screenshots/${basename(file)}`,
         })),
       });
+      outputSegments.push({
+        title: item.title,
+        content: item.content,
+        timestamp: item.timestamp,
+        frameDescription: item.frameDescription,
+        screenshotFiles: [...segmentScreenshots],
+      });
     }
     screenshotMs = Date.now() - screenshotStartMs;
 
@@ -459,6 +475,7 @@ export class AnalysisEngine {
     return {
       summaryPath,
       screenshotFiles: screenshots,
+      segments: outputSegments,
       segmentCount: processedSegments.length,
       emptySummary: processedSegments.length === 0,
       timing: {
@@ -518,6 +535,7 @@ export class AnalysisEngine {
     return {
       summaryPath,
       screenshotFiles: existingScreenshots,
+      segments: [],
       segmentCount: 0,
       emptySummary: true,
       timing: { llmMs: 0, screenshotMs: 0, totalMs: 0 },

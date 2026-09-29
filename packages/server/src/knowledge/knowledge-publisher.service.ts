@@ -211,6 +211,99 @@ export class KnowledgePublisherService {
   }
 
   /**
+   * 内联发布（Phase 1b）：直接吃结构化 segments（不读本地 md），内容入库为唯一"完成"门槛。
+   * - 内容 upsert 失败：向上抛，由调用方置 failed（保留模型 JSON）。
+   * - COS 截图上传与向量生成为入库后 best-effort：失败仅留空、记录日志，绝不影响完成。
+   * - 不写 knowledge_status（内联后无影子发布态）。
+   */
+  async publishInline(input: {
+    bvid: string;
+    cid: number;
+    videoTitle: string;
+    videoUrl?: string;
+    modelName?: string;
+    rawResponse: string;
+    segments: Array<{
+      title: string;
+      content: string;
+      timestamp: string;
+      frameDescription: string;
+      screenshotFiles: string[];
+    }>;
+  }): Promise<void> {
+    const { bvid, cid } = input;
+    const cosReady = this.cosStore.isConfigured();
+
+    const segments = await Promise.all(
+      input.segments.map(async (seg, index) => {
+        let screenshotUrl: string | undefined;
+        const local = seg.screenshotFiles[0];
+        if (cosReady && local) {
+          try {
+            const key = `summary/${bvid}-${cid}/screenshots/${basename(local)}`;
+            screenshotUrl = await this.cosStore.upload(local, key);
+          } catch (err) {
+            this.logger.warn(
+              createLogMessage("Inline screenshot upload failed (non-blocking)", {
+                bvid,
+                cid,
+                seq: index,
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+          }
+        }
+        return {
+          seq: index,
+          title: seg.title,
+          content: seg.content,
+          timestampSeconds: pickTimestampSeconds(
+            parseTimestampCandidates(seg.timestamp),
+          ),
+          frameDescription: seg.frameDescription,
+          screenshotUrl,
+        };
+      }),
+    );
+
+    const previousSegments = await this.db.getSummarySegmentsForEmbedding(
+      bvid,
+      cid,
+    );
+
+    const summaryId = await this.db.upsertSummaryKnowledge({
+      bvid,
+      cid,
+      videoTitle: input.videoTitle,
+      videoUrl: input.videoUrl,
+      modelName: input.modelName,
+      rawResponse: input.rawResponse,
+      segments,
+    });
+
+    try {
+      await this.writeSegmentEmbeddings(summaryId, segments, previousSegments);
+    } catch (err) {
+      this.logger.warn(
+        createLogMessage("Inline embedding generation failed (non-blocking)", {
+          bvid,
+          cid,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+
+    this.logger.log(
+      createLogMessage("Summary knowledge published inline", {
+        bvid,
+        cid,
+        segmentCount: segments.length,
+        screenshotCount: segments.filter((s) => s.screenshotUrl).length,
+      }),
+    );
+  }
+
+  /**
    * 两段写第二段：复用未变更向量 → 补算缺失向量 → raw 回写。
    * 缺 embedding 配置/调用失败抛错，由 publish 的 failed 语义承接（可重试）。
    */
