@@ -22,6 +22,8 @@ import { PromptService } from "./prompt.service.js";
 import { PathsService } from "../paths/paths.service.js";
 import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
+import { WorkerService } from "../worker/worker.service.js";
+import type { WorkerJobRecord } from "../database/database.service.js";
 
 /** AI 总结任务执行耗时明细 */
 export interface AiSummaryExecutionTiming {
@@ -67,6 +69,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     private readonly promptService: PromptService,
     private readonly knowledgePublisher: KnowledgePublisherService,
     private readonly paths: PathsService,
+    private readonly worker: WorkerService,
   ) {
     this.llmVideoDir = paths.ANALYSIS_LLM_VIDEO_DIR;
   }
@@ -84,10 +87,10 @@ export class AnalysisTriggerService implements OnModuleInit {
     }
 
     this.downloadScheduler.onAnalysisTrigger = (taskId: number) => {
-      this.trigger(taskId).catch((err: unknown) => {
+      this.enqueueAnalyzeForTask(taskId).catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.error(
-          createLogMessage("Automatic analysis trigger failed", {
+          createLogMessage("Automatic analysis enqueue failed", {
             taskId,
             error: message,
           }),
@@ -96,79 +99,127 @@ export class AnalysisTriggerService implements OnModuleInit {
       });
     };
 
-    this.downloadScheduler.onLowResFinished = async (
-      taskId,
-      analysisSubTaskId,
-      result,
-    ) => {
-      if (result.success) {
-        this.logger.log(
-          createLogMessage("Low resolution analysis download finished", {
-            taskId,
-            analysisSubTaskId,
-            outputFile: result.outputFile,
-            quality: result.quality,
-          }),
-        );
-        await this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
-          status: "completed",
-          outputFile: result.outputFile,
-          completedAt: new Date().toISOString(),
-        });
-        // 低清已就绪，直接续跑分析（认领保持进行中，避免重走认领被拒）
-        this.runAnalysis(taskId, new Date().toISOString()).catch(
-          (err: unknown) => {
-            const message = err instanceof Error ? err.message : String(err);
-            this.logger.error(
-              createLogMessage(
-                "Analysis continuation after low resolution download failed",
-                {
-                  taskId,
-                  analysisSubTaskId,
-                  error: message,
-                },
-              ),
-              err instanceof Error ? err.stack : undefined,
-            );
-          },
-        );
-      } else {
-        this.logger.error(
-          createLogMessage("Low resolution analysis download failed", {
-            taskId,
-            analysisSubTaskId,
-            error: result.error,
-          }),
-        );
-        await this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
-          status: "failed",
-          errorMessage: result.error,
-          completedAt: new Date().toISOString(),
-        });
-        const task = await this.db.getTaskById(taskId);
-        if (task) {
-          await this.upsertAiSummaryTask(task, {
-            status: "failed",
-            summaryOutput: "",
-            errorMessage: result.error,
-            // H4：失败不写 rawResponse
-            lastCompletedAt: new Date().toISOString(),
-          });
-          void this.notificationService.sendSummaryNotification({
-            title:
-              task.title ||
-              (task.bvid && typeof task.cid === "number"
-                ? `${task.bvid}-${task.cid}`
-                : `任务 ${taskId}`),
-            success: false,
-            videoUrl: task.bvid
-              ? `https://www.bilibili.com/video/${task.bvid}`
-              : undefined,
-            errorMessage: result.error,
-          });
-        }
-      }
+    this.worker.registerHandler("analyze", (job) => this.handleAnalyzeJob(job));
+    this.worker.registerHandler("low_res_download", (job) =>
+      this.handleLowResDownloadJob(job),
+    );
+  }
+
+  /** 触发期解析 promptId 并入队 analyze 作业（payload 前移 promptId/mid 解析）。 */
+  async enqueueAnalyzeForTask(taskId: number): Promise<void> {
+    const task = await this.db.getTaskById(taskId);
+    if (
+      !task ||
+      !task.autoSummary ||
+      task.status !== TaskStatus.Success ||
+      !task.bvid ||
+      typeof task.cid !== "number"
+    ) {
+      return;
+    }
+    const promptId = await this.resolvePromptId(task);
+    await this.db.enqueueJob({
+      kind: "analyze",
+      queue: "nas",
+      refType: "task",
+      refId: taskId,
+      dedupKey: `analyze:${task.bvid}:${task.cid}`,
+      payload: { taskId, promptId },
+    });
+  }
+
+  private async handleAnalyzeJob(job: WorkerJobRecord): Promise<void> {
+    const payload = (job.payload ?? {}) as {
+      taskId?: number;
+      promptId?: number;
+      continuation?: boolean;
     };
+    if (typeof payload.taskId !== "number") {
+      throw new Error("analyze job payload missing taskId");
+    }
+    if (payload.continuation) {
+      await this.runAnalysis(payload.taskId, new Date().toISOString());
+      return;
+    }
+    await this.trigger(payload.taskId, { promptId: payload.promptId });
+  }
+
+  private async handleLowResDownloadJob(job: WorkerJobRecord): Promise<void> {
+    const payload = (job.payload ?? {}) as {
+      taskId?: number;
+      analysisSubTaskId?: number;
+      bvid?: string;
+      cid?: number;
+      title?: string;
+      resourceType?: string;
+    };
+    if (
+      typeof payload.taskId !== "number" ||
+      typeof payload.analysisSubTaskId !== "number" ||
+      !payload.bvid ||
+      typeof payload.cid !== "number"
+    ) {
+      throw new Error("low_res_download job payload incomplete");
+    }
+    const { taskId, analysisSubTaskId, bvid, cid } = payload;
+    const title = payload.title ?? `${bvid}-${cid}`;
+    try {
+      const result = await this.downloadService.executeLowResDownload(
+        bvid,
+        cid,
+        title,
+        payload.resourceType,
+      );
+      await this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
+        status: "completed",
+        outputFile: result.outputFile,
+        completedAt: new Date().toISOString(),
+      });
+      await this.db.enqueueJob({
+        kind: "analyze",
+        queue: "nas",
+        refType: "task",
+        refId: taskId,
+        dedupKey: `analyze:cont:${bvid}:${cid}`,
+        payload: { taskId, continuation: true },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        createLogMessage("Low resolution analysis download failed", {
+          taskId,
+          analysisSubTaskId,
+          error: message,
+        }),
+        err instanceof Error ? err.stack : undefined,
+      );
+      await this.db.updateAnalysisSubTaskStatus(analysisSubTaskId, {
+        status: "failed",
+        errorMessage: message,
+        completedAt: new Date().toISOString(),
+      });
+      const task = await this.db.getTaskById(taskId);
+      if (task) {
+        await this.upsertAiSummaryTask(task, {
+          status: "failed",
+          summaryOutput: "",
+          errorMessage: message,
+          lastCompletedAt: new Date().toISOString(),
+        });
+        void this.notificationService.sendSummaryNotification({
+          title:
+            task.title ||
+            (task.bvid && typeof task.cid === "number"
+              ? `${task.bvid}-${task.cid}`
+              : `任务 ${taskId}`),
+          success: false,
+          videoUrl: task.bvid
+            ? `https://www.bilibili.com/video/${task.bvid}`
+            : undefined,
+          errorMessage: message,
+        });
+      }
+    }
   }
 
   async trigger(

@@ -121,23 +121,50 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
       }
     }
 
-    this.downloadScheduler.scheduleLowResDownload({
-      taskId: input.taskId,
-      analysisSubTaskId,
-      bvid: input.bvid,
-      cid: input.cid,
-      title: input.title ?? `${input.bvid}-${input.cid}`,
+    let resourceType: string | undefined;
+    try {
+      resourceType = (
+        await this.downloadService.parseVideo(input.bvid, input.cid)
+      ).resourceType;
+    } catch (err) {
+      this.logger.warn(
+        createLogMessage(
+          "Resource type pre-resolution failed; low_res_download will re-resolve",
+          {
+            bvid: input.bvid,
+            cid: input.cid,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        ),
+      );
+    }
+
+    await this.databaseService.enqueueJob({
+      kind: "low_res_download",
+      queue: "nas",
+      refType: "task",
+      refId: input.taskId,
+      dedupKey: `lowres:${input.bvid}:${input.cid}`,
+      payload: {
+        taskId: input.taskId,
+        analysisSubTaskId,
+        bvid: input.bvid,
+        cid: input.cid,
+        title: input.title ?? `${input.bvid}-${input.cid}`,
+        resourceType,
+      },
     });
 
     this.logger.log(
       createLogMessage(
-        "Analysis scheduled low resolution video download because no usable video exists",
+        "Analysis enqueued low resolution video download because no usable video exists",
         {
           taskId: input.taskId,
           analysisSubTaskId,
           bvid: input.bvid,
           cid: input.cid,
           outputPath: input.llmVideoDir,
+          resourceTypeForwarded: resourceType != null,
         },
       ),
     );

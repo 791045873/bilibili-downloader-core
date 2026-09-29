@@ -433,16 +433,23 @@ export class AnalysisController {
         createdAt: new Date().toISOString(),
       });
 
-      this.downloadScheduler.scheduleLowResDownload({
-        taskId: input.taskId,
-        analysisSubTaskId,
-        bvid: input.bvid,
-        cid: input.cid,
-        title: input.title,
+      await this.databaseService.enqueueJob({
+        kind: "low_res_download",
+        queue: "nas",
+        refType: "task",
+        refId: input.taskId,
+        dedupKey: `lowres:${input.bvid}:${input.cid}`,
+        payload: {
+          taskId: input.taskId,
+          analysisSubTaskId,
+          bvid: input.bvid,
+          cid: input.cid,
+          title: input.title,
+        },
       });
 
       this.logger.log(
-        createLogMessage("Scheduled initial low resolution analysis download", {
+        createLogMessage("Enqueued initial low resolution analysis download", {
           taskId: input.taskId,
           analysisSubTaskId,
           bvid: input.bvid,

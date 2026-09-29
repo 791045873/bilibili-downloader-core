@@ -61,6 +61,8 @@ export interface ParseResultItem {
   cid: number;
   videoQualityList: { id: number; name: string; codecList: string[] }[];
   audioQualityList: string[];
+  /** B站资源类型（触发期解析后随 low_res_download 作业 payload 前移） */
+  resourceType?: string;
 }
 
 // ---------- Service ----------
@@ -223,7 +225,12 @@ export class DownloadService implements OnModuleInit {
       (a, b) => Number.parseInt(b) - Number.parseInt(a),
     );
 
-    return { cid, videoQualityList, audioQualityList: uniqueAudio };
+    return {
+      cid,
+      videoQualityList,
+      audioQualityList: uniqueAudio,
+      resourceType: String(parsed.type),
+    };
   }
 
   /** 批量解析 */
@@ -277,16 +284,19 @@ export class DownloadService implements OnModuleInit {
     bvid: string,
     cid: number,
     title: string,
+    resourceType?: string,
   ): Promise<LowResDownloadResult> {
     this.logger.log(
       createLogMessage("Starting low resolution download", {
         bvid,
         cid,
         title,
+        resourceTypeForwarded: resourceType != null,
       }),
     );
 
-    const parsed = await this.resourceParser.parse(bvid);
+    const parsedType =
+      resourceType ?? (await this.resourceParser.parse(bvid)).type;
     const cookieString = this.cookieFile
       ? await this.loadCookieString(this.cookieFile)
       : undefined;
@@ -294,7 +304,8 @@ export class DownloadService implements OnModuleInit {
     const streams = await this.resolutionService.resolveStreams({
       bvid,
       cid,
-      resourceType: parsed.type,
+      resourceType:
+        parsedType as Awaited<ReturnType<BilibiliResourceParser["parse"]>>["type"],
       cookieString,
     });
 
