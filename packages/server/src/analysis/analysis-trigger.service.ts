@@ -520,7 +520,6 @@ export class AnalysisTriggerService implements OnModuleInit {
       }
       await this.upsertAiSummaryTask(task, {
         status: "completed",
-        summaryOutput: result.summaryPath,
         errorMessage: "",
         executionTiming: JSON.stringify(result.timing),
         rawResponse: result.rawResponse,
@@ -863,7 +862,6 @@ export class AnalysisTriggerService implements OnModuleInit {
 
       await this.upsertAiSummaryTask(task, {
         status: "completed",
-        summaryOutput: result.summaryPath,
         errorMessage: "",
         executionTiming: JSON.stringify(result.timing),
         lastTriggeredAt: now,

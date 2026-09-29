@@ -8,7 +8,7 @@
  * 仅用 raw_response + 视频文件重建截图与 Markdown 报告（不依赖 LLM 配置）。
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Logger } from "@nestjs/common";
@@ -22,7 +22,7 @@ import {
   type LlmConfig,
   type MultimodalContent,
 } from "@bilibili-downloader/adapters/llm";
-import { generateMarkdown, type DocumentInput } from "./document-generator.js";
+import type { DocumentInput } from "./document-generator.js";
 import type { ScreenshotSourceResolver } from "./analysis-video-resolver.js";
 import { parseTimestampCandidates, pickTimestampSeconds } from "./timestamp.js";
 import { createLogMessage } from "../logging/server-log.util.js";
@@ -444,23 +444,11 @@ export class AnalysisEngine {
     }
     screenshotMs = Date.now() - screenshotStartMs;
 
-    // 生成 Markdown
-    const doc = generateMarkdown({
-      videoTitle: input.videoTitle,
-      videoUrl:
-        input.metadata.type === "bilibili"
-          ? (input.metadata.videoUrl ?? "")
-          : "",
-      modelName,
-      createdAt: new Date().toString(),
-      segments: processedSegments,
-    });
-
+    // Phase 1b：不再写本地 md（读取走云 DB 渲染）；summaryPath 仅作命名参考
     const summaryPath = join(
       input.summaryDir,
       `${sanitizeFileName(input.videoTitle)}-summary.md`,
     );
-    await writeFile(summaryPath, doc, "utf-8");
 
     this.logger.log(
       createLogMessage("Analysis summary written", {
@@ -509,21 +497,10 @@ export class AnalysisEngine {
     rawResponse: string,
     modelName: string,
   ): Promise<AnalysisOutput> {
-    const doc = generateMarkdown({
-      videoTitle: input.videoTitle,
-      videoUrl:
-        input.metadata.type === "bilibili"
-          ? (input.metadata.videoUrl ?? "")
-          : "",
-      modelName,
-      createdAt: new Date().toString(),
-      segments: [],
-    });
     const summaryPath = join(
       input.summaryDir,
       `${sanitizeFileName(input.videoTitle)}-summary.md`,
     );
-    await writeFile(summaryPath, doc, "utf-8");
     this.logger.warn(
       createLogMessage("Wrote empty analysis summary", {
         bvid: input.metadata.bvid,
