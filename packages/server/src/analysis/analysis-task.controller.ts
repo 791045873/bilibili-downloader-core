@@ -74,15 +74,14 @@ export class AnalysisTaskController {
       autoSummary: 1,
     });
 
-    void this.analysisTriggerService
-      .trigger(taskId, { promptId })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `Task-level AI summary trigger failed for task ${taskId}: ${message}`,
-          err instanceof Error ? err.stack : undefined,
-        );
-      });
+    await this.databaseService.enqueueJob({
+      kind: "analyze",
+      queue: "nas",
+      refType: "task",
+      refId: taskId,
+      dedupKey: `analyze:${task.bvid}:${task.cid}`,
+      payload: { taskId, promptId },
+    });
 
     return { message: "AI 总结触发中" };
   }
@@ -327,15 +326,14 @@ export class AnalysisTaskController {
       autoSummary: 1,
     });
 
-    void this.analysisTriggerService
-      .trigger(task.id, { promptId: summaryTask.promptId })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `AI summary retrigger failed for summary task ${summaryTaskId}: ${message}`,
-          err instanceof Error ? err.stack : undefined,
-        );
-      });
+    await this.databaseService.enqueueJob({
+      kind: "analyze",
+      queue: "nas",
+      refType: "task",
+      refId: task.id,
+      dedupKey: `analyze:${summaryTask.bvid}:${summaryTask.cid}`,
+      payload: { taskId: task.id, promptId: summaryTask.promptId },
+    });
 
     return { message: "AI 总结触发中" };
   }
@@ -371,15 +369,14 @@ export class AnalysisTaskController {
       throw new ConflictException("正在重新构建中");
     }
 
-    void this.analysisTriggerService
-      .runRebuild(summaryTaskId)
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `AI summary rebuild failed for summary task ${summaryTaskId}: ${message}`,
-          err instanceof Error ? err.stack : undefined,
-        );
-      });
+    await this.databaseService.enqueueJob({
+      kind: "screenshot_retry",
+      queue: "nas",
+      refType: "summary_task",
+      refId: summaryTaskId,
+      dedupKey: `screenshot_retry:${summaryTaskId}`,
+      payload: { summaryTaskId },
+    });
 
     return { message: "重新构建已开始" };
   }

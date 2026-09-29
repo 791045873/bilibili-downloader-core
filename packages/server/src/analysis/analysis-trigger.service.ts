@@ -103,6 +103,9 @@ export class AnalysisTriggerService implements OnModuleInit {
     this.worker.registerHandler("low_res_download", (job) =>
       this.handleLowResDownloadJob(job),
     );
+    this.worker.registerHandler("screenshot_retry", (job) =>
+      this.handleScreenshotRetryJob(job),
+    );
   }
 
   /** 触发期解析 promptId 并入队 analyze 作业（payload 前移 promptId/mid 解析）。 */
@@ -126,6 +129,14 @@ export class AnalysisTriggerService implements OnModuleInit {
       dedupKey: `analyze:${task.bvid}:${task.cid}`,
       payload: { taskId, promptId },
     });
+  }
+
+  private async handleScreenshotRetryJob(job: WorkerJobRecord): Promise<void> {
+    const payload = (job.payload ?? {}) as { summaryTaskId?: number };
+    if (typeof payload.summaryTaskId !== "number") {
+      throw new Error("screenshot_retry job payload missing summaryTaskId");
+    }
+    await this.runRebuild(payload.summaryTaskId);
   }
 
   private async handleAnalyzeJob(job: WorkerJobRecord): Promise<void> {
