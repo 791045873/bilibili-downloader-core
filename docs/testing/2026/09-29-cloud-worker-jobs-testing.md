@@ -44,5 +44,21 @@
 - `pnpm typecheck`
 - `pnpm build`
 
-## 结论
-- 状态：待实施后回填每条方向的通过/裁决结论。
+## 实施结论（2026-09-30）
+
+验证命令全绿：`pnpm --filter @bilibili-downloader/server typecheck` / `build` / `test`（测试容器 pgvector/pg17，`TEST_DATABASE_URL`），vitest 全量 149 passed（新增 worker-job 15 + worker-loop 6）。
+
+- T1 落地 — 通过。`worker_job`/`worker_heartbeat` 经 contract + `prisma:emit` 落地；测试容器 `prisma db init`（fresh）成功建两表；纯 additive。存量库 `db migrate` 本环境未跑 → 裁决：additive 迁移，遵循既有契约工作流，实机迁移人工核对。
+- T2 原子认领 — 通过。`worker-job.test`：priority DESC/id ASC FIFO、并发 `claimNextJob` 恰好一次、认领写 lease_owner/lease_expires_at/running。
+- T3 去重 — 通过。`enqueueJob` 活跃 dedup_key 命中返回既有不重复插入；analyze/lowres/screenshot_retry/integrity_check 各有 dedup_key。
+- T4 租约/心跳/reaper — 通过。`renewLease` fencing、`reapExpiredJobs`（ttl 过期重置 queued + attempts++）、worker-loop reaper 用例；心跳 `upsertWorkerHeartbeat`。
+- T5 触发即作业 — 通过（代码核对 + 编译）。一键总结/retrigger→analyze、rebuild→screenshot_retry、integrity-check→integrity_check、低清→low_res_download 均改为 enqueueJob；download 仍走 claimNextCreatedTask；移除 onLowResFinished/lowResQueue、下载完成经 onAnalysisTrigger 入队 analyze。端到端（真实下载→分析）需 B站/LLM，单测不可覆盖 → 人工核对。
+- T6 payload 前移 — 通过（代码核对）。promptId/创作者 mid 在 `enqueueAnalyzeForTask` 触发期解析写入 analyze payload；resource_type 由 `parseVideo` 回填并随 low_res_download payload；`executeLowResDownload` 优先用 payload.resourceType，缺失则内部重解析。
+- T7 内存互斥退役 — 通过。移除 rebuildingIds / integrity `running`；rebuild 并发由 screenshot_retry dedup、完整性检查由 integrity_check dedup；`integrity-check/status` 改读 DB（`getLatestWorkerJobByKind`）。
+- T8 幂等与终态 — 通过。状态枚举 queued/leased/running/succeeded/failed/canceled；failJob 超 max_attempts→failed+last_error、否则退避重回 queued；cancelWorkerJob（queued→canceled，running 置 cancel_requested）；claim 跳过 canceled/cancel_requested。handler 幂等（文件存在跳过、COS 覆盖、DB upsert）为既有语义，靠代码核对。
+- T9 无回归 — 通过。全量 149 tests green（含 Phase 1a DB 渲染读路径）。端到端下载→分析→查看总结需人工核对；NAS 离线经 `WORKER_ENABLED=false`/未轮询模拟，作业保持 queued。
+
+### 裁决（out of scope，随后续需求）
+- integrity_check 执行判据：handler 当前 gated（仅投递/去重/状态），不运行旧本地 md 判据（Phase 1b 已停写，会误报全缺失）。执行判据由「完整性检查重定义」需求承接。
+- download 迁移 worker_job：保留 claimNextCreatedTask，未来评估。
+- 终态作业保留期/清理（cos_cleanup 生产者）：Phase 4。

@@ -125,6 +125,53 @@ describe("worker_job 终态与 fencing", () => {
   });
 });
 
+describe("worker_job 取消与查询", () => {
+  it("cancelWorkerJob：queued 直接置 canceled，且不再被认领", async () => {
+    const job = await db.enqueueJob({ kind: "k" });
+    const canceled = await db.cancelWorkerJob(job.id);
+    expect(canceled!.status).toBe("canceled");
+    expect(canceled!.cancelRequested).toBe(true);
+    expect(await db.claimNextJob("nas", "w1", 60)).toBeUndefined();
+  });
+
+  it("cancelWorkerJob：running 保留状态并置 cancel_requested（协作式）", async () => {
+    await db.enqueueJob({ kind: "k" });
+    const claimed = await db.claimNextJob("nas", "w1", 60);
+    const canceled = await db.cancelWorkerJob(claimed!.id);
+    expect(canceled!.status).toBe("running");
+    expect(canceled!.cancelRequested).toBe(true);
+  });
+
+  it("listWorkerJobs：按 kind/status 过滤并 limit", async () => {
+    await db.enqueueJob({ kind: "analyze" });
+    await db.enqueueJob({ kind: "analyze" });
+    await db.enqueueJob({ kind: "low_res_download" });
+    const analyze = await db.listWorkerJobs({ kind: "analyze" });
+    expect(analyze).toHaveLength(2);
+    expect(analyze.every((j) => j.kind === "analyze")).toBe(true);
+    const queued = await db.listWorkerJobs({ status: "queued", limit: 2 });
+    expect(queued).toHaveLength(2);
+    expect(analyze[0]!.id).toBeGreaterThan(analyze[1]!.id);
+  });
+
+  it("getLatestWorkerJobByKind：取同 kind 最新一条", async () => {
+    await db.enqueueJob({ kind: "integrity_check", dedupKey: "integrity_check" });
+    const first = await db.getLatestWorkerJobByKind("integrity_check");
+    await db.completeJob(
+      (await db.claimNextJob("nas", "w1", 60))!.id,
+      "w1",
+      null,
+    );
+    const second = await db.enqueueJob({
+      kind: "integrity_check",
+      dedupKey: "integrity_check",
+    });
+    const latest = await db.getLatestWorkerJobByKind("integrity_check");
+    expect(latest!.id).toBe(second.id);
+    expect(latest!.id).toBeGreaterThan(first!.id);
+  });
+});
+
 async function internalsCount(): Promise<number> {
   const pool = (db as unknown as {
     pool: { query(sql: string): Promise<{ rows: any[] }> };
