@@ -74,12 +74,25 @@ The backlog is not a replacement for requirements, owner docs, or plans. It only
 - Next: 已闭合；消费了 Phase 2 预留（原 gated）的 `integrity_check` 作业
 - Last Checked: `2026-09-30`
 
+### 已完成：重试截图（screenshot-retry）
+
+- Priority: P1
+- Item: 重试截图（screenshot-retry）—— `rebuild` 端点语义收窄为纯补截图
+- Requirement: `docs/requirements/2026-09-17-screenshot-retry.md`
+- Owner Doc: `docs/design/app-overview.md`、`docs/architecture/2026-07-06-video-analysis-baseline.md`
+- Plan: `docs/plans/2026-09-30-screenshot-retry-plan.md`（done）
+- Status: `done`（2026-09-30：新增 `ScreenshotRetryService` 执行体，仅对缺失截图且有时间戳的段批量补截图（本地高清优先、回退 `AnalysisVideoResolver.resolve` 链、ffmpeg 抽帧直传 COS、仅回写 `screenshot_url`），不调 LLM/不改内容/向量/状态；移除旧全量 `runRebuild`；端点路径不变；无 schema 变更）
+- AI Autonomy: `plan-first`
+- Blocker: `none`
+- Next: 已闭合；消费了 Phase 2 预留（原 gated）的 `screenshot_retry` 作业
+- Last Checked: `2026-09-30`
+
 ### 待实现：云端/NAS 拆分后续阶段（Phase 1b / 2 / 3 / 4）与 auth
 
 | Priority | Item | Requirement | Owner Doc | Plan | Status | AI Autonomy | Blocker | Last Checked |
 |----------|------|-------------|-----------|------|--------|-------------|---------|--------------|
 | P1 | Phase 1b 内联发布 + 本地文件下线 | `docs/requirements/2026-09-17-cloud-inline-publish-local-retire.md` | `docs/design/app-overview.md` | `docs/plans/2026-09-28-cloud-inline-publish-local-retire-plan.md` | `done` | `plan-first` | `none（2026-09-28 完成）` | 2026-09-28 |
-| P1 | Phase 2 持久化作业与跨主机触发（cloud-worker-jobs） | `docs/requirements/2026-09-17-cloud-worker-jobs.md` | `docs/architecture/system-baseline.md` | none | `done` | `plan-first` | `none（2026-09-30 完成：worker_job/worker_heartbeat + 进程内 WorkerService，触发链路改为入队；并发去重由 dedup_key active-unique 强制；高清 download 仍走 claimNextCreatedTask 未迁移。已解锁下游：screenshot-retry 执行体、integrity-check 重定义（2026-09-30 已完成）、Phase 3 拆分）` | 2026-09-30 |
+| P1 | Phase 2 持久化作业与跨主机触发（cloud-worker-jobs） | `docs/requirements/2026-09-17-cloud-worker-jobs.md` | `docs/architecture/system-baseline.md` | none | `done` | `plan-first` | `none（2026-09-30 完成：worker_job/worker_heartbeat + 进程内 WorkerService，触发链路改为入队；并发去重由 dedup_key active-unique 强制；高清 download 仍走 claimNextCreatedTask 未迁移。已解锁下游：screenshot-retry 执行体（2026-09-30 已完成）、integrity-check 重定义（2026-09-30 已完成）、Phase 3 拆分）` | 2026-09-30 |
 | P1 | Phase 3 拆分为 cloud-server / nas-worker | `docs/requirements/2026-09-17-cloud-project-split.md` | `docs/architecture/module-boundaries.md` | none | `needs-plan` | `ask-first`（部署保护区） | `部署需人工批准（reviewer=none）；前置 Phase 2 已于 2026-09-30 完成` | 2026-09-30 |
 | P2 | Phase 4 收敛与清理（含 cos_cleanup 生产者、终态作业保留） | `docs/requirements/2026-09-17-cloud-cleanup.md` | `docs/design/app-overview.md` | none | `blocked` | `ask-first`（数据删除保护区） | `数据删除需人工批准；依赖前序 Phase（Phase 2 已完成，预留 cos_cleanup 作业类型待本阶段接入生产者）` | 2026-09-30 |
 | P1 | 小用户系统与写操作鉴权（auth） | `docs/requirements/2026-09-17-user-auth.md` | `docs/design/app-overview.md` | none | `blocked` | `plan-first`（auth 保护区） | `auth 需人工/子代理评审（reviewer=none）` | 2026-09-17 |

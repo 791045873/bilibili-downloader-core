@@ -197,6 +197,12 @@ vision-proxy/          ‐‐‐→ DashScope Python SDK
 - 视觉模型不再单独配置，多模态调用复用主模型（`modelName`）。
 - 新增端点：`GET/PUT /api/analysis/config`（key 掩码返回、部分更新、空串清除）、`POST /api/analysis/config/test`（连接测试，完整错误返回）。
 
+## 2026-09-30 基线更新
+
+- 新增截图重试执行体 `analysis/screenshot-retry.service.ts`（`ScreenshotRetryService.run(summaryTaskId)`），由 `screenshot_retry` 作业驱动（`AnalysisTriggerService.handleScreenshotRetryJob` 调用）。`POST /api/summary-tasks/:id/rebuild` 语义收窄为**纯补截图**：仅对 `summary_segment.screenshot_url` 为空且 `timestampSeconds` 已设置的段批量补截图（幂等），截图源本地高清视频优先（该资源最近一次已完成下载），缺失时回退共享 `AnalysisVideoResolver.resolve` 链，ffmpeg 按存储时间戳抽帧后直传 COS，仅回写 `summary_segment.screenshot_url`。
+- 该执行体**不调用 LLM**、不重渲染总结正文/段落内容、不重算向量、不改 `ai_summary_task` 状态；缺视频/缺时间戳/COS 未配置/抽帧或上传失败均安全跳过（记日志、不使整个作业失败）。原全量重建路径（`engine.rebuild` + `upsertAiSummaryTask` + `publishInline` 的 `runRebuild`）已移除。
+- 新增数据层方法 `updateSegmentScreenshotUrl(summaryId, seq, url)` 与 `getSummarySegmentsForScreenshotRetry(bvid, cid)`；无 schema 变更。
+
 ## 环境变量
 
 新增（仅视觉代理与日志等基础设施，LLM 账号凭据不走环境变量）：
