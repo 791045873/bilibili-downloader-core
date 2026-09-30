@@ -109,15 +109,18 @@ Exit Criteria:
 
 ### Stage 4 - admin 用户管理接口
 
-Status: planned
+Status: done
 Targets: `AuthController`/新增 users 控制器
 - Item Types: `Add`
 - Prereqs: Stage 2-3
-- [ ] `Add`：admin 专用 `POST /api/users`（创建，指定 username/role/初始密码）、`GET /api/users`（列表）、`POST /api/users/:id/disable`（禁用→吊销其 session）。
-- [ ] `Proof`：`typecheck`、`build`。
+- [x] `Add`：admin 专用 `POST /api/users`（创建，指定 username/role/初始密码）、`GET /api/users`（列表）、`POST /api/users/:id/disable`（禁用→吊销其 session）。
+- [x] `Proof`：`typecheck`、`build`。
+- [x] `Note`（实施记录）：`users.controller.ts`（`api/users`，无 `@Roles` → 默认仅 admin）。校验：用户名 3-32 位 `[A-Za-z0-9._-]`、密码 8-200 位、角色仅 admin/user；重复用户名 409。响应视图恒不含 `password_hash`。
+- [x] `Note`（防锁死，**超出计划的安全加固**）：禁用接口拒绝"禁用自己"与"禁用最后一个可用 admin"（均 403），避免把系统锁死；禁用为幂等（已禁用再调仅吊销会话）。
+
 Exit Criteria:
-- [ ] admin 可创建/列出/禁用用户；禁用即吊销会话；非 admin 403。
-- [ ] `docs/logs/` 记录。
+- [x] admin 可创建/列出/禁用用户；禁用即吊销会话；非 admin 403。
+- [x] `docs/logs/` 记录。
 
 ### Stage 5 - 前端登录与会话态
 

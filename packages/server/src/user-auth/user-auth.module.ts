@@ -3,6 +3,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { AuthService } from "./auth.service.js";
 import { AuthGuard } from "./auth.guard.js";
 import { UserAuthController } from "./user-auth.controller.js";
+import { UsersController } from "./users.controller.js";
 import { UserSeedService } from "./user-seed.service.js";
 
 /**
@@ -11,7 +12,7 @@ import { UserSeedService } from "./user-seed.service.js";
  * 注：既有 `src/auth/auth.controller.ts` 是 B站扫码登录，与本模块关注点不同。
  */
 @Module({
-  controllers: [UserAuthController],
+  controllers: [UserAuthController, UsersController],
   providers: [
     AuthService,
     UserSeedService,
