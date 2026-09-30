@@ -149,6 +149,29 @@ export interface ConversationRecord {
   updatedAt?: string;
   /** 软删除标记：非空表示已删除（数据保留，供后续分析） */
   deletedAt?: string;
+  /** 归属用户（存量会话回填归 admin；可空） */
+  userId?: number;
+}
+
+/** 用户记录（对应 user 表） */
+export interface UserRecord {
+  id?: number;
+  username: string;
+  passwordHash: string;
+  role: string;
+  createdAt?: string;
+  updatedAt?: string;
+  /** 非空表示已禁用（其会话一并失效） */
+  disabledAt?: string;
+}
+
+/** 服务端会话记录（对应 user_session 表；仅存 token 摘要） */
+export interface UserSessionRecord {
+  id?: number;
+  userId: number;
+  tokenHash: string;
+  createdAt?: string;
+  expiresAt: string;
 }
 
 export interface ChatMessageRecord {
@@ -1871,34 +1894,153 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     }));
   }
 
-  // ==================== RAG Chat conversations ====================
+  // ==================== 用户与服务端会话（auth） ====================
 
-  /** 创建会话，返回自增 id */
-  async createConversation(title?: string): Promise<number> {
+  async createUser(record: {
+    username: string;
+    passwordHash: string;
+    role: string;
+  }): Promise<number> {
     const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
-    const created = await this.prismaDb.orm.public.Conversation.create({
-      title: title ?? null,
+    const created = await this.prismaDb.orm.public.User.create({
+      username: record.username,
+      passwordHash: record.passwordHash,
+      role: record.role,
       createdAt: now,
       updatedAt: now,
     });
     return Number(created.id);
   }
 
-  /** 会话列表（按最近更新倒序，排除已软删除） */
-  async listConversations(): Promise<ConversationRecord[]> {
+  async findUserByUsername(username: string): Promise<UserRecord | undefined> {
+    const row = await this.prismaDb.orm.public.User.where({ username }).first();
+    return row ? mapUserRow(row) : undefined;
+  }
+
+  async findUserById(id: number): Promise<UserRecord | undefined> {
+    const row = await this.prismaDb.orm.public.User
+      .where({ id: BigInt(id) })
+      .first();
+    return row ? mapUserRow(row) : undefined;
+  }
+
+  async listUsers(): Promise<UserRecord[]> {
+    const rows = await this.prismaDb.orm.public.User
+      .orderBy((m) => m.id.asc())
+      .all();
+    return rows.map(mapUserRow);
+  }
+
+  /** 首个 admin（按 id 升序）；用于存量会话回填归属 */
+  async findFirstAdminUser(): Promise<UserRecord | undefined> {
+    const row = await this.prismaDb.orm.public.User
+      .where({ role: "admin" })
+      .orderBy((m) => m.id.asc())
+      .first();
+    return row ? mapUserRow(row) : undefined;
+  }
+
+  /** 禁用用户（写 disabled_at）；会话吊销由调用方一并执行 */
+  async disableUser(id: number): Promise<void> {
+    await this.prismaDb.orm.public.User.where({ id: BigInt(id) }).updateAll({
+      disabledAt: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+      updatedAt: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+    });
+  }
+
+  async createUserSession(record: {
+    userId: number;
+    tokenHash: string;
+    expiresAt: string;
+  }): Promise<number> {
+    const created = await this.prismaDb.orm.public.UserSession.create({
+      userId: BigInt(record.userId),
+      tokenHash: record.tokenHash,
+      createdAt: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+      expiresAt:
+        toInstant(record.expiresAt) ??
+        Temporal.Instant.fromEpochMilliseconds(Date.now()),
+    });
+    return Number(created.id);
+  }
+
+  async findUserSessionByTokenHash(
+    tokenHash: string,
+  ): Promise<UserSessionRecord | undefined> {
+    const row = await this.prismaDb.orm.public.UserSession
+      .where({ tokenHash })
+      .first();
+    return row ? mapUserSessionRow(row) : undefined;
+  }
+
+  async deleteUserSessionByTokenHash(tokenHash: string): Promise<void> {
+    await this.prismaDb.orm.public.UserSession.where({ tokenHash }).deleteAll();
+  }
+
+  /** 吊销某用户全部会话（登出全部 / 禁用用户） */
+  async deleteUserSessionsByUserId(userId: number): Promise<number> {
+    const removed = await this.prismaDb.orm.public.UserSession
+      .where({ userId: BigInt(userId) })
+      .deleteAll();
+    return Array.isArray(removed) ? removed.length : 0;
+  }
+
+  /** 清理过期会话，返回清理条数 */
+  async purgeExpiredUserSessions(): Promise<number> {
+    const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+    const removed = await this.prismaDb.orm.public.UserSession
+      .where((m) => m.expiresAt.lt(now))
+      .deleteAll();
+    return Array.isArray(removed) ? removed.length : 0;
+  }
+
+  /** 存量会话幂等回填归属：仅填 user_id IS NULL 的行，返回回填条数 */
+  async backfillConversationUserId(userId: number): Promise<number> {
+    const updated = await this.prismaDb.orm.public.Conversation
+      .where((m) => m.userId.isNull())
+      .updateAll({ userId: BigInt(userId) });
+    return Array.isArray(updated) ? updated.length : 0;
+  }
+
+  // ==================== RAG Chat conversations ====================
+
+  /** 创建会话，返回自增 id；`userId` 提供时写入归属 */
+  async createConversation(title?: string, userId?: number): Promise<number> {
+    const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+    const created = await this.prismaDb.orm.public.Conversation.create({
+      title: title ?? null,
+      createdAt: now,
+      updatedAt: now,
+      ...(userId !== undefined ? { userId: BigInt(userId) } : {}),
+    });
+    return Number(created.id);
+  }
+
+  /** 会话列表（按最近更新倒序，排除已软删除）；`userId` 提供时仅返回该用户会话 */
+  async listConversations(userId?: number): Promise<ConversationRecord[]> {
     const rows = await this.prismaDb.orm.public.Conversation
-      .where((m) => m.deletedAt.isNull())
+      .where((m) =>
+        userId === undefined
+          ? m.deletedAt.isNull()
+          : and(m.deletedAt.isNull(), m.userId.eq(BigInt(userId))),
+      )
       .orderBy((m) => m.updatedAt.desc())
       .all();
     return rows.map(mapConversationRow);
   }
 
-  /** 读取会话；已软删除视为不存在 */
-  async getConversation(id: number): Promise<ConversationRecord | undefined> {
+  /** 读取会话；已软删除视为不存在；`userId` 提供时非本人会话视为不存在（抗 id 枚举） */
+  async getConversation(
+    id: number,
+    userId?: number,
+  ): Promise<ConversationRecord | undefined> {
     const row = await this.prismaDb.orm.public.Conversation
       .where({ id: BigInt(id), deletedAt: null })
       .first();
-    return row ? mapConversationRow(row) : undefined;
+    if (!row) return undefined;
+    const record = mapConversationRow(row);
+    if (userId !== undefined && record.userId !== userId) return undefined;
+    return record;
   }
 
   /** 更新会话标题（提供时）并 touch updated_at */
@@ -1957,6 +2099,7 @@ function mapConversationRow(row: {
   createdAt: unknown;
   updatedAt: unknown;
   deletedAt: unknown;
+  userId?: bigint | number | null;
 }): ConversationRecord {
   return {
     id: bigintToNumber(row.id),
@@ -1964,6 +2107,43 @@ function mapConversationRow(row: {
     createdAt: toIsoString(row.createdAt) ?? undefined,
     updatedAt: toIsoString(row.updatedAt) ?? undefined,
     deletedAt: toIsoString(row.deletedAt) ?? undefined,
+    userId: bigintToNumber(row.userId),
+  };
+}
+
+function mapUserRow(row: {
+  id: bigint | number;
+  username: string;
+  passwordHash: string;
+  role: string;
+  createdAt: unknown;
+  updatedAt: unknown;
+  disabledAt: unknown;
+}): UserRecord {
+  return {
+    id: bigintToNumber(row.id),
+    username: row.username,
+    passwordHash: row.passwordHash,
+    role: row.role,
+    createdAt: toIsoString(row.createdAt) ?? undefined,
+    updatedAt: toIsoString(row.updatedAt) ?? undefined,
+    disabledAt: toIsoString(row.disabledAt) ?? undefined,
+  };
+}
+
+function mapUserSessionRow(row: {
+  id: bigint | number;
+  userId: bigint | number;
+  tokenHash: string;
+  createdAt: unknown;
+  expiresAt: unknown;
+}): UserSessionRecord {
+  return {
+    id: bigintToNumber(row.id),
+    userId: Number(row.userId),
+    tokenHash: row.tokenHash,
+    createdAt: toIsoString(row.createdAt) ?? undefined,
+    expiresAt: toIsoString(row.expiresAt) ?? "",
   };
 }
 
@@ -1986,9 +2166,16 @@ const EXPECTED_TABLES = [
   "summary_segment",
   "conversation",
   "message",
+  "worker_job",
+  "worker_heartbeat",
+  "user",
+  "user_session",
 ] as const;
 
 const ONE_OFF_MIGRATION_COLUMNS = ["knowledge_status", "knowledge_error"] as const;
+
+/** conversation 一次性迁移新增列（auth 归属） */
+const CONVERSATION_MIGRATION_COLUMNS = ["user_id"] as const;
 
 /** 启动哨兵：表 + 一次性迁移新增列存在性快检（权威校验由 prisma db verify 完成） */
 export async function verifySchemaTables(query: {
@@ -2016,6 +2203,19 @@ export async function verifySchemaTables(query: {
     throw new Error(
       `Database schema is stale: ai_summary_task is missing columns: ${missingColumns.join(", ")}. ` +
         `Run: pnpm --filter @bilibili-downloader/server exec prisma db update --db <DATABASE_URL> then prisma db sign --db <DATABASE_URL>.`,
+    );
+  }
+  const convColumns = await query(
+    `SELECT column_name AS name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'conversation'`,
+  );
+  const convColumnNames = new Set(convColumns.rows.map((r) => r.name));
+  const missingConvColumns = CONVERSATION_MIGRATION_COLUMNS.filter(
+    (c) => !convColumnNames.has(c),
+  );
+  if (missingConvColumns.length > 0) {
+    throw new Error(
+      `Database schema is stale: conversation is missing columns: ${missingConvColumns.join(", ")}. ` +
+        `Run: pnpm --filter @bilibili-downloader/server exec prisma db migrate --db <DATABASE_URL>.`,
     );
   }
 }

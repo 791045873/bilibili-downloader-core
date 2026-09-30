@@ -41,18 +41,21 @@
 
 ### Stage 1 - 数据模型 + admin 播种 + 存量回填
 
-Status: planned
+Status: done
 Targets: `contract.prisma`（+emit）、`database.service.ts`、启动播种钩子
 - Item Types: `Add`
 - Prereqs: 无
-- [ ] `Add`：contract 新增 `User`（id/username 唯一/passwordHash/role/createdAt/updatedAt/disabledAt?）、`UserSession`（id/tokenHash 唯一/userId/createdAt/expiresAt），`Conversation` 加 `userId?`（additive）。`prisma:emit` 产物。
-- [ ] `Add`：DB 仓储——用户 CRUD（create/findByUsername/list/disable）、session（create/findByTokenHash/deleteByTokenHash/deleteByUserId/purgeExpired）、`conversation.user_id` 读写与按 user 过滤。
-- [ ] `Add`：启动幂等播种 admin（读 `ADMIN_INITIAL_PASSWORD`；存在 admin 则不动；缺失 env 则告警不建），比照 `seedBuiltinPromptIfEmpty`（`database.service.ts:212-216`）计数守卫插入。存量 `conversation.user_id` 为空的幂等回填归首个 admin id；**无 admin（env 缺失）时回填为 no-op，保持 user_id NULL**。
-- [ ] `Fix`（GAP1a 哨兵）：`verifySchemaTables` 的 `EXPECTED_TABLES`（`database.service.ts:1982-1989`）增 `user`/`user_session`；`ONE_OFF_MIGRATION_COLUMNS`（`:1991,2010-2020`）增 `conversation.user_id` 存在性检查——存量库未迁移时快速失败而非首次查询才炸。
-- [ ] `Proof`：`typecheck`、`build`；fresh `db init` 建表；数据层测试（见 Stage 6）随后。
+- [x] `Add`：contract 新增 `User`（id/username 唯一/passwordHash/role/createdAt/updatedAt/disabledAt?）、`UserSession`（id/tokenHash 唯一/userId/createdAt/expiresAt），`Conversation` 加 `userId?`（additive）。`prisma:emit` 产物。
+- [x] `Add`：DB 仓储——用户 CRUD（create/findByUsername/list/disable）、session（create/findByTokenHash/deleteByTokenHash/deleteByUserId/purgeExpired）、`conversation.user_id` 读写与按 user 过滤。
+- [x] `Add`：启动幂等播种 admin（读 `ADMIN_INITIAL_PASSWORD`；存在 admin 则不动；缺失 env 则告警不建），比照 `seedBuiltinPromptIfEmpty`（`database.service.ts:212-216`）计数守卫插入。存量 `conversation.user_id` 为空的幂等回填归首个 admin id；**无 admin（env 缺失）时回填为 no-op，保持 user_id NULL**。
+- [x] `Fix`（GAP1a 哨兵）：`verifySchemaTables` 的 `EXPECTED_TABLES`（`database.service.ts:1982-1989`）增 `user`/`user_session`；`ONE_OFF_MIGRATION_COLUMNS`（`:1991,2010-2020`）增 `conversation.user_id` 存在性检查——存量库未迁移时快速失败而非首次查询才炸。
+- [x] `Proof`：`typecheck`、`build`；fresh `db init` 建表；数据层测试（见 Stage 6）随后。
+- [x] `Note`（实施记录）：迁移经 `migration plan --from 20260917T0754_qa_chat_soft_delete` 生成 `migrations/app/20260930T0753_worker_jobs_and_user_auth`（14 additive）；指定 from 以避免与既有 `deleted_at` 迁移重叠（本机 db ref 未随软删除推进），并一并补齐 Phase 2 未规划的 worker 两表。**`packages/server/migrations/` 被 .gitignore 排除，故为本机产物、不入库**；schema 真源为 contract + emit。未对目标库执行 `db migrate`（线上 additive 随部署应用）。
+- [x] `Note`（目录命名）：新代码落 `src/user-auth/`（而非 `src/auth/`），因 `src/auth/` 已被 B站扫码登录占用；HTTP 路径仍按计划为 `api/auth/*`。
+
 Exit Criteria:
-- [ ] 三处 schema 经 contract/emit 落地；admin 播种与存量回填幂等；无默认密码。
-- [ ] `docs/logs/` 记录。
+- [x] 三处 schema 经 contract/emit 落地；admin 播种与存量回填幂等；无默认密码。
+- [x] `docs/logs/` 记录。
 
 ### Stage 2 - auth 核心（登录/登出/me + session + 锁定）
 
