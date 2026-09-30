@@ -167,4 +167,41 @@ describe("AuthService 会话解析与吊销", () => {
     expect(opts.path).toBe("/");
     expect(opts.maxAge).toBeGreaterThan(0);
   });
+
+  it("Secure 由 SESSION_COOKIE_SECURE 显式控制（默认关）", () => {
+    expect(auth.cookieOptions().secure).toBe(false);
+    process.env.SESSION_COOKIE_SECURE = "true";
+    try {
+      expect(new AuthService(db).cookieOptions().secure).toBe(true);
+    } finally {
+      delete process.env.SESSION_COOKIE_SECURE;
+    }
+    expect(new AuthService(db).cookieOptions().secure).toBe(false);
+  });
+
+  it("超长口令直接按 invalid 处理（公开端点限制 scrypt 放大）", async () => {
+    const long = "p".repeat(201);
+    await createUser("long", long);
+    expect(await auth.login("long", long, "ip-long")).toEqual({
+      ok: false,
+      reason: "invalid",
+    });
+    // 截到上限内的正确口令仍可登录
+    const ok = "q".repeat(200);
+    await createUser("ok200", ok);
+    expect((await auth.login("ok200", ok, "ip-ok200")).ok).toBe(true);
+  });
+
+  it("失败计数表超上限时清扫，且不影响活跃 IP 的封禁判定", () => {
+    const now = Date.now();
+    for (let i = 0; i < 6000; i++) {
+      auth.recordFailure(`ip-flood-${i}`, now);
+    }
+    for (let i = 0; i < 3; i++) {
+      auth.recordFailure("ip-victim", now);
+    }
+    expect(auth.blockedSeconds("ip-victim", now)).toBeGreaterThan(0);
+  });
 });
+
+

@@ -35,7 +35,7 @@ packages/
 
 ## State Management Approach
 
-- 前端：Zustand（设置/登录/下载队列，持久化到 localStorage）+ TanStack Query（列表/详情等服务端数据）
+- 前端：Zustand（设置/B站登录态/下载队列，持久化到 localStorage）+ TanStack Query（列表/详情等服务端数据）；应用用户会话态（`stores/session.ts`）不持久化，启动经 `GET /api/auth/me` 重建，任一 API 收到 401 即广播失效事件置为未登录（`api/index.ts` 的两个请求入口共用同一 401 处理）
 - 后端：NestJS service 层管理业务状态，PostgreSQL 持久化
 
 ## Data Access Approach
@@ -53,6 +53,18 @@ packages/
 - 作业类型：`analyze`、`low_res_download`、`screenshot_retry`、`integrity_check`、`retrigger`（当前经 `analyze` 路由），另有预留 `cos_cleanup`（生产者见 Phase 4）。高清 `download` 未迁移，仍走 `download-scheduler.ts` 的 `claimNextCreatedTask`。
 - `integrity_check` 处理体（在 `AnalysisTriggerService`）自 2026-09-30「完整性检查重定义」起已解除 Phase 2 的 gated 状态，经 `SummaryIntegrityService.run()` 执行以云端为真源的三类判据（内容：云 DB `summary`+`summary_segment`；截图：`summary_segment.screenshot_url` 非空；视频：NAS 本地视频文件存在性），把 `integrity_status`（新增 `partial`）与结构化 JSON 的 `integrity_detail`（`{contentMissing,screenshotMissing,videoMissing}`）写回 `ai_summary_task`，复用既有 `integrity_status`/`integrity_detail`/`integrity_checked_at` 三列、无 schema 变更。
 - 配置经环境变量：`WORKER_POLL_INTERVAL_MS`、`WORKER_LEASE_TTL_SEC`、`WORKER_HEARTBEAT_MS`、`WORKER_REAP_INTERVAL_MS`、`WORKER_MAX_CONCURRENT`、`WORKER_QUEUE`、`WORKER_ID`、`WORKER_ENABLED`。
+
+## Auth (用户会话与权限门禁)
+
+- 模块位置：`packages/server/src/user-auth/`（与 `src/auth/` 的 B站扫码登录是不同关注点）。角色划分与权限矩阵见 `docs/design/app-overview.md`。
+- 全局守卫：`AuthGuard` 经 `APP_GUARD` 注册，**fail-closed**——未标注的路由默认仅 `admin`，新增端点漏配即为最严；`@Public()` 只放行 login/logout/me，`@Roles(admin, user)` 只用于 chat/QA 控制器全部方法与 `GET /api/summary-tasks/by-resource/:bvid/:cid/markdown`。未登录 401、角色不匹配 403。守卫作用于 Nest 路由，前端静态资源经 `useStaticAssets` 直出、不经守卫。
+- 数据形态（contract 为真源，见 `src/prisma/contract.prisma`）：`user`（`username` 唯一、`password_hash`、`role`、`disabled_at?`）、`user_session`（`token_hash` 唯一、`user_id`、`expires_at`）、`conversation.user_id?`（additive，`onDelete: SetNull`）。
+- 可吊销会话：`user_session` 行即会话真源——登出删除当前行、禁用用户删除其全部行、登录时清理过期行；解析会话时若用户不存在或已禁用一律按未登录处理，无需等待过期。
+- 凭据存储：口令用 Node 内置 `crypto.scrypt`（随机 salt，存 `scrypt$salt$hash`，校验用 `timingSafeEqual`，格式非法返回 false）；会话 token 为随机 32 字节 base64url，仅入库 sha256 摘要，原始 token 只经 cookie 传输；口令与 token 不入日志。
+- Cookie 隔离：浏览器会话 cookie 为 `bdl_session`（HttpOnly + SameSite=Lax + `path=/`，Secure 由 `SESSION_COOKIE_SECURE` **显式开关**控制——本仓不以 `NODE_ENV` 作生产判据，HTTPS 暴露时才置 true，纯 HTTP 下置 true 会导致浏览器不保存 cookie），`Cookie` 头手动解析（未引入 cookie-parser）；B站扫码登录的凭据仍是服务端文件 `.cookies.json`（`COOKIE_FILE_PATH`），两条通道互不影响。
+- 启动引导：幂等播种内置 `admin`（`ADMIN_INITIAL_PASSWORD` 缺失仅告警、**不建默认凭据**；已存在则不改口令与角色），随后把 `conversation.user_id` 为空的存量行回填归首个 admin，无 admin 时 no-op。
+- 登录防护：同 IP 失败计数为**进程内内存状态**（不跨实例、进程重启即清零，条目数超上限时惰性清扫），达阈值临时封禁并返回 429 + `Retry-After`；登录口令长度超上限直接按凭据无效处理。IP 取 `req.ip`（Express `trust proxy` 未开启，故 `X-Forwarded-For` 无法伪造）——**代价是反向代理后所有客户端塌缩为同一 IP，届时封禁粒度变为全局**，公网暴露（Phase 3）前需重新裁决。
+- 配置经环境变量：`ADMIN_INITIAL_PASSWORD`、`SESSION_COOKIE_SECURE`（默认关）、`SESSION_TTL_HOURS`（默认 168）、`LOGIN_MAX_FAILURES`（5）、`LOGIN_FAILURE_WINDOW_MINUTES`（15）、`LOGIN_BLOCK_MINUTES`（15）；容器部署经 `packages/docker/docker-compose.yml` 透传，首次部署未设 `ADMIN_INITIAL_PASSWORD` 会导致无账号可登录（全部 API 401）。
 
 ## Testing Stack
 

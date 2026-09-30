@@ -35,14 +35,23 @@ async function request<T>(
     ...options,
   });
   if (!res.ok) {
-    if (res.status === 401 && !meta?.silentUnauthorized) {
-      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
-    }
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message || err.error || `HTTP ${res.status}`);
+    await throwHttpError(res, meta);
   }
   return res.json();
 }
+
+/** 统一错误抛出：401 先广播会话失效，再抛服务端文案 */
+async function throwHttpError(
+  res: Response,
+  meta?: { silentUnauthorized?: boolean },
+): Promise<never> {
+  if (res.status === 401 && !meta?.silentUnauthorized) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
+  const err = await res.json().catch(() => ({ message: res.statusText }));
+  throw new Error(err.message || err.error || `HTTP ${res.status}`);
+}
+
 
 // ==================== 视频信息 ====================
 
@@ -410,14 +419,18 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
 
 // ==================== RAG 穿搭问答 ====================
 
+/** 不预设 Content-Type 的请求（FormData 需浏览器自行带 boundary）；401 处理与 request 一致 */
 async function requestRaw<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, options);
+  const res = await fetch(`${BASE}${url}`, {
+    credentials: "include",
+    ...options,
+  });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message || err.error || `HTTP ${res.status}`);
+    await throwHttpError(res);
   }
   return res.json();
 }
+
 
 export async function createChatConversation(): Promise<{ conversationId: number }> {
   return requestRaw("/chat/conversations", { method: "POST", body: JSON.stringify({}) });

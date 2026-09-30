@@ -21,6 +21,9 @@ Update it in place. Do not create dated copies.
 - Active plan: `docs/plans/2026-09-15-qa-chat-soft-delete-plan.md`（保护区数据删除；用户已确认实施；contract/迁移/数据层/测试/typecheck/build 已完成；保护区 closure 评审待人工）
 - Active backlog item: QA 会话软删除（其他未闭合进行中：QA 来源视频 AI 总结整页链接、QA 移动端适配）
 - 已落地（未切 active）：云端/NAS Phase 1a 读取侧 DB 渲染——代码实现 + typecheck/build + 数据层/纯函数/controller 单测全绿（2026-09-28，测试库 127 项通过）；按 umbrella 遗留项 11，active requirement 仍保持 qa-chat-soft-delete 未切换
+- 已落地（未切 active，2026-09-30）：Phase 2 异步任务队列 `worker_job`、完整性检查重定义、重试截图、**小用户系统与写操作鉴权（auth）**——四者均已过独立子代理 closure 评审并在各自 plan 内回填闭合证据（auth 评审结论 PASS-WITH-FIXES，B1 部署变量/Secure 开关与 B2 文档口径等修复已并入）；server 28 files / 216 tests 全绿。云端拆分 Phase 3 计划已过 plan audit，其 Stage D（部署 / 公网暴露）仍需人工批准后方可实施；首次部署必须设置 `ADMIN_INITIAL_PASSWORD`，否则无人可登录
+
+
 - AI autonomy: `plan-first`（新工作需先出需求与计划并过审计）
 - Current blocker: `none`
 - Pending user confirmation: 部署新镜像后对 RAG 问答 LLM 全链路做运行级确认（T2/T3/T5/T6 开关/T7，见 `docs/testing/2026/09-09-rag-chat-testing.md` 裁决段）

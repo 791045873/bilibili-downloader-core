@@ -1,6 +1,6 @@
 # 2026-09-30 小用户系统与写操作鉴权（auth）
 
-> Plan Status: planned
+> Plan Status: done
 > Last Reviewed: 2026-09-30
 > Source: `docs/requirements/2026-09-17-user-auth.md`
 > Related: 上游 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Q11）；与 Phase 3 互为门控（auth 先行，须在公网暴露前完成）
@@ -140,15 +140,19 @@ Exit Criteria:
 
 ### Stage 6 - 测试、文档与闭合
 
-Status: planned
+Status: done
 Targets: `packages/server/tests/*`、owner docs、`docs/logs/`
 - Item Types: `Add | Fix | Proof`
 - Prereqs: Stage 1-5
-- [ ] `Add`：数据层/纯函数测试——scrypt hash/verify、session 创建/吊销/过期、锁定计数、conversation 按 user 过滤与归属、admin 播种幂等、存量回填。
-- [ ] `Fix`：owner docs（app-overview 用户角色/权限矩阵/接口、system-baseline auth 形态）+ backlog 标 done。
-- [ ] `Proof`：server `typecheck`/`build`/`test`、frontend `typecheck`/`build`；**独立子代理 closure 评审（不得 cold-replay 代替）**。
+- [x] `Add`：数据层/纯函数测试——scrypt hash/verify、session 创建/吊销/过期、锁定计数、conversation 按 user 过滤与归属、admin 播种幂等、存量回填。
+- [x] `Fix`：owner docs（app-overview 用户角色/权限矩阵/接口、system-baseline auth 形态）+ backlog 标 done（并补 codebase-map、feature-inventory、project-context）。
+- [x] `Proof`：server `typecheck`/`build`/`test`、frontend `typecheck`/`build`；**独立子代理 closure 评审（不得 cold-replay 代替）**。
+- [x] `Fix`（closure 评审 B1，部署接线）：`docker-compose.yml` 透传 `ADMIN_INITIAL_PASSWORD` / `SESSION_COOKIE_SECURE` / `SESSION_TTL_HOURS` / `LOGIN_*`，`.env.example` 写明「首次部署必填 `ADMIN_INITIAL_PASSWORD`，否则无人可登录」；cookie 的 Secure 从 `NODE_ENV === "production"`（本仓从不设置该变量，且早有"不以 NODE_ENV 作生产判据"的裁决）改为**显式开关** `SESSION_COOKIE_SECURE`。
+- [x] `Fix`（closure 评审 B2，文档口径）：修正 `project-context.md` 中先于评审写下的"已过 closure 评审"表述，改为如实记录评审结论与遗留项。
+- [x] `Fix`（closure 评审 S1/S2/S5/S6）：`requestRaw` 与 `request` 共用 401 处理并补 `credentials: "include"`（此前普通 user 的建会话/传照片/删会话三条路径不会跳登录）；登录失败计数表超上限惰性清扫；解析到过期会话时顺带清理；登录口令超长直接按凭据无效（限制公开端点的 scrypt 放大）。
 Exit Criteria:
-- [ ] AC 逐条被测试或人工核对；testing 每条方向确认或裁决；owner docs 一致；closure 独立评审通过。
+- [x] AC 逐条被测试或人工核对；testing 每条方向确认或裁决；owner docs 一致；closure 独立评审通过。
+
 
 ## Plan Audit
 
@@ -158,16 +162,17 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] in-scope behavior complete（Stage 1-5）
-- [ ] relevant docs aligned（app-overview / system-baseline / backlog / log）
-- [ ] verification has run（server typecheck/build/test、frontend typecheck/build）
-- [ ] `docs/testing/` 存在且每条方向确认或裁决
-- [ ] no in-scope item downgraded
-- [ ] plan audit passed（**独立子代理评审**）before implementation
-- [ ] micro-plan exception not applicable（auth 保护区 + 数据模型 + 跨端）
-- [ ] text consistency verified
-- [ ] closure audit independent（**子代理评审，不得 cold-replay 代替**）
-- [ ] 安全项核对：无默认密码、token 仅存 hash、HttpOnly cookie 隔离、无明文日志、登录锁定生效
+- [x] in-scope behavior complete（Stage 1-5）
+- [x] relevant docs aligned（app-overview / system-baseline / backlog / log；另补 codebase-map / feature-inventory / project-context）
+- [x] verification has run（server typecheck/build/test、frontend typecheck/build）
+- [x] `docs/testing/` 存在且每条方向确认或裁决
+- [x] no in-scope item downgraded
+- [x] plan audit passed（**独立子代理评审**）before implementation
+- [x] micro-plan exception not applicable（auth 保护区 + 数据模型 + 跨端）
+- [x] text consistency verified
+- [x] closure audit independent（**子代理评审，不得 cold-replay 代替**）
+- [x] 安全项核对：无默认密码、token 仅存 hash、HttpOnly cookie 隔离、无明文日志、登录锁定生效
+
 
 ## Deferred But Adjudicated
 
@@ -176,10 +181,26 @@ Exit Criteria:
 - Why Not Blocking: 属 Phase 3 部署（保护区），本需求实现应用层 auth；DB 角色随部署阶段人工批准落地。
 - Successor Required: `yes`（Phase 3 Stage D）
 
+### 反向代理后登录封禁粒度塌缩为全局
+- Classification: `deploy-stage risk`（closure 评审 S3）
+- Why Not Blocking: 当前不经反代、直连 3000 端口，`req.ip` 即真实客户端；Express `trust proxy` 未开启使 `X-Forwarded-For` 无法伪造，是本阶段的正确取舍。
+- Why It Must Be Revisited: 公网暴露必然走反代，届时所有客户端共享同一 `req.ip`，任意人连续失败即封禁全体登录（零成本 DoS）。需在 Phase 3 裁决：配置 `trust proxy` + 取可信跳，或改为「用户名+IP」组合计数并对全局封禁设上限。
+- Successor Required: `yes`（Phase 3 Stage D）
+
+### 迁移产物不入库，存量库迁移未获证明
+- Classification: `deploy-stage item`（closure 评审 S4）
+- Why Not Blocking: schema 真源是 contract + emit；本需求的 14 项改动全部 additive，fresh `db init` 已验证。
+- Why It Must Be Revisited: `packages/server/migrations/` 被 .gitignore 排除，仓库内无可复现迁移脚本；而新增哨兵会让未迁移的存量库**启动直接失败**。Phase 3 部署清单须写明「先对存量库执行 `db migrate` 再滚镜像」，并重新评估 migrations 目录是否入库。
+- Successor Required: `yes`（Phase 3 Stage D）
+
 ## Closure
 
-Status Note: 待实施后回填。
+Status Note: Stage 1-6 全部完成。数据模型 additive 落地 + admin 幂等播种与存量回填；登录/登出/me + 可吊销会话 + IP 锁定；全局 `APP_GUARD` fail-closed（默认仅 admin，仅 chat/QA 与 `by-resource` markdown 对 user 放开）；admin 用户管理接口与页面；前端 `/sign-in` + 会话态 + 角色可见性 + 路径级门禁 + 401 跳登录。验证：全仓 `typecheck`/`build` 绿，server **28 files / 216 tests** 全绿，frontend `typecheck`/`build` 绿。commit：`e317ae0`→`5646b5c` + 本次闭合提交。遗留项见上方 Deferred（均指向 Phase 3 Stage D），运行级人工确认清单见 testing 文档。
 
 Closure Audit Evidence:
-- Reviewer / Agent: 待回填
-- Evidence: 待回填
+- Reviewer / Agent: 独立子代理评审（General，fresh-eyes；auth 保护区，**非 cold-replay**）
+- Evidence: 2026-09-30，Verdict=**PASS-WITH-FIXES**。评审自行枚举全仓 12 个 `@Controller` / 61 个路由方法，确认仅 3 处 `@Public()`（login/logout/me）与 2 处 `@Roles(admin,user)`（chat 类级、`by-resource/:bvid/:cid/markdown` 方法级），其余 51 路由按 fail-closed 默认即 admin-only，无未覆盖或过度放开端点；确认无 SSE/流式端点、`main.ts` 无全局前缀/CORS/额外中间件、静态资源直出是必需且仅含前端产物；确认全局请求日志为白名单制（`password`/`token` 不在 `SAFE_LOG_KEYS`），口令与 token 不落日志/返回体；确认 QA 六条路径全部先过归属校验、`user_id` 为 NULL 的存量行亦拒绝（fail-closed）；确认 `trust proxy` 未开启使 `X-Forwarded-For` 无法伪造。评审并实跑验证命令复核测试与构建结果。
+  - Blockers 已修：**B1** 部署路径未接线（compose/.env.example 无任何 auth 变量 → 新镜像上线后无账号可登录；`secure` 依赖仓内从不设置的 `NODE_ENV` → Secure 恒 false）；**B2** `project-context.md` 先于评审写下"已过 closure 评审"（违反 ai-autonomy-policy「不得以 AI 自撰文档清除门禁」）。
+  - Should-fix 已修：**S1** `requestRaw` 绕过 401 广播与 `credentials`；**S2** 失败计数表无界增长；**S5** 过期会话清理只挂在登录路径；**S6** 登录口令长度无上限。
+  - Should-fix 转 Deferred（Phase 3 Stage D）：**S3** 反代后封禁粒度塌缩；**S4** 迁移产物不入库。
+

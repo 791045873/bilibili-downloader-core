@@ -23,6 +23,8 @@ Track the stable feature map for the application.
 | 知识向量化与向量检索 API | done | `docs/design/app-overview.md` | `docs/requirements/2026-09-01-knowledge-vector-search.md` | pgvector top-k（`GET /api/knowledge/search`），chunk=summary_segment |
 | RAG 穿搭问答（服务 + 前端） | done | `docs/design/app-overview.md` | `docs/requirements/2026-09-09-rag-chat-service.md` | 双场景、多轮、三段式引用、照片压缩存 COS 专属目录、严格兜底 |
 | AI 总结查看（Markdown DB 渲染） | done | `docs/design/app-overview.md` | `docs/requirements/2026-09-17-cloud-read-path-db-render.md` | Phase 1a：两 markdown 端点从云 DB 渲染（summary/segment，回退 raw_response），图片用 COS URL，读侧不触盘 |
+| 异步任务队列（worker_job） | done | `docs/architecture/system-baseline.md` | `docs/requirements/2026-09-17-cloud-worker-jobs.md` | Phase 2：DB 队列 + 租约/心跳/reaper + dedup_key 活跃唯一，取代进程内队列与互斥 |
+| 小用户系统与写操作鉴权 | done | `docs/design/app-overview.md` | `docs/requirements/2026-09-17-user-auth.md` | 两级角色（admin/user）、可吊销会话 + HttpOnly cookie、全局 fail-closed 守卫、QA 会话按用户隔离、admin 用户管理页 |
 
 ## Rule
 

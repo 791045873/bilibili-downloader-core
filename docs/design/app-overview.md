@@ -8,20 +8,46 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 
 | Surface | Description | Runtime |
 | --- | --- | --- |
-| Web Frontend | 视频链接输入、Section 选择器、视频解析、下载列表查看、AI 总结任务列表、设置管理 | React 19 SPA（浏览器） |
+| Web Frontend | 登录、视频链接输入、Section 选择器、视频解析、下载列表查看、AI 总结任务列表、穿搭问答、设置管理、用户管理（admin） | React 19 SPA（浏览器） |
 | Docker | 容器化部署，docker compose 双容器：`server`（Node + 前端静态 + FFmpeg）与 `vision-proxy`（Python 视觉薄代理）各自独立容器并 `restart: unless-stopped`，任一崩溃由 Docker 自动单独重启；两个镜像由独立 Dockerfile（`Dockerfile.server` / `Dockerfile.vision-proxy`）分别构建、相互独立；外部仅暴露 `PORT=3000`，代理经 compose 网络服务名 `vision-proxy:8765` 供 server 调用（URL 经 `QWEN_VISION_PROXY_URL` 环境变量可完全自定义）、监听 `0.0.0.0` 但不发布宿主机端口；两容器共享同一宿主机 volume（`/download`），`OUTPUT_DIR=/download`、`LOG_DIR=/download/logs`，日志按天轮转保留最近 7 天 | Docker 容器 |
 
 ## Primary Navigation Model
 
 - Web 前端：单页应用（SPA），使用 react-router 7 管理页面路由
-- 顶栏导航响应式：桌面端（≥768px）为横向 logo + 导航项 + 登录入口；窄屏（<768px）折叠为汉堡按钮 + 右侧抽屉，抽屉内含全部导航项与登录入口，选中后关闭
+- 未登录访问任意页面统一跳转登录页 `/sign-in`；顶栏导航项按角色过滤，非 admin 另有路径级门禁（仅 `/qa` 与 `/summary/:bvid/:cid`，其余重定向 `/qa`）
+- 顶栏导航响应式：桌面端（≥768px）为横向 logo + 导航项 + 当前用户/退出（admin 另有 B站账号入口）；窄屏（<768px）折叠为汉堡按钮 + 右侧抽屉，抽屉内含全部可见导航项与账号区，选中后关闭
 - 壳层以 CSS 变量 `--app-header-h`（顶栏实测高度，含顶部安全区）与 `--vvh`（动态可视视口高度）向页面暴露移动端布局所需的高度信息；需要底部锚定的页面（当前为穿搭问答）自行消费，其余页面保持文档级滚动
 
 ## Main User Roles
 
-- 无角色区分（当前为单用户工具，无登录/权限系统）
+两级角色，账号由 admin 创建（无自助注册）；内置 `admin` 在服务端启动时按 `ADMIN_INITIAL_PASSWORD` 幂等播种，缺失该配置时不创建任何默认凭据。
+
+- `admin` — 全部功能与写/管理操作（下载、解析、AI 总结与提示词、设置、B站扫码登录、后台作业、用户管理）
+- `user` — 仅穿搭问答（会话按本人隔离）与来源视频 AI 总结整页
+
+### 权限矩阵
+
+| 能力面 | admin | user |
+| --- | --- | --- |
+| 登录 / 登出 / 当前用户（`/api/auth/login`、`/logout`、`/me`） | 公开（无需登录） | 公开（无需登录） |
+| 穿搭问答会话与消息（`/api/chat/*`，页面 `/qa`） | 仅本人会话 | 仅本人会话 |
+| 来源视频 AI 总结整页（`GET /api/summary-tasks/by-resource/:bvid/:cid/markdown`，页面 `/summary/:bvid/:cid`） | 可用 | 可用 |
+| 下载与解析、AI 总结任务与提示词、后台作业、设置、按 id 读总结/原始返回、B站扫码登录 | 可用 | 不可用 |
+| 用户管理（`/api/users`、`/api/users/:id/disable`，页面 `/users`） | 可用 | 不可用 |
+
+- 未在上表显式放开的接口一律仅 admin 可用（服务端默认拒绝，技术形态见 `docs/architecture/system-baseline.md`）。
+- 未登录返回 401、角色不足返回 403；他人或不存在的问答会话统一返回 404（抗 id 枚举）。
+- 既有 `GET /api/auth/qrcode`、`/qrcode/status`、`/user` 属 **B站扫码登录**，与本用户系统只共享路径前缀，现为 admin-only。
 
 ## Core Workflows
+
+### 登录与账号（Web）
+
+1. 未登录用户访问任意页面被带到 `/sign-in`，输入 admin 分配的用户名与密码登录；登录失败只提示"用户名或密码不正确"（不区分用户名不存在/密码错/已禁用），同一 IP 连续失败过多时临时拒绝登录并提示稍后再试
+2. 登录成功后回跳登录前的路径（无来源时 admin 落首页、`user` 落 `/qa`）
+3. 应用启动查 `GET /api/auth/me` 建立会话态；任一接口返回 401 即本地置为未登录并跳登录页（会话过期、被登出或被禁用时同样生效）
+4. 顶栏展示当前用户名与"退出"；退出后服务端会话立即失效
+5. admin 在"用户管理"页（`/users`）创建用户（用户名 3-32 位字母/数字/`. _ -`，初始密码 8-200 位，角色 `admin`/`user`）、查看用户列表与状态、禁用用户；禁用即吊销该用户全部会话，且不允许禁用自己或最后一个可用 admin
 
 ### 单视频下载（Web）
 
@@ -69,6 +95,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 7. 响应式布局：桌面端为左侧会话列表 + 右侧聊天区双栏；窄屏（<768px）为单列，会话列表收进"会话列表"抽屉（可新建/切换/删除，选中后抽屉关闭，当前会话高亮），底部输入区避让软键盘与设备安全区，照片/发送控件在窄屏以图标呈现（触屏下回车换行、按钮发送；鼠标下回车发送、Shift+回车换行）
 8. 来源视频"AI 总结"：每条来源注脚（按 source 条目去重）在保留 B 站链接与技巧标题的同时，追加"AI 总结"整页入口；点击跳转 `/summary/:bvid/:cid`，整页展示该视频完整 AI 总结 Markdown（顶部元数据条 + 正文 + 截图，插图经 COS 公网 URL）。总结按 `(bvid,cid)` 唯一定位 `ai_summary_task`；无记录/未完成/内容不可用时页面只报错，不做兜底或跳转。历史消息来源缺 `bvid/cid` 时不渲染该入口
 9. 会话删除为**软删除**：`DELETE /api/chat/conversations/:id` 仅写 `conversation.deleted_at`，不删除任何 `message`（全部保留供后续分析）；已删除会话从会话列表隐藏、对既有接口表现为不存在（404），不提供恢复入口。该会话的消息数据本次仅能通过直接查库读取，不提供分析读取接口
+10. 会话按登录用户隔离：列表与读写均按会话归属过滤（admin 同样只见自己的会话，存量会话归内置 admin）；访问他人或不存在的会话统一返回 404
 
 ## Key Domain Objects
 
@@ -78,6 +105,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 - `DownloadArtifact` — 下载完成后的产物（文件路径、大小等）
 - `DownloadTask` — 下载任务的状态、进度和结果
 - `WorkerJob` — 持久化后台作业（analyze/low_res_download/screenshot_retry/integrity_check/retrigger，预留 cos_cleanup），含 `dedup_key`、`status`、`lease_*`、`attempts` 等，由进程内 worker 领取执行
+- `AppUser` — 应用用户（用户名、角色 `admin`/`user`、禁用状态）；问答会话按用户归属隔离
 
 ## Integration Points
 
@@ -118,6 +146,12 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | POST /api/chat/conversations/:id/messages | 发送提问并同步返回回答（非流式）：每轮执行 query 重写（多轮）→ 照片分析（本轮带照片时，失败不降级直接报错）→ pgvector 向量检索（`CHAT_RETRIEVAL_K`，score=余弦相似度 ≥ `CHAT_HIT_THRESHOLD` 判命中）→ 多模态生成（模型=设置页 `llm.modelName`，视觉输入默认开启可 `CHAT_VISUAL_INPUT=false` 关闭）→ 三段式拼装（`{ userMessageId, assistantMessageId, reply: { text（含 [n] 引用）, images, sources } }`）；命中为空时服务端直接回答"知识库暂无相关内容"（不调用生成、不编造）；content 与 photoUrls 同时为空返回 400，缺 LLM/embedding/vision-proxy 配置返回 503；生成失败时 assistant 消息落失败态可回看重试；user/assistant 消息均持久化，首条消息自动生成会话标题 | `packages/server/src/chat/chat.controller.ts`、`packages/server/src/chat/chat.service.ts` |
 | DELETE /api/chat/conversations/:id | 删除会话（级联删消息，前端二次确认）；COS 照片文件不即时删除（统一经 `user-photos/` 专属前缀目录后续清理）；会话不存在返回 404 | `packages/server/src/chat/chat.controller.ts` |
 | POST /api/download | 创建下载任务，body 可带 `promptId?` 写入 `task.prompt_id`；必填字段缺失或 outputPath 为空时返回 HTTP 400（BadRequestException）；同 (bvid,cid) 已有排队中/下载中任务或已下载且磁盘文件存在时返回 HTTP 409；`outputPath` 表示下载根目录下的相对子目录 | `packages/server/src/download/download.controller.ts` |
+| POST /api/auth/login | 用户名口令登录：成功下发会话 cookie 并返回 `{ user }`；凭据无效或用户已禁用统一返回 401（通用文案），同 IP 连续失败达阈值返回 429 + `Retry-After` | `packages/server/src/user-auth/user-auth.controller.ts` |
+| POST /api/auth/logout | 吊销当前会话并清除会话 cookie；无会话时同样返回成功（幂等） | `packages/server/src/user-auth/user-auth.controller.ts` |
+| GET /api/auth/me | 返回当前登录用户 `{ user }`（id/用户名/角色）；未登录返回 401 | `packages/server/src/user-auth/user-auth.controller.ts` |
+| POST /api/users | admin 创建用户（`username`/`password`/`role?`，`role` 缺省 `user`）；用户名或密码不合规返回 400，角色非 admin/user 返回 400，用户名重复返回 409；响应不含口令哈希 | `packages/server/src/user-auth/users.controller.ts` |
+| GET /api/users | admin 查看用户列表（用户名、角色、创建时间、禁用时间） | `packages/server/src/user-auth/users.controller.ts` |
+| POST /api/users/:id/disable | admin 禁用用户并吊销其全部会话（幂等，返回吊销数）；用户不存在返回 404，禁用自己或最后一个可用 admin 返回 403 | `packages/server/src/user-auth/users.controller.ts` |
 
 ## Rule
 
