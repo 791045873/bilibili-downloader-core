@@ -1,5 +1,3 @@
-import type { MediaStreamInfo } from "@bilibili-downloader/core/domain";
-
 /** 下载请求 */
 export class DownloadDto {
   bvid!: string;
@@ -17,16 +15,4 @@ export class DownloadDto {
   autoSummary?: boolean;
   /** 下载任务显式选中的提示词（下载完成后自动总结时使用） */
   promptId?: number;
-}
-
-/** 独立单视频下载请求（流已选好） */
-export class SingleDownloadDto {
-  bvid!: string;
-  cid!: number;
-  title!: string;
-  videoStream!: MediaStreamInfo;
-  audioStream!: MediaStreamInfo;
-  quality?: number;
-  codec?: string;
-  downloadSubtitle?: boolean;
 }

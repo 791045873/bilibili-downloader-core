@@ -110,13 +110,8 @@ export class DownloadScheduler implements OnModuleInit {
     return result;
   }
 
-  /** 删除任务 */
+  /** 删除任务（运行中的下载无法真正中止，见 owner doc） */
   async deleteTask(id: number): Promise<{ message: string }> {
-    // 如果正在运行，先中止
-    if (this.runningSet.has(id)) {
-      this.downloadService.abortTask(id);
-      // 不等待执行结束，直接删除
-    }
     return this.downloadService.deleteTask(id);
   }
 

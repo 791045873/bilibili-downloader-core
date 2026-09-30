@@ -14,7 +14,6 @@ import { mkdir } from "node:fs/promises";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { DatabaseService } from "@bilibili-downloader/server-common";
 import { DownloadService } from "../download/download.service.js";
-import { DownloadScheduler } from "../download/download-scheduler.js";
 import { createLogMessage } from "@bilibili-downloader/server-common";
 import { PathsService } from "../paths/paths.service.js";
 import { resolveFromDownloadRoot } from "@bilibili-downloader/server-common";
@@ -53,7 +52,6 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
   constructor(
     private readonly downloadService: DownloadService,
     private readonly databaseService: DatabaseService,
-    private readonly downloadScheduler: DownloadScheduler,
     private readonly paths: PathsService,
   ) {}
 

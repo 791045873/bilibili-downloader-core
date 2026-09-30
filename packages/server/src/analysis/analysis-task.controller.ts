@@ -17,7 +17,6 @@ import { DatabaseService } from "@bilibili-downloader/server-common";
 import type { AiSummaryTaskRecord } from "@bilibili-downloader/server-common";
 import { DownloadService } from "../download/download.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
-import { SummaryIntegrityService } from "./summary-integrity.service.js";
 import type { SummaryMeta } from "./summary-dir.js";
 import {
   buildSummaryMeta,
@@ -35,7 +34,6 @@ export class AnalysisTaskController {
     private readonly analysisTriggerService: AnalysisTriggerService,
     private readonly databaseService: DatabaseService,
     private readonly downloadService: DownloadService,
-    private readonly summaryIntegrityService: SummaryIntegrityService,
   ) {}
 
   @Post("/tasks/:id/summary")

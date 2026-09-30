@@ -104,30 +104,6 @@ export class PromptService {
     await this.db.deleteCreatorBinding(mid);
   }
 
-  /**
-   * /analysis/run 的提示词解析：显式 promptId → 系统默认 → undefined（引擎回退内置）。
-   * 引用的提示词已被删除时跳过向下。
-   */
-  async resolveForRun(promptId?: number): Promise<{
-    promptId?: number;
-    content?: string;
-  }> {
-    if (promptId !== undefined) {
-      const explicitPrompt = await this.db.getAiPromptById(promptId);
-      if (explicitPrompt) {
-        return { promptId, content: explicitPrompt.content };
-      }
-    }
-    const defaultId = await this.db.getDefaultAiPromptId();
-    if (defaultId !== undefined) {
-      const defaultPrompt = await this.db.getAiPromptById(defaultId);
-      if (defaultPrompt) {
-        return { promptId: defaultId, content: defaultPrompt.content };
-      }
-    }
-    return {};
-  }
-
   private async assertNotSystem(
     id: number,
     conflictMessage: string,

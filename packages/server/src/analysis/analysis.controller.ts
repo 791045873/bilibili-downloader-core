@@ -9,38 +9,15 @@ import {
   Post,
   Put,
 } from "@nestjs/common";
-import { isAbsolute, join } from "node:path";
-import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
 import type { LlmConfig } from "@bilibili-downloader/adapters/llm";
 import type { VideoPage } from "@bilibili-downloader/core/ports";
-import { AnalysisVideoResolver } from "./analysis-video-resolver.js";
 import { DatabaseService } from "@bilibili-downloader/server-common";
-import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { DownloadService } from "../download/download.service.js";
 import {
   createLogMessage,
   summarizeText,
 } from "@bilibili-downloader/server-common";
-import { PromptService } from "./prompt.service.js";
-
-interface AnalysisRequest {
-  /** LLM 分析用视频文件绝对路径（低分辨率或唯一可用分辨率） */
-  videoPath: string;
-  /** 字幕文件绝对路径，可选（无字幕时不传） */
-  subtitlePath?: string;
-  /** 视频标题 */
-  videoTitle: string;
-  /** 视频元数据 */
-  metadata: {
-    type: "bilibili" | "local";
-    videoUrl?: string;
-    bvid?: string;
-    cid?: number;
-  };
-  /** 截图用视频路径（高分辨率）。不传时走 ScreenshotSourceResolver 降级逻辑 */
-  screenshotVideoPath?: string;
-}
 
 // 与 Python 视觉代理写死基址（qwen_vision_proxy.py: DASHSCOPE_BASE_URL）保持一致的原生 API 端点，
 // 用于 LLM 连通性测试（测试连接与代理使用同一端点）。
@@ -52,53 +29,10 @@ export class AnalysisController {
   private readonly logger = new Logger(AnalysisController.name);
 
   constructor(
-    private readonly analysisVideoResolver: AnalysisVideoResolver,
-    private readonly analysisTriggerService: AnalysisTriggerService,
     private readonly databaseService: DatabaseService,
     private readonly downloadScheduler: DownloadScheduler,
     private readonly downloadService: DownloadService,
-    private readonly promptService: PromptService,
   ) {}
-
-  @Post("/run")
-  async runAnalyze(@Body() body: AnalysisRequest & { promptId?: number }) {
-    validateRequest(body);
-    const promptId = parseOptionalPromptId(body.promptId);
-    const resolved = await this.promptService.resolveForRun(promptId);
-    const input: AnalysisInput = {
-      videoPath: body.videoPath,
-      subtitlePath: body.subtitlePath,
-      summaryDir: join(process.cwd(), "summaryDir"),
-      videoTitle: body.videoTitle,
-      metadata: body.metadata,
-      screenshotVideoPath: body.screenshotVideoPath,
-      systemPrompt: resolved.content,
-    };
-    const resolvedPromptName = resolved.promptId
-      ? (await this.promptService.get(resolved.promptId))?.name
-      : undefined;
-    this.logger.log(
-      createLogMessage("Manual analysis request accepted", {
-        bvid: body.metadata.bvid,
-        cid: body.metadata.cid,
-        videoPath: body.videoPath,
-        subtitlePath: body.subtitlePath,
-        summaryDir: input.summaryDir,
-        hasSubtitle: Boolean(body.subtitlePath),
-        hasScreenshotVideoPath: Boolean(body.screenshotVideoPath),
-        sourceType: body.metadata.type,
-        promptId: resolved.promptId,
-        hasCustomSystemPrompt: Boolean(resolved.content),
-        promptName: resolvedPromptName,
-      }),
-    );
-    const engine = new AnalysisEngine(
-      await this.getLlmConfig(),
-      undefined,
-      this.analysisVideoResolver,
-    );
-    return engine.analyze(input);
-  }
 
   @Post("/trigger")
   async triggerAiSummary(
@@ -492,6 +426,7 @@ export class AnalysisController {
     return `${mainTitle} P${matchedPage.page}`;
   }
 
+  /** 云端 LLM 配置读取：Stage C 将改为 openai SDK 连 QWEN_VISION_PROXY_URL，故保留 */
   private async getLlmConfig(): Promise<LlmConfig> {
     const settings = await this.resolveLlmSettings();
     const apiKey = settings["llm.apiKey"];
@@ -531,64 +466,4 @@ function parseOptionalPromptId(value: unknown): number | undefined {
     throw new BadRequestException("promptId 必须为正整数");
   }
   return value;
-}
-
-function validateRequest(body: AnalysisRequest): void {
-  if (typeof body.videoPath !== "string" || !isAbsolute(body.videoPath)) {
-    throw new BadRequestException("videoPath 必填且必须为绝对路径");
-  }
-  if (
-    typeof body.videoTitle !== "string" ||
-    body.videoTitle.trim().length === 0
-  ) {
-    throw new BadRequestException("videoTitle 必填且不能为空字符串");
-  }
-  if (body.subtitlePath !== undefined) {
-    if (
-      typeof body.subtitlePath !== "string" ||
-      !isAbsolute(body.subtitlePath)
-    ) {
-      throw new BadRequestException("subtitlePath 如传入必须为绝对路径");
-    }
-  }
-  if (body.screenshotVideoPath !== undefined) {
-    if (
-      typeof body.screenshotVideoPath !== "string" ||
-      !isAbsolute(body.screenshotVideoPath)
-    ) {
-      throw new BadRequestException("screenshotVideoPath 如传入必须为绝对路径");
-    }
-  }
-  if (body.metadata === null || typeof body.metadata !== "object") {
-    throw new BadRequestException("metadata 必填");
-  }
-  if (body.metadata.type !== "bilibili" && body.metadata.type !== "local") {
-    throw new BadRequestException("metadata.type 必须为 bilibili 或 local");
-  }
-  if (body.metadata.type === "bilibili") {
-    if (
-      typeof body.metadata.videoUrl !== "string" ||
-      body.metadata.videoUrl.trim().length === 0
-    ) {
-      throw new BadRequestException(
-        "metadata.type=bilibili 时 videoUrl 必填且非空",
-      );
-    }
-    if (
-      typeof body.metadata.bvid !== "string" ||
-      body.metadata.bvid.trim().length === 0
-    ) {
-      throw new BadRequestException(
-        "metadata.type=bilibili 时 bvid 必填且非空",
-      );
-    }
-    if (
-      typeof body.metadata.cid !== "number" ||
-      !Number.isFinite(body.metadata.cid)
-    ) {
-      throw new BadRequestException(
-        "metadata.type=bilibili 时 cid 必填且为数字",
-      );
-    }
-  }
 }

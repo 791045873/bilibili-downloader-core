@@ -87,9 +87,6 @@ export class DownloadService implements OnModuleInit {
   // 运行时任务状态缓存（用于快速查询）
   private readonly taskCache = new Map<number, TaskEntry>();
 
-  // 中止控制器（用于 cancel 运行中的下载）
-  private readonly abortControllers = new Map<number, AbortController>();
-
   // 下载执行完成后的回调（由 Scheduler 设置）
   onTaskFinished?: (taskId: number) => void;
 
@@ -682,7 +679,6 @@ autoSummary: dto.autoSummary,
         err instanceof Error ? err.stack : undefined,
       );
     } finally {
-      this.abortControllers.delete(id);
       this.onTaskFinished?.(id);
     }
   }
@@ -723,28 +719,9 @@ autoSummary: dto.autoSummary,
     return { message: "已恢复" };
   }
 
-  /** 中止正在执行的下载 */
-  abortTask(id: number): void {
-    this.logger.warn(
-      createLogMessage("Abort requested for running download task", {
-        taskId: id,
-      }),
-    );
-    this.abortControllers.get(id)?.abort();
-  }
-
   /** 磁盘存在性校验（供分析编排层复用视频资源前确认文件真实存在） */
   async fileExists(path: string): Promise<boolean> {
     return this.fileStore.exists(path);
-  }
-
-  /** 获取任务列表（内存缓存） */
-  getTasks(): TaskEntry[] {
-    return Array.from(this.taskCache.values()).sort(
-      (a, b) =>
-        new Date(b.createdAt ?? "").getTime() -
-        new Date(a.createdAt ?? "").getTime(),
-    );
   }
 
   async getTasksPaginated(params: {

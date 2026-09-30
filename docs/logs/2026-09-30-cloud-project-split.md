@@ -36,3 +36,26 @@ contract 真源随 DB 层落 server-common，`prisma:emit` 脚本改由 server-c
 ### 已知破坏（须在 Stage D 修复，已记入 plan Deferred）
 
 `pnpm docker:build` 自本阶段起失效：`Dockerfile.server` 仍按单体布局 `COPY packages/server/...` 且从 `/app/packages/server/src/prisma/` 取 contract（已迁走），运行镜像内 `prisma.config.ts` 的相对路径也不再成立。计划前置门要求 Stage A–C 不改部署、部署文件变更须人工批准，故本阶段不擅自改 Dockerfile；本地开发/测试/构建不受影响。
+
+## Stage B-1 — 清理死代码 + 删除 POST /api/analysis/run
+
+### 删除项（均先核实全仓无调用方）
+
+- 5 处死注入：`analysis.controller.ts` 的 `AnalysisTriggerService`、`analysis-video-resolver.ts` 的 `DownloadScheduler`、`analysis-task.controller.ts` 的 `SummaryIntegrityService`（完整性检查已改走 `enqueueJob`），以及随 `/analysis/run` 一并失效的 `AnalysisVideoResolver` + `PromptService`
+- `DownloadService.getTasks`（controller 走 `getTasksPaginated`，此方法全仓无调用；注意与 live 的 `DatabaseService.getTasks` 同名但无关）
+- `abortControllers` + `abortTask`：全仓**无任何 `.set()`**，`abortTask` 实为 no-op；`download-scheduler.deleteTask` 里的调用一并删除，注释改为「运行中的下载无法真正中止」
+- `download.dto.ts` 的 `SingleDownloadDto`（零引用）
+- `POST /api/analysis/run` 及连带死码：`AnalysisRequest` 接口、`validateRequest`（59 行）、`node:path` 与 `AnalysisEngine`/`AnalysisInput` import、`prompt.service.ts` 的 `resolveForRun`（唯一调用方就是该端点）
+
+### 为什么删端点
+
+该端点在 controller 里直接 `new AnalysisEngine(...)` 并跑本地绝对路径，`AnalysisEngine` 链带 `FfmpegScreenshot`/`QwenClient` —— 与需求「云端项目不得依赖 ffmpeg / 分析执行 / vision-proxy」硬规则互斥，而「所有对外 HTTP 由 cloud-server 提供」又要求它留在 cloud。前端全文无调用方，用户裁决删除。
+
+**收益**：`analysis.controller.ts` 的 ctor 现只剩 `DatabaseService` + `DownloadScheduler` + `DownloadService`，cloud 侧再无通向 `AnalysisEngine`/`AnalysisVideoResolver` 的 import 路径 —— 物理隔离从此可用一条 grep 断言证明。
+
+保留 `getLlmConfig`（删 `runAnalyze` 后暂无引用）并加注「Stage C 将改为 openai SDK，故保留」，避免 Stage B 删掉、Stage C 找不到。
+
+### 验证
+
+- 全仓 `typecheck` / `build` 绿；server 17 files / 141 tests、server-common 11 files / 75 tests 全绿（**216 计数不变**，本片未动任何测试）。
+- 断言：`rg "AnalysisEngine|AnalysisVideoResolver|PromptService|AnalysisTriggerService" analysis.controller.ts` → 0 命中；`rg "abortTask|SingleDownloadDto|resolveForRun|abortControllers|analysis/run" packages/*/src` → 0 命中（仅剩 `db.getTasks()` 这一无关同名方法）。
