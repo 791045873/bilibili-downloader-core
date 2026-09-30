@@ -98,9 +98,9 @@ export interface AiSummaryTaskRecord {
   knowledgeStatus?: string;
   /** 知识发布失败信息 */
   knowledgeError?: string;
-  /** 本地原始内容完整性（complete / missing / NULL=未检查；仅手动检查写入） */
+  /** 完整性检查等级（complete / partial / missing / NULL=未检查；以云 DB+截图 url+NAS 视频为据） */
   integrityStatus?: string;
-  /** 完整性缺失明细（缺失文件相对路径列表，截断存储） */
+  /** 完整性缺失明细（结构化 JSON 文本：{contentMissing[],screenshotMissing[],videoMissing[]}） */
   integrityDetail?: string;
   /** 最近一次完整性检查时间 */
   integrityCheckedAt?: string;
