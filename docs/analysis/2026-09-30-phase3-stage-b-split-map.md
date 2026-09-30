@@ -105,9 +105,110 @@ server-common/src/worker/{analysis-job-producer.ts,job-kinds.ts}
 - `publishInline`（555-563）留 nas 同进程（要读本地截图文件）
 - 邮件通知（230/585/602/627）：nas 直接出站 SMTP（推荐，nas 本就仅出站），不引入 `notify` kind
 
-## 4. 待补
+## 4. 其余文件归属（二次独立复审 2026-09-30 补齐，逐条带调用方证据）
 
-`notification/`、`knowledge/`（cos-store / embedding / knowledge-publisher）、`summary-dir.ts` / `summary-render.ts` / `document-generator.ts` / `timestamp.ts` / `file-naming.ts` / `create-dedup.ts` / `analysis-video-resolver.ts` / `analysis-engine.ts` / `screenshot-retry.service.ts` / `summary-integrity.service.ts` / `paths/` / `video.controller.ts` / `parse/` / `auth/auth.controller.ts` 的逐个归属，以及受影响测试清单——子代理输出两次在此处被截断，实施对应部分前需补齐（同一分析口径可复用）。
+### 归 nas
+- `notification/`（service + module + index）：唯一注入方 `analysis-trigger.service.ts:67`，调用点 `:230/585/602/627`；`notification.service.ts:2` nodemailer 直连 SMTP，符合「NAS 仅出站」。`notification.module.ts:4` 是 `@Global`，cloud 不 import 即可
+- `knowledge/knowledge-publisher.service.ts`：唯一注入方 `analysis-trigger.service.ts:70`，调用点 `:555`；`:65` `cosStore.upload` 读**本地截图文件**（`:61`），必须与引擎同进程
+- `analysis/analysis-engine.ts`：构造点 `analysis-trigger.service.ts:536`（另一处 `analysis.controller.ts:95` 随 B7 删除）；`:19` FfmpegScreenshot、`:21` QwenClient 直接命中物理隔离条款
+- `analysis/screenshot-retry.service.ts`：`analysis-trigger.service.ts:74` + handler `:144-150`；`:4` FfmpegScreenshot、`:120` `ANALYSIS_LLM_VIDEO_DIR`、`:130` 截图、`:143` 上传本地文件
+- `analysis/summary-integrity.service.ts`：`analysis-trigger.service.ts:73` + handler `:139-142`；内容判据读云 DB（`:124`）但 `:59-66 fileExists` / `:87 DOWNLOAD_ROOT` / `:147-158 isVideoMissing` 需触盘。`analysis-task.controller.ts:38` 的注入是**死的**，删后 cloud 不再需要它
+- `analysis/analysis-video-resolver.ts`：`:75/82` fileExists、`:127` parseVideo、`:209/280` resolveBestVideoStream、`:297/323` `createTask(skipDedup)+executeTask`、`:240/346` DOWNLOAD_ROOT；消费方 `analysis-trigger.service.ts:463/539`、`screenshot-retry.service.ts:186`。顺带删 `:56` 对 `DownloadScheduler` 的死注入
+- `analysis/timestamp.ts`（纯函数）：两个消费方都在 nas（`analysis-engine.ts:27`、`knowledge-publisher.service.ts:20-22`→`:81-83`）
+- `download/file-naming.ts`：`buildOutputFileName` 仅 `download.service.ts:30`→`:332/572`（执行侧）；`sanitizeFileName` 仅 `analysis-trigger.service.ts:19`→`resolveSummaryDir:735`、`analysis-engine.ts:29`。**cloud 的 `createTask`(387-450) 不生成文件名**（`executeTask:572` 才生成）→ cloud 不需要
+- `paths/`：nas 专属成立，但有两处 cloud 残留必须先解（见下「cloud 侧 PathsService 残留」）
 
-初步判断（待证实）：`cos-store.service.ts` 与 `embedding.service.ts` 两侧都要（cloud 传问答照片 / nas 传截图与算向量）→ 若要「共享不复制」，需下沉 `server-common`，但这偏离需求里 server-common 的职责表述（DB/日志/作业仓储/settings/cookie/类型），属需裁决项。
+### 两侧都要 → 各自复制
+- `analysis/document-generator.ts`（60 行，无 IO/env/Nest）：nas 经 `analysis-engine.ts:25`，cloud 经 `summary-render.ts:11`（`generateMarkdown` 于 `:33`）。复制成本低于扩 server-common 职责。**两份文件头必须互相标注「渲染输出须逐字节一致」**——`summary-render.ts:31-34` 的 `documentToBody` 正是靠「复用同一生成器 + 剥 frontmatter 得到与 nas 产出逐字节一致的正文」成立的，漂移会让云端读取侧渲染与 nas 产出不一致
+
+### 归 cloud
+- `knowledge/knowledge-search.controller.ts`：`:20-21` 只注入 `EmbeddingService` + `DatabaseService`，纯向量检索、不触盘。注册点现在 `analysis.module.ts:22` → 须移到 cloud 独立 knowledge 模块
+- `analysis/summary-dir.ts`（纯函数）：src 内消费者均在 cloud（`summary-render.ts:12` 等）
+- （其余 cloud 侧清单与测试归属见「5. 待取回」）
+
+### cloud 侧 `PathsService` 残留（N4 口径须扩大，不只 cookie）
+| 位置 | 用途 | 处置 |
+|---|---|---|
+| `download.service.ts:101`、`parse.service.ts:47` | `COOKIE_FILE_PATH` | N4 已覆盖（改 `app_settings` 物化或独立 env） |
+| `download.service.ts:115`、`parse.service.ts:55` | `BILI_API_CACHE_DIR`（`paths.service.ts:37-39` = `join(DOWNLOAD_ROOT,"bili-api-cache")`） | **未覆盖**：需求 `:37` 要 cloud 用 `FileCacheStore`、`:64` 又禁 cloud join 媒体路径 → cloud 需独立 cache dir 配置 |
+| `main.ts:24-25` `mkdirSync(SUMMARY_BASE_DIR)`、`:32` 日志打 `DOWNLOAD_ROOT` | 启动建 summary 目录 | **未覆盖**：cloud bootstrap 必须删掉这段 |
+
+### 模块图纠缠（计划只提了四分之一）
+- `download.module.ts:9` `controllers: [DownloadController, VideoController, AuthController]` → `VideoController` 也要一起移
+- `analysis.module.ts:22` 把 cloud 的 `KnowledgeSearchController` 注册在 AnalysisModule 里
+- `chat.module.ts:2` `imports: [AnalysisModule]`（只为拿 `EmbeddingService`/`CosStoreService`，见 `analysis.module.ts:35-40` 的 exports）→ cloud 需独立 knowledge 模块，否则 ChatModule 会把整个 AnalysisModule（含 nas 侧 provider）拖进 cloud
+
+### 死代码清单（实际 5 处 + 1 死类型）
+1. `download.service.ts:742-748` `getTasks`（全仓无调用）
+2. `abortControllers`（全仓无 `.set()` → `abortTask` 为 no-op）
+3. `analysis.controller.ts:18,56` 对 `AnalysisTriggerService` 的死注入
+4. `analysis-video-resolver.ts:56` 对 `DownloadScheduler` 的死注入
+5. `analysis-task.controller.ts:38` 对 `SummaryIntegrityService` 的死注入
+6. `download.dto.ts:23-32` `SingleDownloadDto`（全仓零引用）
+
+### B7（删 `POST /api/analysis/run`）的连带死代码
+删 `analysis.controller.ts:63-101` 后同文件以下全部无引用：`:55` AnalysisVideoResolver 注入、`:60` PromptService 注入、`:13/16/14` 三个 import、`:27-43` `AnalysisRequest`、`:536-594` `validateRequest`，以及 `prompt.service.ts:111-129` `resolveForRun`（全仓唯一调用方是 `:67`）。
+保留项：`:526` `parseOptionalPromptId`（`triggerAiSummary:110` 仍用）、`:47-48` `DASHSCOPE_NATIVE_API_URL`（`testLlmConfig:283` 仍用）。
+**需 Stage B/C 协调**：`:495-517` `getLlmConfig` 在 `runAnalyze` 删除后也变无引用，而 Stage C 明确要改它 → 须择一并写进计划（Stage B 一并删且 Stage C 不再提它；或 Stage B 保留并标注「待 Stage C 复用」），否则会出现「Stage B 删了、Stage C 找不到」的断点。
+**收益（建议写进 Exit Criteria）**：删完后 `analysis.controller.ts` 的 ctor 只剩 `DatabaseService` + `DownloadScheduler` + `DownloadService`，cloud 侧再无任何通向 `AnalysisEngine`/`AnalysisVideoResolver` 的 import 路径 —— 这是物理隔离能用一条 grep 断言证明的前提。建议 Proof 写成 cloud 包内 `grep -rn "adapters/ffmpeg\|adapters/llm\|analysis-engine\|QwenClient\|PathsService" src` 必须 0 命中。
+
+### 依赖分配（各包 package.json，计划一字未提）
+- cloud：`sharp`（`chat-photo.service.ts:14`）、COS SDK（`chat-photo.service.ts:27`）、`multer`/`@nestjs/platform-express`（`chat.controller.ts:15` `AnyFilesInterceptor`）、Stage C 的 `openai`
+- nas：COS SDK（`knowledge-publisher.service.ts:16`、`screenshot-retry.service.ts:8`）、`nodemailer`（`notification.service.ts:2`）、ffmpeg 相关、`QwenClient`
+- 两侧：`pg`/`prisma`（经 server-common）、`lodash`（`analysis-trigger.service.ts:2`、`analysis-video-resolver.ts:21`）
+
+### `download.service.ts` 的 `onModuleInit`(110-149) 拆法（底图原先漏给）
+它同时做四件跨侧的事：`:115` `new FileCacheStore(paths.BILI_API_CACHE_DIR)`、`:118` `new FfmpegMerger()`、`:120` `ensureOutputDir(outputDir)`、`:122` `merger.isAvailable()`。cloud 半照搬会同时违反物理隔离与「不 join 媒体路径」。
+
+### 既有隐患，本阶段不修（建议记 Deferred + 后继门）
+`analyze:cont:${bvid}:${cid}`（`analysis-trigger.service.ts:204`）与 `analyze:${bvid}:${cid}`（`:134`、`analysis-task.controller.ts:84,339`、`analysis.controller.ts:196`）是两个不同键，活跃唯一索引（`database.service.ts:1580`）拦不住彼此 → 同资源可并发双跑。Stage B 会把触发入口变成 3 个共存，概率放大，但**不应在拆分切片里顺手修**。
+
+## 5. cloud 侧其余文件归属（二次复审补齐）
+
+- `analysis/summary-render.ts`：纯函数，唯一消费方 `analysis-task.controller.ts:22-26`（调用 `:226/230/234`）
+- `analysis/prompt.service.ts`：HTTP 侧提示词 CRUD，`prompt.controller.ts:28` 注入；**nas 不复制**（它只是 db 薄壳 `:23`，nas 的 `resolvePromptId` 直接用 db）
+- `analysis/prompt.controller.ts`：`:24` `@Controller("api/analysis/prompts")`，前端 9 处调用
+- `analysis/analysis-task.controller.ts`：端点全为读云 DB / 入队，无触盘；`:35` 改指新 query service，`:38` 死注入删
+- `analysis/analysis.controller.ts`（B7 后残余）：只剩 `/trigger`(103-200) + `/config`×3(219/238/262)；ctor 仅留 `:57` db、`:58` scheduler、`:59` downloadService
+- `download/create-dedup.ts`：纯函数，唯一消费方 `download.service.ts:31`（`:473`）
+- `download/download.dto.ts`：`DownloadDto` 被 `download.controller.ts:38`、`download-scheduler.ts:78` 消费
+- `download/download.controller.ts`：`:24-28` 三注入全是 cloud 半，10 个端点均为创建/读/停/恢复/删
+- `download/download-scheduler.ts`：**拆** —— cloud 留 `createDownload:77`/`stopTask:102`/`resumeTask:107`/`deleteTask:114`；`runningSet:24` + `tryScheduleNext:125-158` + `onModuleInit:35-74` + `onTaskFinished:52-63` 归 nas 或随 B-4 删除
+- `video/video.controller.ts`：`:18` 注入 DownloadService，四端点 `:34/52/89/113`；随 `download.module.ts:9` 迁出
+- `parse/`：需求 `:29` 明列；`parse.service.ts:8-17` 无 ffmpeg/引擎。阻塞点 `:45-48` cookie + `:55` cache dir + `:43` cookieString 永不刷新
+- `auth/auth.controller.ts`：`:6` 注入 DownloadService，四端点 `:11/18/20/28`；阻塞点 `download.service.ts:800` 写 NAS cookie 文件
+- `chat/*`（8 文件）：需求 `:29/58`；`chat.service.ts:7` 的 `QwenClient` 是 Stage C 入口
+- `user-auth/*`（10 文件）：`user-auth.module.ts:19` 注册 `APP_GUARD`，纯 HTTP 面
+- `worker/worker.controller.ts`：`:20` 只注入 db，三端点全 DB 读 + `cancelWorkerJob:53`；**`worker.module.ts:8` 的 `providers:[WorkerService]` 必须在 cloud 删掉**
+- `main.ts`：两侧各一份。cloud 保留 `:19-21/36-44` 静态资源（前端产物，非媒体）+ `:27` listen；**删** `:7/24-25/32`（PathsService + `SUMMARY_BASE_DIR` mkdir + DOWNLOAD_ROOT 日志）。nas 版无 `listen`，改 `createApplicationContext`
+- `app.module.ts`：两侧各一份。cloud 去掉 `:22` PathsModule、`:28` NotificationModule，Worker 仅 controller，保留 `:33-37` interceptor；nas 保留 Paths + Notification，Worker 仅 provider，无 interceptor/UserAuth/Chat/Parse；两侧都要改 `:20` `envFilePath`
+
+## 6. COS / embedding 的归属裁决
+
+**结论：客户端下沉 `adapters`（不是 `server-common`）+ 两侧各留薄 Nest wrapper，不改需求。**
+
+理由：下沉 `server-common` 会违反需求 `:21,31` 的职责表述；而 embedding 已有现成先例——真客户端在 `packages/adapters/src/embedding/embedding-client.ts`（`package.json` 有 `"./embedding"` export），`EmbeddingService` 只是 79 行薄壳、非 adapter 依赖仅 `:43` 一行 `db.getSettings`；COS 照同一路子新增 `adapters/src/cos`（`adapters/dist/cos/` 残留产物说明它曾在 adapters），依赖方向合需求 `:25`。
+
+**必须一并下沉的易漂移项**：`embedding.service.ts:9-12` 常量、`:21-26` `normalizeEmbeddingText`（`knowledge-publisher.service.ts:153,161` 用它做向量复用键，**漂移会静默重复计费**）、`:50-57` 维度守卫、`cos-store.service.ts:29-34` `publicUrlPrefix` 推导。
+
+## 7. `packages/server/tests/` 17 文件落位
+
+| 文件 | 目标包 | 改写？ |
+|---|---|---|
+| `analysis/summary-render.test.ts` | cloud-server | 否（仅 import 路径） |
+| `analysis/summary-markdown-controller.test.ts` | cloud-server | **是**：`:9` 实例化 controller，ctor 变（删 `:38` 死注入、`:35` 换 query service），`:2` fs mock 可清 |
+| `chat/citation.test.ts` | cloud-server | 否 |
+| `chat/photo-compress.test.ts` | cloud-server | 否（`sharp` 随 cloud 包） |
+| `database/ai-summary-task.test.ts` | cloud-server（**拆三份**） | **是**：`:318-343` 路径用例 → server-common；`:384` 单写者用例 → nas；其余留 cloud（`:8` PathsService 依赖须去掉） |
+| `database/analysis-sub-task.test.ts` | nas-worker | 否 |
+| `database/screenshot-retry.test.ts` | nas-worker | 否 |
+| `database/summary-integrity.test.ts` | nas-worker | **是**：`:34-50`（`listLocalImageRefs`，来自 cloud 侧 `summary-dir.ts`）需拆出 |
+| `database/task.test.ts` | nas-worker | **是**：`:4` PathsService；B-4 去 `taskCache` + 状态门收紧后断言需重写 |
+| `download/create-dedup.test.ts` | cloud-server | **是（N2 直接命中）**：`:25-32` 期望反转为 `block:true`，删 `fileExists` 入参，`:22` 文案改，补「文件已删仍拦截」用例 |
+| `knowledge/vector-search.test.ts` | nas-worker | 否（改 import + 薄壳桩） |
+| `user-auth/*`（6 文件） | cloud-server | 否 |
+
+基建：`tests/helpers/db.ts` 与 `tests/global-setup.ts` 两侧各复制一份（前者只依赖 server-common；后者需改 contract / prisma.config 路径）。
+
+
 

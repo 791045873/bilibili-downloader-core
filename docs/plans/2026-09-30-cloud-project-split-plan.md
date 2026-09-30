@@ -58,33 +58,58 @@ Exit Criteria:
 - [x] `docs/logs/` 记录。
 
 
-### Stage B - 新建 cloud-server 与 nas-worker 骨架 + 模块搬迁
+### Stage B - 拆分 cloud-server / nas-worker（按二次复审切成 B-1…B-5）
 
-Status: planned（**拆分底图已产出，须先按下列新发现修订本阶段范围并过一次独立复审，再动手**）
-Targets: 新增 `packages/cloud-server`、`packages/nas-worker`；按模块表迁移 provider/controller
-- Item Types: `Add | Fix`
+Status: planned（底图 + 二次独立复审 + 三项人工裁决齐备，可按子片顺序开工）
+Targets: `packages/server` → `packages/cloud-server` + `packages/nas-worker`
 - Prereqs: Stage A
-- [ ] `Note`（底图）：逐成员归属、构造器依赖、跨侧断点、风险点见 `docs/analysis/2026-09-30-phase3-stage-b-split-map.md`（独立子代理逐行读 live code 产出）。
-- [ ] `Fix`（**新发现 N1，阻塞级：`download` kind 缺失**）：`download-scheduler.ts:96` 的 `createDownload → tryScheduleNext` 是同进程直调，且 nas 现只注册 4 个 kind（无 `download`）。拆分后 cloud 创建的任务会**停在 `created` 永不执行**。**裁决（用户 2026-09-30）：新增 `kind:"download"` 走作业契约**（`{taskId}`、`queue:"nas"`、`refType:"task"`、`refId:taskId`、`dedupKey: download:${bvid}:${cid}`），cloud 创建即入队、nas 注册 handler 消费；不采用 nas 侧定时 `claimNextCreatedTask` 轮询（避免下载与其他作业两套机制并存）。本项即需求 `docs/requirements/2026-09-17-cloud-project-split.md:51` 预留的「下载迁移到 worker_job，若 Phase 2 未完成则在本阶段补」。
-- [ ] `Fix`（**新发现 N2，行为降级，前次裁决基于错误前提，须重新裁决**）：`evaluateCreateDedup`（`download.service.ts:453-478`）判定链为 `findActiveTaskByBvidAndCid` → `findCompletedTaskByBvidAndCid` → `fileExists`，其中 `fileExists` 跨侧不可得。
-  - **更正（独立复审 2026-09-30 指出）**：我先前描述的代价方向是错的。「盘上已有文件但 DB 无记录」**今天就已经会重新下载**（`:461` 查不到 completed 记录 → `create-dedup.ts:31` 条件不成立 → 放行），纯 DB 化对它零影响。真正被改变的是相反分支：`create-dedup.ts:31` 的 `completedOutputFile && fileExists`，在「DB 有 success 记录 + 盘上文件已被删」时今天**放行重下**，纯 DB 化后变成**拦截**（两个入口都 409：`download.controller.ts:46-48`、`analysis.controller.ts:384-386`）。
-  - **冲突**：该行为正是既有需求 `docs/requirements/2026-09-09-download-create-dedup.md:18`（需求项 4）与 `:24`（AC3）明文规定的「文件被手动删除后不拦截，正常创建新任务」。纯 DB 化＝AC3 回归，用户可见后果是「手动删了文件就无法从 UI 重下该分 P，只能先删 DB 任务记录」。分析链路不受影响（`analysis-video-resolver.ts:297` 走 `skipDedup:true`）。
-  - **待定**：若接受，须改写 `2026-09-09-download-create-dedup.md` 的需求项 4/AC3 并留人工批准痕迹（不能只在本计划记一句）；若不接受，须回到「nas 物化文件存在性到 DB」方案，Stage B 范围相应扩大。
+- `Note`（底图）：逐成员归属、构造器依赖、跨侧断点、风险点、测试落位见 `docs/analysis/2026-09-30-phase3-stage-b-split-map.md`。二次复审结论见本文件 Plan Audit 段。
+- `Note`（三项人工裁决，2026-09-30）：
+  - **N1**：新增 `kind:"download"` 走作业契约（`{taskId}`、`queue:"nas"`、`refType:"task"`、`dedupKey: download:${bvid}:${cid}`），不采用 nas 定时 `claimNextCreatedTask` 轮询。即需求 `2026-09-17-cloud-project-split.md:51` 预留项。
+  - **N2**：去重退化为纯 DB 判定。**已按批准改写** `docs/requirements/2026-09-09-download-create-dedup.md`（需求项 4 / AC3 + 2026-09-30 修订段）：DB 有 success 记录但盘上文件已删时由「放行重下」变为 **409 拦截**。
+  - **B7**：删除 `POST /api/analysis/run`（前端无调用方），连带死码见底图。
+- `Note`（既有隐患，本阶段不修）：`analyze:cont:` 与 `analyze:` 是两个 dedupKey，活跃唯一索引拦不住彼此 → 同资源可并发双跑。Stage B 让触发入口共存增多、概率放大，但不在拆分切片里顺手修，转 Deferred。
 
+#### B-1 清理与删端点
 
-- [ ] `Fix`（新发现 N3）：`taskCache`（`download.service.ts:88`）为进程内共享状态，cloud/nas 各持一份后 `stopTask`/`resumeTask` 的 cache 守卫失效 → 改 `db.getTaskById` + 守卫式 `updateTaskStatus`。
-- [ ] `Fix`（新发现 N4）：cloud 侧 cookie 来源当前是 `PathsService.COOKIE_FILE_PATH`，而 Stage A 已判 `PathsService` 为 nas 专属 → Stage B 需先定临时口径（Stage C 的 cookie 物化项部分前移）。
-- [ ] `Fix`（新发现 N5）：cloud **不得 provide `WorkerService`**（队列默认 `nas`、`enabled` 默认 true、`@Global`），否则会抢 nas 作业并因无 handler 全判失败；cloud 只保留 `worker.controller.ts`。同时须保证 nas 侧 `registerHandler` 先于 `WorkerService` 轮询启动。
-- [ ] `Fix`（新发现 N6）：dedupKey 生成方现有 8 处手写副本，拆后跨包易静默漂移 → 随作业契约下沉到 `server-common`（`job-kinds.ts`）。
-- [ ] `Add`：两个 NestJS 应用骨架，均依赖 server-common。
-- [ ] `Fix`：云端模块（parse/download 创建读取/analysis 触发查询/chat-RAG/knowledge/prompt/settings/作业生产）迁入 cloud-server；执行类（下载执行/分析引擎/截图/screenshot_retry/完整性检查/WorkerService 消费/PathsService+锚点）迁入 nas-worker。物理隔离校验：cloud-server 无 ffmpeg/分析执行/vision-proxy import。
-- [ ] `Fix`（B3 分析触发/执行拆分）：`AnalysisTriggerService`（实际 903 行）按底图拆为 cloud 的 `analysis-job-producer.service.ts` + `ai-summary-query.service.ts` 与 nas 的 `analysis-job-handlers.service.ts` + `analysis-executor.service.ts`；**`claimAiSummaryTask` 必须与执行同侧同窗口**，启动对账 `reconcileStaleAnalysisState` 必须留 nas。
-- [ ] `Fix`（B4 下载创建/执行拆分 + Auth 解耦）：`DownloadService`（实际 947 行）按底图拆分；`DownloadScheduler` 是**第三个**拆分对象；`AuthController` 移出 DownloadModule 归 cloud。顺带删除三处死代码（`getTasks`、no-op 的 `abortControllers`、`analysis.controller.ts` 对 `AnalysisTriggerService` 的死注入）。
-- [ ] `Proof`：两应用各自 `typecheck`/`build`；迁移的服务测试随包移动并绿。
+- [ ] `Fix`：删 5 处死注入（`analysis.controller.ts:18,56`、`analysis-video-resolver.ts:56`、`analysis-task.controller.ts:38`）、`download.service.ts:742-748` `getTasks`、no-op 的 `abortControllers`/`abortTask`（含 `download-scheduler.ts:117`）、`download.dto.ts:23-32` `SingleDownloadDto`、`POST /api/analysis/run`（`analysis.controller.ts:63-101`）及其连带死码（`:13/14/16/27-43/55/60/536-594`、`prompt.service.ts:111-129` `resolveForRun`）。
+- [ ] `Note`（须与 Stage C 协调）：`analysis.controller.ts:495-517` `getLlmConfig` 在删 `runAnalyze` 后变无引用，而 Stage C 要改它 → 本片保留并标注「待 Stage C 复用」，Stage C 条目同步指向该行号。
+- [ ] `Proof`：`pnpm typecheck` + `pnpm build` + 两包 `test` 全绿；`rg -n "AnalysisEngine|AnalysisVideoResolver|PromptService" packages/server/src/analysis/analysis.controller.ts` → 0 命中；`rg -n "abortTask|SingleDownloadDto|resolveForRun" packages/*/src` → 0 命中；路由表仅少 `/api/analysis/run`。
+
+#### B-2 作业契约下沉 + N2 纯 DB 去重
+
+- [ ] `Add`：`server-common/src/worker/job-kinds.ts`（kind 常量 + payload 类型 + dedupKey 构造器），替换 **9 处**手写副本（`analysis-trigger.service.ts:134,204`、`analysis.controller.ts:196,448`、`analysis-task.controller.ts:84,97,339,378`、`analysis-video-resolver.ts:147`）。
+- [ ] `Fix`：`create-dedup.ts` 删 `fileExists` 入参、改提示文案；`download.service.ts:453-478` 去磁盘判定。
+- [ ] `Proof`：`rg -n 'dedupKey: `' packages/*/src` → 0 命中；`create-dedup.test.ts` 改写后绿（含新增「文件已删仍拦截」）；`worker-job.test.ts` 零改动仍绿；文案与已改写的 AC3 一致。
+
+#### B-3 WorkerService per-kind 并发（裁决 B3）
+
+- [ ] `Fix`：`server-common/src/worker/worker.service.ts` 的 `drain()` 改按 kind 计数 + 新增 `WORKER_MAX_CONCURRENT_<KIND>`，缺省退化为全局 `WORKER_MAX_CONCURRENT`（默认 2）；`MAX_CONCURRENT_DOWNLOADS` 映射到 download kind 的上限。
+- [ ] `Proof`：`tests/worker/worker-loop.test.ts` **零改动**仍绿（向后兼容证明）+ 新增两条用例（单 kind 满额时他 kind 仍派发、缺省 env 行为等于 Phase 2）；server-common `typecheck`/`build` 绿。
+
+#### B-4 接通 `download` kind（单体内完成，最大一片）
+
+- [ ] `Add`：`download` handler；scheduler 四触发点改入队；删 `runningSet` + `tryScheduleNext`。
+- [ ] `Fix`：`stop`/`delete` 调 `cancelWorkerJob`；`resume` 重新入队；`executeTask` **去 `taskCache` 化**（状态门改读 DB 且收紧为仅 `created`，进度只写 DB，`restoreTaskCacheFromDatabase` 与 `TaskEntry` 退役）；`claimNextCreatedTask`（`database.service.ts:623-632`，**跨进程非原子**）删调用点改守卫式 `updateTaskStatus`，或补 `FOR UPDATE SKIP LOCKED` + 复核 status。
+- [ ] `Fix`：入队漏失兜底——「`created` 缺活跃 download job 则补入队」的幂等对账放 **cloud** 启动（靠 dedupKey 幂等）；「`downloading` 无活跃租约 → failed」放 **nas**（`reapExpiredJobs` 只回收 job、不回写 task，须写清谁改 task 行）。
+- [ ] `Proof`：`typecheck`/`build`/两包 `test` 绿 + 新增 download-handler 测试绿；`rg -n "claimNextCreatedTask" packages/*/src` → 仅剩定义或已含 SKIP LOCKED；五链路手测入 `docs/testing/`（创建→执行→完成→analyze 入队 / stop 后 job 变 canceled 且任务不跑 / resume 重入队并跑 / delete 无 5 次重试日志 / 重启时 `downloading` 正确回收且不误杀）。
+
+#### B-5 建骨架 + 拆类 + 双向搬迁 + 退役 server
+
+- [ ] `Add`：`cloud-server` / `nas-worker` 骨架（**cloud 不 provide `WorkerService`**；nas 的 `registerHandler` 移到构造器以先于轮询）。
+- [ ] `Add`：`adapters/src/cos`（COS 客户端下沉，比照既有 `adapters/src/embedding`），并下沉 `normalizeEmbeddingText` 等易漂移项；两侧各留薄 Nest wrapper。**不扩 server-common 职责、不改需求。**
+- [ ] `Fix`：三大类拆分——`AnalysisTriggerService`（903 行）→ cloud `analysis-job-producer.service.ts` + `ai-summary-query.service.ts` / nas `analysis-job-handlers.service.ts` + `analysis-executor.service.ts`（`claimAiSummaryTask` 与执行同侧同窗口；`reconcileStaleAnalysisState` 留 nas）；`DownloadService`（947 行）与 `DownloadScheduler` 按底图拆；`document-generator.ts` 两侧各一份并互标「渲染输出须逐字节一致」。
+- [ ] `Fix`（N4 扩大口径）：cloud 侧三处 `PathsService` 残留全部解除——`COOKIE_FILE_PATH`（改 `app_settings` 物化或独立 env）、`BILI_API_CACHE_DIR`（cloud 独立 cache dir 配置）、`main.ts:24-25/32`（删 `SUMMARY_BASE_DIR` mkdir 与 DOWNLOAD_ROOT 日志）。
+- [ ] `Fix`：模块图解纠缠——`VideoController`/`AuthController` 随 cloud 迁出 DownloadModule；`KnowledgeSearchController` 移入 cloud 独立 knowledge 模块；`ChatModule` 不再 `imports: [AnalysisModule]`。
+- [ ] `Fix`：各包 `package.json` 依赖分配（cloud：`sharp`/COS/`multer`/`@nestjs/platform-express`；nas：COS/`nodemailer`/ffmpeg/`QwenClient`；两侧：`lodash`）；测试按底图第 7 节落位；`packages/server` 退役。
+- [ ] `Proof`：每包 `typecheck`/`build`/`test` 独立绿；`rg -n "adapters/ffmpeg|analysis-engine|PathsService" packages/cloud-server/src` → 0 命中（`adapters/llm` 因 chat 暂例外，须登记）；`rg -n "@Controller" packages/nas-worker/src` → 0 命中；nas 启动日志含 worker 轮询、cloud 不含；新增「无 handler 分支不被命中」的启动顺序测试绿；全仓 `pnpm typecheck`/`pnpm build` + 测试计数守恒表入 `docs/logs/`。
+
 Exit Criteria:
-- [ ] 两应用可独立编译；模块归属符合需求表；cloud-server 物理不含执行/ffmpeg/vision-proxy。
-- [ ] N1-N6 逐条落地或显式裁决留证。
-- [ ] `docs/logs/` 记录。
+- [ ] B-1…B-5 逐片各自验证通过（每片 typecheck/build/test 绿）。
+- [ ] 两应用可独立编译；模块归属符合需求表；cloud-server 物理隔离经 grep 断言证明。
+- [ ] N1-N6 与二次复审 B1-B7 逐条落地或显式裁决留证。
+- [ ] `docs/logs/` 记录 + 测试计数守恒。
+
 
 
 ### Stage C - LLM 客户端 / 缓存 / Cookie 落位
