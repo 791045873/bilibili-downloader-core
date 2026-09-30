@@ -51,6 +51,7 @@ packages/
 - 持久化作业队列（2026-09 Phase 2 起）：新增 `worker_job`（模型 `WorkerJob`）与 `worker_heartbeat`（模型 `WorkerHeartbeat`）两张表（`src/prisma/contract.prisma`，additive）。`worker_job` 在 `dedup_key` 上有 partial-unique 索引，条件 `WHERE status IN (queued, leased, running)`，据此在库层强制并发/去重（取代旧的进程内互斥与低清队列）。
 - 进程内 worker 轮询：`WorkerService`（`packages/server/src/worker/`，`worker.module.ts`/`worker.controller.ts`/`worker.service.ts`）本阶段仍与 server 同进程运行（无部署拆分）。执行环：轮询 `worker_job` → 以带 SKIP LOCKED 的守卫型原子 `UPDATE` claim 作业 → 心跳续租 `lease_expires_at` → 写终态时以 `lease_owner` fencing 防越权覆盖；reaper 周期性把过期租约的作业重置为 `queued`（`attempts++`）。worker 存活写入 `worker_heartbeat`。
 - 作业类型：`analyze`、`low_res_download`、`screenshot_retry`、`integrity_check`、`retrigger`（当前经 `analyze` 路由），另有预留 `cos_cleanup`（生产者见 Phase 4）。高清 `download` 未迁移，仍走 `download-scheduler.ts` 的 `claimNextCreatedTask`。
+- `integrity_check` 处理体（在 `AnalysisTriggerService`）自 2026-09-30「完整性检查重定义」起已解除 Phase 2 的 gated 状态，经 `SummaryIntegrityService.run()` 执行以云端为真源的三类判据（内容：云 DB `summary`+`summary_segment`；截图：`summary_segment.screenshot_url` 非空；视频：NAS 本地视频文件存在性），把 `integrity_status`（新增 `partial`）与结构化 JSON 的 `integrity_detail`（`{contentMissing,screenshotMissing,videoMissing}`）写回 `ai_summary_task`，复用既有 `integrity_status`/`integrity_detail`/`integrity_checked_at` 三列、无 schema 变更。
 - 配置经环境变量：`WORKER_POLL_INTERVAL_MS`、`WORKER_LEASE_TTL_SEC`、`WORKER_HEARTBEAT_MS`、`WORKER_REAP_INTERVAL_MS`、`WORKER_MAX_CONCURRENT`、`WORKER_QUEUE`、`WORKER_ID`、`WORKER_ENABLED`。
 
 ## Testing Stack
