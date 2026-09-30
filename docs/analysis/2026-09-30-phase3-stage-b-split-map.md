@@ -83,9 +83,11 @@ server-common/src/worker/{analysis-job-producer.ts,job-kinds.ts}
 - `DownloadScheduler` 是**第三个**拆分对象：`createDownload/stop/resume/delete` → cloud，`tryScheduleNext/executeTask` → nas
 
 ### 跨侧断点（含 Stage B 未预见的缺口）
-1. **`download` kind 缺失（阻塞级）**：`download-scheduler.ts:96` 的 `createDownload → tryScheduleNext` 是同进程直调；`tryScheduleNext`(125-158) 仅由启动(66)/创建(96)/恢复(109)/完成(61) 事件驱动，而 nas 现在**只注册 4 个 kind**（无 `download`）。拆分后 cloud 创建的任务会**停在 `created` 永不执行**。需新增 `kind:"download"`（`{taskId}`、`refType:"task"`、`dedupKey: download:${bvid}:${cid}`），或在 nas 侧加定时 `claimNextCreatedTask` 轮询
+1. **`download` kind 缺失（阻塞级）**：`download-scheduler.ts:96` 的 `createDownload → tryScheduleNext` 是同进程直调；`tryScheduleNext`(125-158) 仅由启动(66)/创建(96)/恢复(109)/完成(61) 事件驱动，而 nas 现在**只注册 4 个 kind**（无 `download`）。拆分后 cloud 创建的任务会**停在 `created` 永不执行**。**已裁决（用户 2026-09-30）：新增 `kind:"download"`**（`{taskId}`、`refType:"task"`、`dedupKey: download:${bvid}:${cid}`），不走 nas 定时 `claimNextCreatedTask` 轮询。
 2. `abortTask`(727-734) 控制面在 cloud、AbortController 在 nas → 用 `worker_job.cancel_requested`（列已存在，`claimNextJob` 的 WHERE 已含 `cancel_requested = 0`，`database.service.ts:1610`）或新增 `download_cancel` kind
-3. **`evaluateCreateDedup:469` 的 `fileExists` 磁盘判定无法跨侧**：cloud 去重门将失去「文件已存在」这一事实 → 必须明确降级口径（纯 DB 去重 / 由 nas 物化文件存在性 / 借 `integrity_check` 的 `videoMissing`）并留证
+3. **`evaluateCreateDedup:453-478` 的 `fileExists` 磁盘判定无法跨侧**。**更正（独立复审 2026-09-30）**：先前记录的代价方向错误。「盘上有文件但 DB 无记录」今天就已放行重下（`:461` 无 completed 记录 → `create-dedup.ts:31` 不成立），纯 DB 化零影响；真正改变的是相反分支——「DB 有 success 记录 + 盘上文件已删」今天放行重下，纯 DB 化后变**拦截**（`download.controller.ts:46-48` 与 `analysis.controller.ts:384-386` 均 409）。该行为是既有需求 `2026-09-09-download-create-dedup.md:18,24`（需求项 4 / AC3）明文规定的，纯 DB 化＝AC3 回归。**待用户在正确前提下重新裁决。**
+
+
 4. `analysis-video-resolver.ts:297+323` 的 `createTask(skipDedup:true) → executeTask` 均在 nas，但不能引用 cloud 的 `createTask` → nas 半需 `createAdHocTask`（仅 `insertTask`，无去重、无 cache）
 5. `confirmLogin`(800) 写 cookie 文件在 cloud、nas 要读 → `app_settings` 物化 + 版本刷新（Stage C）
 
