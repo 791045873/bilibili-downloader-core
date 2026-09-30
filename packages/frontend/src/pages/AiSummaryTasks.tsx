@@ -317,10 +317,10 @@ export function Component() {
     setRawError("");
     try {
       await api.rebuildAiSummaryTask(rawTask.id);
-      setRebuildMessage("已开始重新构建总结，请刷新任务状态后查看结果");
+      setRebuildMessage("已开始重试截图（补齐缺失截图），请刷新任务状态后查看结果");
       await query.refetch();
     } catch (e: unknown) {
-      setRawError(e instanceof Error ? e.message : "重新构建总结失败");
+      setRawError(e instanceof Error ? e.message : "重试截图失败");
     } finally {
       setRebuilding(false);
     }
@@ -666,7 +666,7 @@ export function Component() {
                 variant={rebuilding ? "outlined" : "solid"}
                 onClick={() => void handleRebuildFromRaw()}
               >
-                {rebuilding ? "重新构建中..." : "重新构建总结"}
+                {rebuilding ? "重试截图中..." : "重试截图"}
               </Button>
               {rebuildMessage && (
                 <span className="text-sm text-emerald-600">
