@@ -413,14 +413,52 @@ export function Component() {
         if (task.status !== "completed" || !task.integrityStatus) {
           return <Tag>未检查</Tag>;
         }
-        if (task.integrityStatus === "complete") {
+        const color =
+          task.integrityStatus === "complete"
+            ? "green"
+            : task.integrityStatus === "partial"
+              ? "orange"
+              : "red";
+        const label =
+          task.integrityStatus === "complete"
+            ? "完整"
+            : task.integrityStatus === "partial"
+              ? "部分"
+              : "缺失";
+        const lines: string[] = [];
+        const raw = task.integrityDetail;
+        if (raw) {
+          try {
+            const d = JSON.parse(raw) as {
+              contentMissing?: string[];
+              screenshotMissing?: number[];
+              videoMissing?: string[];
+            };
+            if (d.contentMissing?.length) {
+              lines.push(`内容缺失：${d.contentMissing.join(", ")}`);
+            }
+            if (d.screenshotMissing?.length) {
+              lines.push(`截图缺失 seq：${d.screenshotMissing.join(", ")}`);
+            }
+            if (d.videoMissing?.length) {
+              lines.push("视频缺失（告警）");
+            }
+          } catch {
+            lines.push(raw);
+          }
+        }
+        if (task.integrityStatus === "complete" && lines.length === 0) {
           return <Tag color="green">完整</Tag>;
         }
         return (
           <Tooltip
             title={
               <div className="whitespace-pre-wrap break-all">
-                {task.integrityDetail || "缺失"}
+                {lines.length > 0 ? (
+                  lines.map((l, i) => <div key={i}>{l}</div>)
+                ) : (
+                  <div>无缺失明细</div>
+                )}
                 {task.integrityCheckedAt && (
                   <div className="mt-1 text-zinc-400">
                     检查于 {formatTime(task.integrityCheckedAt)}
@@ -429,7 +467,7 @@ export function Component() {
               </div>
             }
           >
-            <Tag color="red">缺失</Tag>
+            <Tag color={color}>{label}</Tag>
           </Tooltip>
         );
       },
