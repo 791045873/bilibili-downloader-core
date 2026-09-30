@@ -24,6 +24,8 @@ import {
   renderRawResponseMarkdown,
   renderSummaryFromDb,
 } from "./summary-render.js";
+import { ROLE_ADMIN, ROLE_USER } from "../user-auth/auth.constants.js";
+import { Roles } from "../user-auth/auth.decorators.js";
 
 @Controller("api")
 export class AnalysisTaskController {
@@ -176,6 +178,8 @@ export class AnalysisTaskController {
    * 按视频资源 (bvid,cid) 取完整总结文档，供 QA 来源视频"AI 总结"整页消费。
    * 不做降级：无记录/未完成/无输出/文件缺失分别返回 404/409/409/404。
    */
+  // 普通 user 可读（QA 来源视频整页）；同类 /:id/markdown、/:id/raw-response 仍仅 admin
+  @Roles(ROLE_ADMIN, ROLE_USER)
   @Get("/summary-tasks/by-resource/:bvid/:cid/markdown")
   async getAiSummaryTaskMarkdownByResource(
     @Param("bvid") bvid: string,

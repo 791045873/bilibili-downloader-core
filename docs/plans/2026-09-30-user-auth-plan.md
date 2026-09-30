@@ -75,13 +75,13 @@ Exit Criteria:
 
 ### Stage 3 - 守卫与权限落位（后端门禁）
 
-Status: planned
+Status: done
 Targets: `AuthGuard`/`RolesGuard`、装饰器、各控制器
 - Item Types: `Add | Fix`
 - Prereqs: Stage 2
-- [ ] `Add`：`AuthGuard`（解析 session cookie → request.user，失败 401）、`RolesGuard`+`@Roles('admin')`/`@Public()`（越权 403）。
-- [ ] `Add`（默认拒绝）：注册 `APP_GUARD` 全局守卫，**fail-closed**（默认需登录；`@Public()` 显式放行，`@Roles('admin')` 限管理）。
-- [ ] `Fix`（完整守卫映射，按 live 路由逐一）：
+- [x] `Add`：`AuthGuard`（解析 session cookie → request.user，失败 401）、`RolesGuard`+`@Roles('admin')`/`@Public()`（越权 403）。
+- [x] `Add`（默认拒绝）：注册 `APP_GUARD` 全局守卫，**fail-closed**（默认需登录；`@Public()` 显式放行，`@Roles('admin')` 限管理）。
+- [x] `Fix`（完整守卫映射，按 live 路由逐一）：
   - **公开 `@Public()`**：新用户 auth `POST /api/auth/login`、`POST /api/auth/logout`、`GET /api/auth/me`。
   - **admin-only**：
     - B站扫码登录 `auth.controller`：`GET /api/auth/qrcode`、`/qrcode/status`（写 cookie 文件）、`/user`。
@@ -97,11 +97,15 @@ Targets: `AuthGuard`/`RolesGuard`、装饰器、各控制器
     - chat/QA：`POST /api/chat/conversations`、`GET /conversations`、`GET /conversations/:id/messages`、`POST /conversations/:id/photos`、`POST /conversations/:id/messages`、`DELETE /conversations/:id`——均**按 user_id 过滤 + 归属校验**；他人会话统一返回 **404**（抗 ID 枚举），不用 403。
     - AI 总结整页：**仅** `GET /api/summary-tasks/by-resource/:bvid/:cid/markdown`（`analysis-task.controller.ts:179`）对 user 开放；同类 `/:id/markdown`、`/:id/raw-response` 仍 admin。因该控制器为 `@Controller("api")` 混合 admin 路由，**须 method 级 `@Roles`/`@Public`+登录校验覆盖**，不可控制器级放行。
   - 未登录 401、越权 403。
-- [ ] `Fix`：`createConversation`/`listConversations`/`getConversation`（`database.service.ts:1877,1888-1902`）增 `userId` 参数与归属过滤；chat 控制器传入当前用户。
-- [ ] `Proof`：`typecheck`、`build`。
+- [x] `Fix`：`createConversation`/`listConversations`/`getConversation`（`database.service.ts:1877,1888-1902`）增 `userId` 参数与归属过滤；chat 控制器传入当前用户。
+- [x] `Proof`：`typecheck`、`build`。
+- [x] `Note`（实施偏差，**更严**）：守卫默认角色取 **admin**（而非仅"需登录"）。效果上与计划逐条映射一致（枚举的 download/analysis/analysis-task/prompt/worker/video/parse/knowledge/B站扫码 全为 admin-only），但对**将来新增端点 fail-closed**：未显式 `@Roles` 的新路由默认仅 admin，避免漏配即开放。仅 `@Public()`（login/logout/me）与 `@Roles(ROLE_ADMIN, ROLE_USER)`（chat/QA 全部 + 仅 `by-resource/:bvid/:cid/markdown`）显式放开；因此无需逐个 admin 控制器加装饰器。
+- [x] `Note`：QA 会话对 **admin 亦按本人过滤**（`listConversations(user.id)`），符合"会话隔离"业务规则；存量会话已回填归 admin，admin 仍可见历史会话。他人/不存在会话统一 404。
+- [x] `Note`（联动影响）：本阶段起全部 API 需登录，前端登录页在 Stage 5 落地；其间 UI 会收到 401，属预期的分阶段顺序。
+
 Exit Criteria:
-- [ ] 未登录 401、越权 403；user 仅能访问自己会话；admin 全通；总结整页对 user 开放。
-- [ ] `docs/logs/` 记录。
+- [x] 未登录 401、越权 403；user 仅能访问自己会话；admin 全通；总结整页对 user 开放。
+- [x] `docs/logs/` 记录。
 
 ### Stage 4 - admin 用户管理接口
 

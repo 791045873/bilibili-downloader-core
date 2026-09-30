@@ -13,6 +13,7 @@ import {
 import type { Request, Response } from "express";
 import { AuthService } from "./auth.service.js";
 import { SESSION_COOKIE_NAME } from "./auth.constants.js";
+import { Public } from "./auth.decorators.js";
 import { readCookie } from "./cookie.util.js";
 
 /**
@@ -23,6 +24,7 @@ import { readCookie } from "./cookie.util.js";
 export class UserAuthController {
   constructor(private readonly auth: AuthService) {}
 
+  @Public()
   @Post("login")
   @HttpCode(HttpStatus.OK)
   async login(
@@ -54,6 +56,7 @@ export class UserAuthController {
     return { user: outcome.result.user };
   }
 
+  @Public()
   @Post("logout")
   @HttpCode(HttpStatus.OK)
   async logout(
@@ -67,6 +70,7 @@ export class UserAuthController {
     return { ok: true };
   }
 
+  @Public()
   @Get("me")
   async me(@Req() req: Request) {
     const token = readCookie(req.headers.cookie, SESSION_COOKIE_NAME);
