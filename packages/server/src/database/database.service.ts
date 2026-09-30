@@ -1719,6 +1719,53 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   /** 读侧：按 (bvid,cid) 取 summary 头字段 + 按 seq 升序的全渲染字段 segment。
    * 供 Phase 1a 云 DB 渲染消费；无匹配 summary 行返回 undefined。
    */
+  /** 按 (summaryId,seq) 精确回写单段 screenshot_url（重试截图专用，不触碰其它列） */
+  async updateSegmentScreenshotUrl(
+    summaryId: number,
+    seq: number,
+    url: string | null,
+  ): Promise<void> {
+    await this.pool.query(
+      `UPDATE summary_segment SET screenshot_url = $3 WHERE summary_id = $1 AND seq = $2`,
+      [String(summaryId), seq, url],
+    );
+  }
+
+  /** 取某资源的 summaryId 与各段 seq/timestamp/screenshot_url（重试截图选段用） */
+  async getSummarySegmentsForScreenshotRetry(
+    bvid: string,
+    cid: number,
+  ): Promise<
+    | {
+        summaryId: number;
+        segments: Array<{
+          seq: number;
+          timestampSeconds: number | null;
+          screenshotUrl: string | null;
+        }>;
+      }
+    | undefined
+  > {
+    const summary = await this.prismaDb.orm.public.Summary
+      .where({ bvid, cid: BigInt(cid) })
+      .first();
+    if (!summary) {
+      return undefined;
+    }
+    const segmentRows = await this.prismaDb.orm.public.SummarySegment
+      .where({ summaryId: summary.id })
+      .orderBy((m) => m.seq.asc())
+      .all();
+    return {
+      summaryId: bigintToNumber(summary.id)!,
+      segments: segmentRows.map((row) => ({
+        seq: Number(row.seq),
+        timestampSeconds: row.timestampSeconds ?? null,
+        screenshotUrl: row.screenshotUrl ?? null,
+      })),
+    };
+  }
+
   async getSummaryWithSegmentsByResource(
     bvid: string,
     cid: number,

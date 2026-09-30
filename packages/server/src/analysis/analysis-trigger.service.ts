@@ -24,6 +24,7 @@ import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
 import { WorkerService } from "../worker/worker.service.js";
 import { SummaryIntegrityService } from "./summary-integrity.service.js";
+import { ScreenshotRetryService } from "./screenshot-retry.service.js";
 import type { WorkerJobRecord } from "../database/database.service.js";
 
 /** AI 总结任务执行耗时明细 */
@@ -70,6 +71,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     private readonly paths: PathsService,
     private readonly worker: WorkerService,
     private readonly summaryIntegrity: SummaryIntegrityService,
+    private readonly screenshotRetry: ScreenshotRetryService,
   ) {
     this.llmVideoDir = paths.ANALYSIS_LLM_VIDEO_DIR;
   }
@@ -144,7 +146,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     if (typeof payload.summaryTaskId !== "number") {
       throw new Error("screenshot_retry job payload missing summaryTaskId");
     }
-    await this.runRebuild(payload.summaryTaskId);
+    await this.screenshotRetry.run(payload.summaryTaskId);
   }
 
   private async handleAnalyzeJob(job: WorkerJobRecord): Promise<void> {
@@ -840,136 +842,6 @@ export class AnalysisTriggerService implements OnModuleInit {
 
   async deleteAiSummaryTask(id: number): Promise<boolean> {
     return this.db.deleteAiSummaryTask(id);
-  }
-
-  /**
-   * 使用已存储的 LLM 返回内容（raw_response）重建总结报告与截图，不调用 LLM。
-   * 调用方（控制器）应先经 tryStartRebuild 认领；本方法 finally 中统一释放。
-   * 失败不改写记录状态（非破坏性，仅记录日志）。
-   */
-  async runRebuild(id: number): Promise<void> {
-    try {
-      const record = await this.db.getAiSummaryTaskById(id);
-      if (!record) {
-        this.logger.warn(
-          createLogMessage("Summary rebuild aborted because record was not found", {
-            id,
-          }),
-        );
-        return;
-      }
-      if (record.status !== "completed" || !record.rawResponse) {
-        this.logger.warn(
-          createLogMessage("Summary rebuild aborted because record is not rebuildable", {
-            id,
-            status: record.status,
-            hasRawResponse: Boolean(record.rawResponse),
-          }),
-        );
-        return;
-      }
-      if (!record.bvid || typeof record.cid !== "number") {
-        this.logger.warn(
-          createLogMessage("Summary rebuild aborted because record lacks video identity", {
-            id,
-            bvid: record.bvid,
-            cid: record.cid,
-          }),
-        );
-        return;
-      }
-
-      const task = await this.db.findLatestTaskByBvidAndCid(
-        record.bvid,
-        record.cid,
-      );
-      if (!task || !task.bvid || typeof task.cid !== "number") {
-        throw new Error("无对应的下载任务，无法重新构建");
-      }
-      const outputFile = resolveFromDownloadRoot(
-        task.outputFile,
-        this.paths.DOWNLOAD_ROOT,
-      );
-      if (!outputFile || !(await this.downloadService.fileExists(outputFile))) {
-        throw new Error("视频文件不存在，无法重新构建截图");
-      }
-
-      const now = new Date().toISOString();
-      const input: AnalysisInput = {
-        videoPath: outputFile,
-        screenshotVideoPath: outputFile,
-        summaryDir: this.resolveSummaryDir(task),
-        videoTitle: task.title || `${task.bvid}-${task.cid}`,
-        metadata: {
-          type: "bilibili",
-          videoUrl: `https://www.bilibili.com/video/${task.bvid}`,
-          bvid: task.bvid,
-          cid: task.cid,
-        },
-      };
-      const engine = new AnalysisEngine(
-        undefined,
-        undefined,
-        this.analysisVideoResolver,
-      );
-      const result = await engine.rebuild(
-        input,
-        record.rawResponse,
-        record.modelName ?? "",
-      );
-
-      // rebuild 不经 claim、无开始态 upsert，写终态前显式重置完整性结果（重新生成即失效）
-      await this.db.resetAiSummaryTaskIntegrity(id);
-
-      await this.upsertAiSummaryTask(task, {
-        status: "completed",
-        errorMessage: "",
-        executionTiming: JSON.stringify(result.timing),
-        lastTriggeredAt: now,
-        lastCompletedAt: new Date().toISOString(),
-      });
-      void this.knowledgePublisher
-        .publishInline({
-          bvid: record.bvid,
-          cid: record.cid,
-          videoTitle: task.title || `${record.bvid}-${record.cid}`,
-          videoUrl: `https://www.bilibili.com/video/${record.bvid}`,
-          modelName: record.modelName ?? undefined,
-          rawResponse: record.rawResponse,
-          segments: result.segments,
-        })
-        .catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : String(err);
-          this.logger.error(
-            createLogMessage("Knowledge publish trigger failed (rebuild)", {
-              id,
-              bvid: record.bvid,
-              cid: record.cid,
-              error: message,
-            }),
-          );
-        });
-      this.logger.log(
-        createLogMessage("Summary rebuild completed", {
-          id,
-          bvid: record.bvid,
-          cid: record.cid,
-          summaryPath: result.summaryPath,
-          segmentCount: result.segmentCount,
-          emptySummary: result.emptySummary,
-        }),
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        createLogMessage("Summary rebuild failed", {
-          id,
-          error: msg,
-        }),
-        err instanceof Error ? err.stack : undefined,
-      );
-      // 非破坏性：不改写记录状态
-    }
   }
 
   private parseExecutionTiming(raw?: string): AiSummaryExecutionTiming | undefined {
