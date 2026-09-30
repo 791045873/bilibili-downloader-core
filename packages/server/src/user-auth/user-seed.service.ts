@@ -2,10 +2,7 @@ import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { createLogMessage } from "../logging/server-log.util.js";
 import { hashPassword } from "./password.util.js";
-
-export const ADMIN_USERNAME = "admin";
-export const ROLE_ADMIN = "admin";
-export const ROLE_USER = "user";
+import { ADMIN_USERNAME, ROLE_ADMIN } from "./auth.constants.js";
 
 /**
  * 启动引导：幂等播种内置 admin + 存量会话归属回填。

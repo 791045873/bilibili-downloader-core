@@ -59,17 +59,19 @@ Exit Criteria:
 
 ### Stage 2 - auth 核心（登录/登出/me + session + 锁定）
 
-Status: planned
+Status: done
 Targets: 新增 `auth/`（AuthService、AuthController）、cookie 处理
 - Item Types: `Add`
 - Prereqs: Stage 1
-- [ ] `Add`：`AuthService`——scrypt hash/verify（timingSafeEqual）、创建/校验/吊销 session、IP 登录失败锁定（内存）、当前用户解析。
-- [ ] `Add`：`AuthController`（`api/auth`，与既有 B站扫码控制器共存，全路径不冲突）——`POST /api/auth/login`（校验+锁定+置 HttpOnly cookie）、`POST /api/auth/logout`（吊销+清 cookie）、`GET /api/auth/me`（返回当前用户或 401）。登录失败返回**通用错误**（不区分用户名不存在/密码错，抗枚举）。
-- [ ] `Add`（GAP4 cookie 解析）：项目未装 `cookie-parser` 且 `main.ts` 未注册（`main.ts:15-27`）。**采用手动解析 `Cookie` 请求头**读取 `bdl_session`（无新依赖）；写 cookie 用 Express `res.cookie(name,token,{httpOnly:true,sameSite:'lax',secure:生产,path:'/',maxAge})`；登出 `res.clearCookie`。session 设 `expires_at`，校验时判过期，登录/定期 `purgeExpired`。
-- [ ] `Proof`：`typecheck`、`build`。
+- [x] `Add`：`AuthService`——scrypt hash/verify（timingSafeEqual）、创建/校验/吊销 session、IP 登录失败锁定（内存）、当前用户解析。
+- [x] `Add`：`AuthController`（`api/auth`，与既有 B站扫码控制器共存，全路径不冲突）——`POST /api/auth/login`（校验+锁定+置 HttpOnly cookie）、`POST /api/auth/logout`（吊销+清 cookie）、`GET /api/auth/me`（返回当前用户或 401）。登录失败返回**通用错误**（不区分用户名不存在/密码错，抗枚举）。
+- [x] `Add`（GAP4 cookie 解析）：项目未装 `cookie-parser` 且 `main.ts` 未注册（`main.ts:15-27`）。**采用手动解析 `Cookie` 请求头**读取 `bdl_session`（无新依赖）；写 cookie 用 Express `res.cookie(name,token,{httpOnly:true,sameSite:'lax',secure:生产,path:'/',maxAge})`；登出 `res.clearCookie`。session 设 `expires_at`，校验时判过期，登录/定期 `purgeExpired`。
+- [x] `Proof`：`typecheck`、`build`。
+- [x] `Note`（实施记录）：落 `src/user-auth/`——`auth.constants.ts`（cookie 名 `bdl_session`、角色、AuthUser）、`cookie.util.ts`（手动解析 Cookie 头，无新依赖）、`auth.service.ts`、`user-auth.controller.ts`。锁定参数经 env 可调（`LOGIN_MAX_FAILURES`=5、`LOGIN_FAILURE_WINDOW_MINUTES`=15、`LOGIN_BLOCK_MINUTES`=15）；会话 TTL `SESSION_TTL_HOURS`=168。用户名不存在时对哑哈希做等价校验以抹平时序差异。
+
 Exit Criteria:
-- [ ] 登录/登出/me 可用；session 可吊销；token 仅存 hash；同 IP 多次失败被临时封禁。
-- [ ] `docs/logs/` 记录。
+- [x] 登录/登出/me 可用；session 可吊销；token 仅存 hash；同 IP 多次失败被临时封禁。
+- [x] `docs/logs/` 记录。
 
 ### Stage 3 - 守卫与权限落位（后端门禁）
 
