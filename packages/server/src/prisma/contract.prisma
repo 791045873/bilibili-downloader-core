@@ -112,8 +112,11 @@ model Conversation {
   createdAt Timestamptz @default(now()) @map("created_at")
   updatedAt Timestamptz @default(now()) @map("updated_at")
   deletedAt Timestamptz? @map("deleted_at")
+  userId    BigInt?     @map("user_id")
   messages  Message[]
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull, map: "conversation_user_id_fkey")
 
+  @@index([userId], map: "idx_conversation_user_id")
   @@map("conversation")
 }
 
@@ -203,4 +206,32 @@ model WorkerHeartbeat {
   meta       Jsonb?
 
   @@map("worker_heartbeat")
+}
+
+model User {
+  id            BigInt         @id(map: "user_pkey") @default(autoincrement())
+  username      String
+  passwordHash  String         @map("password_hash")
+  role          String
+  createdAt     Timestamptz    @default(now()) @map("created_at")
+  updatedAt     Timestamptz    @default(now()) @map("updated_at")
+  disabledAt    Timestamptz?   @map("disabled_at")
+  conversations Conversation[]
+  sessions      UserSession[]
+
+  @@unique([username], map: "user_username_key")
+  @@map("user")
+}
+
+model UserSession {
+  id        BigInt      @id(map: "user_session_pkey") @default(autoincrement())
+  tokenHash String      @map("token_hash")
+  userId    BigInt      @map("user_id")
+  createdAt Timestamptz @default(now()) @map("created_at")
+  expiresAt Timestamptz @map("expires_at")
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade, map: "user_session_user_id_fkey")
+
+  @@unique([tokenHash], map: "user_session_token_hash_key")
+  @@index([userId], map: "idx_user_session_user_id")
+  @@map("user_session")
 }
