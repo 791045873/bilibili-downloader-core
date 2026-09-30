@@ -124,15 +124,19 @@ Exit Criteria:
 
 ### Stage 5 - 前端登录与会话态
 
-Status: planned
+Status: done
 Targets: `packages/frontend`（登录页、会话态、路由守卫、admin-only UI、401 跳登录）
 - Item Types: `Add | Fix`
 - Prereqs: Stage 2-4
-- [ ] `Add/Fix`：登录页；应用启动查 `/api/auth/me` 建会话态；未登录跳登录；管理类页面/操作仅 admin 可见；user 仅见 QA + 总结整页；401 拦截跳登录；登出。
-- [ ] `Proof`：frontend `typecheck`、`build`。
+- [x] `Add/Fix`：登录页；应用启动查 `/api/auth/me` 建会话态；未登录跳登录；管理类页面/操作仅 admin 可见；user 仅见 QA + 总结整页；401 拦截跳登录；登出。
+- [x] `Proof`：frontend `typecheck`、`build`。
+- [x] `Note`（命名隔离）：登录页落 `/sign-in` + `pages/SignIn.tsx` + `stores/session.ts`，因 `/login` + `stores/auth.ts` 已被 **B站扫码登录**占用；两套会话态互不干扰。
+- [x] `Note`（401 拦截实现）：`api/index.ts` 的 `request()` 统一带 `credentials: "include"`，遇 401 广播 `bdl:unauthorized`（`appMe` boot 探测用 `silentUnauthorized` 抑制）；`stores/session.ts` 监听该事件置 anonymous，App 据此跳登录页——避免在每个调用点重复处理。
+- [x] `Note`（可见性实现）：`NAV_ITEMS` 加 `adminOnly` 标记做导航过滤；App 内再做**路径级门禁**（非 admin 仅 `/qa` 与 `/summary/:bvid/:cid`，其余重定向 `/qa`），即直接输入 URL 也拦得住；B站账号区块仅 admin 可见。
+- [x] `Note`（超出计划的补齐）：新增 `pages/AppUsers.tsx`（`/users`，admin-only）承接 Stage 4 的用户管理接口——需求 `docs/requirements/2026-09-17-user-auth.md:32` 将“用户管理”列为 admin 能力，若无 UI 则只能靠 curl 建用户，普通用户实际无法被创建。
 Exit Criteria:
-- [ ] 登录/登出/会话态可用；admin/user 可见性正确；401 跳登录。
-- [ ] `docs/logs/` 记录。
+- [x] 登录/登出/会话态可用；admin/user 可见性正确；401 跳登录。
+- [x] `docs/logs/` 记录。
 
 ### Stage 6 - 测试、文档与闭合
 

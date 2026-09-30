@@ -16,7 +16,9 @@ export const router = createBrowserRouter([
       { path: "summary/:bvid/:cid", lazy: () => import("./pages/SummaryDetail") },
       { path: "prompts", lazy: () => import("./pages/PromptManager") },
       { path: "settings", lazy: () => import("./pages/Settings") },
+      { path: "users", lazy: () => import("./pages/AppUsers") },
       { path: "login", lazy: () => import("./pages/Login") },
+      { path: "sign-in", lazy: () => import("./pages/SignIn") },
     ],
   },
 ]);

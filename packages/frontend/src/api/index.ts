@@ -15,16 +15,29 @@ import type {
   ParseResultItem,
   TaskEntry,
   UserInfo,
+  AppUser,
+  AppUserListItem,
 } from "../types";
 
 const BASE = "/api";
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
+/** 会话失效广播：由会话 store 监听并跳转登录，避免 api ↔ store 循环依赖 */
+export const UNAUTHORIZED_EVENT = "bdl:unauthorized";
+
+async function request<T>(
+  url: string,
+  options?: RequestInit,
+  meta?: { silentUnauthorized?: boolean },
+): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     ...options,
   });
   if (!res.ok) {
+    if (res.status === 401 && !meta?.silentUnauthorized) {
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    }
     const err = await res.json().catch(() => ({ message: res.statusText }));
     throw new Error(err.message || err.error || `HTTP ${res.status}`);
   }
@@ -449,3 +462,41 @@ export async function deleteChatConversation(conversationId: number): Promise<vo
   await requestRaw(`/chat/conversations/${conversationId}`, { method: "DELETE" });
 }
 
+// ==================== 应用用户会话（小用户系统） ====================
+
+export async function appLogin(
+  username: string,
+  password: string,
+): Promise<{ user: AppUser }> {
+  return request("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export async function appLogout(): Promise<{ ok: boolean }> {
+  return request("/auth/logout", { method: "POST" });
+}
+
+/** 未登录时返回 401；boot 探测不广播失效事件 */
+export async function appMe(): Promise<{ user: AppUser }> {
+  return request("/auth/me", undefined, { silentUnauthorized: true });
+}
+
+export async function listAppUsers(): Promise<{ users: AppUserListItem[] }> {
+  return request("/users");
+}
+
+export async function createAppUser(input: {
+  username: string;
+  password: string;
+  role?: string;
+}): Promise<{ user: AppUser }> {
+  return request("/users", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function disableAppUser(
+  id: number,
+): Promise<{ user: AppUserListItem; sessionsRevoked: number }> {
+  return request(`/users/${id}/disable`, { method: "POST" });
+}

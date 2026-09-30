@@ -317,3 +317,17 @@ export interface ChatSendMessageResponse {
   assistantMessageId: number | null;
   reply: ChatReplyPayload;
 }
+
+/** 应用用户（小用户系统；与 B站账号 UserInfo 无关） */
+export type AppUserRole = "admin" | "user";
+
+export interface AppUser {
+  id: number;
+  username: string;
+  role: AppUserRole | string;
+}
+
+export interface AppUserListItem extends AppUser {
+  createdAt?: string;
+  disabledAt?: string;
+}
