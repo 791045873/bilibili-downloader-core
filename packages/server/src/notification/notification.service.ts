@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import nodemailer, { type Transporter } from "nodemailer";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 
 export interface SummaryNotificationInput {
   title: string;

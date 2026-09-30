@@ -8,7 +8,7 @@ import {
   type DatabaseService,
 } from "../helpers/db.js";
 import { PathsService } from "../../src/paths/paths.service.js";
-import type { TaskRecord } from "../../src/database/database.service.js";
+import type { TaskRecord } from "@bilibili-downloader/server-common";
 import { listLocalImageRefs } from "../../src/analysis/summary-dir.js";
 import {
   SummaryIntegrityService,

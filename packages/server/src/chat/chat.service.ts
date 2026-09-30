@@ -5,14 +5,14 @@
 
 import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { QwenClient, type LlmConfig, type MultimodalContent } from "@bilibili-downloader/adapters";
-import { DatabaseService } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
 import {
   EmbeddingApiError,
   EmbeddingConfigError,
   EmbeddingService,
   normalizeEmbeddingText,
 } from "../knowledge/embedding.service.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 import { parseCitationNumbers } from "./citation.js";
 import { CHAT_FALLBACK_TEXT, getChatConfig } from "./chat-config.js";
 import {

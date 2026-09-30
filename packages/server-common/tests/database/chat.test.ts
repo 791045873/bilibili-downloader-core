@@ -104,7 +104,7 @@ describe("chat conversations", () => {
     expect(messages[0].replyImages).toBeUndefined();
     expect(messages[1].role).toBe("assistant");
     expect(messages[1].replyImages).toEqual([{ url: "https://cos/a.jpg", tipTitle: "t", caption: "c" }]);
-    expect(messages[1].replySources?.[0]).toMatchObject({ videoUrl: "https://bvv", timestampSeconds: 30 });
+    expect((messages[1].replySources as unknown[])[0]).toMatchObject({ videoUrl: "https://bvv", timestampSeconds: 30 });
     expect(messages[1].createdAt).toBeTruthy();
   });
 

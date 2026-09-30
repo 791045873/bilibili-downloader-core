@@ -12,7 +12,7 @@ import {
   EmbeddingService,
   normalizeEmbeddingText,
 } from "./embedding.service.js";
-import { DatabaseService } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
 
 @Controller("api/knowledge")
 export class KnowledgeSearchController {

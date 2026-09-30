@@ -12,20 +12,20 @@ import {
   type AiSummaryTaskRecord,
   type AnalysisSubTaskRecord,
   type TaskRecord,
-} from "../database/database.service.js";
+} from "@bilibili-downloader/server-common";
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { DownloadService } from "../download/download.service.js";
 import { NotificationService } from "../notification/notification.service.js";
 import { sanitizeFileName } from "../download/file-naming.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 import { PromptService } from "./prompt.service.js";
 import { PathsService } from "../paths/paths.service.js";
-import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
+import { resolveFromDownloadRoot } from "@bilibili-downloader/server-common";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
-import { WorkerService } from "../worker/worker.service.js";
+import { WorkerService } from "@bilibili-downloader/server-common";
 import { SummaryIntegrityService } from "./summary-integrity.service.js";
 import { ScreenshotRetryService } from "./screenshot-retry.service.js";
-import type { WorkerJobRecord } from "../database/database.service.js";
+import type { WorkerJobRecord } from "@bilibili-downloader/server-common";
 
 /** AI 总结任务执行耗时明细 */
 export interface AiSummaryExecutionTiming {

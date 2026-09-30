@@ -1,9 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { access } from "node:fs/promises";
-import { DatabaseService, type AiSummaryTaskRecord } from "../database/database.service.js";
+import { DatabaseService, type AiSummaryTaskRecord } from "@bilibili-downloader/server-common";
 import { PathsService } from "../paths/paths.service.js";
-import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { resolveFromDownloadRoot } from "@bilibili-downloader/server-common";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 
 /** integrity_status 取值词表（NULL=未检查） */
 export const INTEGRITY_STATUS = {

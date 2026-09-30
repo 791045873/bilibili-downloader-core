@@ -1,9 +1,9 @@
 import { Injectable, OnModuleInit, Logger } from "@nestjs/common";
 import { DownloadService } from "./download.service.js";
-import { DatabaseService } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import type { DownloadDto } from "./download.dto.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 
 /**
  * 下载任务调度器

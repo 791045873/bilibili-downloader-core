@@ -13,7 +13,7 @@ import {
   UseInterceptors,
 } from "@nestjs/common";
 import { AnyFilesInterceptor } from "@nestjs/platform-express";
-import { DatabaseService } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
 import { getChatConfig } from "./chat-config.js";
 import { ChatPhotoService } from "./chat-photo.service.js";
 import { ChatService } from "./chat.service.js";

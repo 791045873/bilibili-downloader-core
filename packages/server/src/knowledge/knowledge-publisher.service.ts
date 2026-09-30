@@ -12,10 +12,10 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { basename } from "node:path";
-import { DatabaseService } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
 import { CosStoreService } from "./cos-store.service.js";
 import { EmbeddingService, normalizeEmbeddingText } from "./embedding.service.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 import {
   parseTimestampCandidates,
   pickTimestampSeconds,

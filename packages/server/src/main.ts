@@ -5,8 +5,8 @@ import { AppModule } from "./app.module.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { PathsService } from "./paths/paths.service.js";
-import { createLogMessage } from "./logging/server-log.util.js";
-import { FileConsoleLogger } from "./logging/file-logger.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
+import { FileConsoleLogger } from "@bilibili-downloader/server-common";
 
 const PORT = Number.parseInt(process.env.PORT ?? "3100", 10);
 const publicDir = join(process.cwd(), "public");

@@ -7,8 +7,8 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { AnalysisTaskController } from "../../src/analysis/analysis-task.controller.js";
-import type { DatabaseService } from "../../src/database/database.service.js";
-import type { AiSummaryTaskRecord } from "../../src/database/database.service.js";
+import type { DatabaseService } from "@bilibili-downloader/server-common";
+import type { AiSummaryTaskRecord } from "@bilibili-downloader/server-common";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();

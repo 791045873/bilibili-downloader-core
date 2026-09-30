@@ -6,11 +6,6 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../adapters" },
-    { "path": "../server-common" }
-  ]
+  "include": ["src", "src/prisma/contract.json"],
+  "exclude": ["node_modules", "dist"]
 }

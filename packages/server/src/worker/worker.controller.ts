@@ -9,7 +9,7 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
-import { DatabaseService } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
 
 /**
  * worker_job 作业状态查询与取消接口（供前端轮询）。

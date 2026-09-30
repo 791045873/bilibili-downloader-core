@@ -4,7 +4,7 @@ import {
   EmbeddingClient,
   EMBEDDING_BATCH_LIMIT,
 } from "@bilibili-downloader/adapters/embedding";
-import { DatabaseService } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
 
 export const DEFAULT_EMBEDDING_MODEL = "qwen3.7-text-embedding";
 export const DEFAULT_EMBEDDING_DIMENSIONS = 1024;

@@ -13,8 +13,8 @@ import {
   Query,
   Body,
 } from "@nestjs/common";
-import { DatabaseService } from "../database/database.service.js";
-import type { AiSummaryTaskRecord } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
+import type { AiSummaryTaskRecord } from "@bilibili-downloader/server-common";
 import { DownloadService } from "../download/download.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 import { SummaryIntegrityService } from "./summary-integrity.service.js";

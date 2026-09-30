@@ -25,12 +25,12 @@ import {
   type PaginatedTaskResult,
   type TaskRecord,
   type TaskStatusGroup,
-} from "../database/database.service.js";
+} from "@bilibili-downloader/server-common";
 import type { DownloadDto } from "./download.dto.js";
 import { buildOutputFileName } from "./file-naming.js";
 import { decideCreateDedupVerdict } from "./create-dedup.js";
-import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { resolveFromDownloadRoot } from "@bilibili-downloader/server-common";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 
 interface LowResDownloadResult {
   outputFile: string;

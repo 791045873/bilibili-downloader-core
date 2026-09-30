@@ -4,6 +4,7 @@ import {
   OnApplicationShutdown,
   OnModuleInit,
 } from "@nestjs/common";
+import { join, resolve } from "node:path";
 import { Pool, types as pgTypes } from "pg";
 import { Temporal } from "temporal-polyfill";
 import { and, or } from "@prisma/orm-postgres/orm-client";
@@ -14,11 +15,11 @@ import { PrismaService, createPrismaClient } from "./prisma.service.js";
 import {
   BUILTIN_AI_PROMPT_CONTENT,
   BUILTIN_AI_PROMPT_NAME,
-} from "../analysis/prompt-template.js";
+} from "../prompt/builtin-prompt.js";
 import {
   toRelativeDownloadRootPath,
 } from "../paths/path-anchor.js";
-import { PathsService } from "../paths/paths.service.js";
+
 
 pgTypes.setTypeParser(20, (value: string) => Number(value));
 pgTypes.setTypeParser(1114, (value: string) => toIsoTimestamp(value));
@@ -193,10 +194,15 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   private readonly progressBuckets = new Map<number, number>();
   private readonly prismaDb: ReturnType<typeof createPrismaClient>;
   private readonly ownsPrismaClient: boolean;
-  private readonly paths: PathsService;
+  private readonly injectedDownloadRoot?: string;
 
-  constructor(prisma?: PrismaService, paths?: PathsService) {
-    this.paths = paths ?? new PathsService();
+  /**
+   * `downloadRoot` 只用于写入侧把绝对路径规范化为相对锚点；不传则与 `PathsService.DOWNLOAD_ROOT`
+   * 同源、同为 getter 语义（每次求值读 env），以保持既有行为。
+   */
+  constructor(prisma?: PrismaService, downloadRoot?: string) {
+    this.injectedDownloadRoot = downloadRoot;
+
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
       throw new Error(
@@ -217,6 +223,14 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       }),
     );
   }
+
+  private get downloadRoot(): string {
+    return (
+      this.injectedDownloadRoot ??
+      resolve(process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads"))
+    );
+  }
+
 
   async onModuleInit(): Promise<void> {
     await this.connectWithRetry();
@@ -381,7 +395,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     // outputFile 统一存相对 DOWNLOAD_ROOT 的相对路径；根外/遗留绝对值原样保留
     const outputFile =
       fields.outputFile !== undefined
-        ? (toRelativeDownloadRootPath(fields.outputFile, this.paths.DOWNLOAD_ROOT) ??
+        ? (toRelativeDownloadRootPath(fields.outputFile, this.downloadRoot) ??
           fields.outputFile)
         : undefined;
     await this.prismaDb.orm.public.Task.where({ id: BigInt(id) }).update({
@@ -788,7 +802,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   async insertAnalysisSubTask(record: AnalysisSubTaskRecord): Promise<number> {
     // output_file 统一存相对 DOWNLOAD_ROOT 的相对路径；根外/遗留绝对值原样保留
     const outputFile = record.outputFile
-      ? (toRelativeDownloadRootPath(record.outputFile, this.paths.DOWNLOAD_ROOT) ??
+      ? (toRelativeDownloadRootPath(record.outputFile, this.downloadRoot) ??
         record.outputFile)
       : (record.outputFile ?? null);
     const created = await this.prismaDb.orm.public.AnalysisSubTask.create({
@@ -841,7 +855,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     // output_file 统一存相对 DOWNLOAD_ROOT 的相对路径；根外/遗留绝对值原样保留
     const outputFile =
       fields.outputFile !== undefined
-        ? (toRelativeDownloadRootPath(fields.outputFile, this.paths.DOWNLOAD_ROOT) ??
+        ? (toRelativeDownloadRootPath(fields.outputFile, this.downloadRoot) ??
           fields.outputFile)
         : undefined;
 
@@ -1210,7 +1224,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         : (existing?.modelName ?? null);
     // summary_output 统一存相对 DOWNLOAD_ROOT 的相对路径；根外遗留绝对值原样保留
     const summaryOutput = record.summaryOutput
-      ? (toRelativeDownloadRootPath(record.summaryOutput, this.paths.DOWNLOAD_ROOT) ??
+      ? (toRelativeDownloadRootPath(record.summaryOutput, this.downloadRoot) ??
         record.summaryOutput)
       : (record.summaryOutput ?? null);
     await this.prismaDb.orm.public.AiSummaryTask.upsert({

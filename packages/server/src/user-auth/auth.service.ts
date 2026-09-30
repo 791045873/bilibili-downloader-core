@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
-import { DatabaseService } from "../database/database.service.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 import type { AuthUser } from "./auth.constants.js";
 import { verifyPassword } from "./password.util.js";
 

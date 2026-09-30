@@ -52,7 +52,7 @@ Rule:
 | Typecheck / compile check  | `pnpm typecheck`                                      |
 | Build                      | `pnpm build`                                          |
 | Lint / static check        | `none`                                                |
-| Unit tests (server 数据层) | `pnpm --filter @bilibili-downloader/server test`（需测试库：`TEST_DATABASE_URL`，推荐 `docker run --rm -d --name bdl-test-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=bdl_test -p 55432:5432 pgvector/pgvector:pg17`；SDK 包测试：`pnpm --filter bilibili-api-sdk test`） |
+| Unit tests (server 数据层) | `pnpm --filter @bilibili-downloader/server test` + `pnpm --filter @bilibili-downloader/server-common test`（Phase 3 Stage A 起 DB/日志/作业队列测试随 `server-common` 包；两者均需测试库 `TEST_DATABASE_URL`，推荐 `docker run --rm -d --name bdl-test-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=bdl_test -p 55432:5432 pgvector/pgvector:pg17`；SDK 包测试：`pnpm --filter bilibili-api-sdk test`） |
 | E2E / integration tests    | `none`                                                |
 | Docker build               | `pnpm docker:build`                                   |
 

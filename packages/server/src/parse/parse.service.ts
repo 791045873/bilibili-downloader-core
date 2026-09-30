@@ -25,7 +25,7 @@ import {
   type UserSpaceResult,
 } from "@bilibili-downloader/core/ports";
 import { PathsService } from "../paths/paths.service.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 
 @Injectable()
 export class ParseService implements OnModuleInit {

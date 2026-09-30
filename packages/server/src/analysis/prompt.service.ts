@@ -15,8 +15,8 @@ import {
 import {
   DatabaseService,
   type AiPromptRecord,
-} from "../database/database.service.js";
-import { AI_PROMPT_FORMAT_SNIPPET } from "./prompt-template.js";
+} from "@bilibili-downloader/server-common";
+import { AI_PROMPT_FORMAT_SNIPPET } from "@bilibili-downloader/server-common";
 
 @Injectable()
 export class PromptService {

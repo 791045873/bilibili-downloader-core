@@ -13,9 +13,9 @@ import {
 import { DownloadScheduler } from "./download-scheduler.js";
 import { DownloadService } from "./download.service.js";
 import { DownloadDto } from "./download.dto.js";
-import { DatabaseService } from "../database/database.service.js";
-import type { TaskStatusGroup } from "../database/database.service.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
+import type { TaskStatusGroup } from "@bilibili-downloader/server-common";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 
 @Controller("api")
 export class DownloadController {

@@ -12,12 +12,12 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { mkdir } from "node:fs/promises";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
-import { DatabaseService } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
 import { DownloadService } from "../download/download.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 import { PathsService } from "../paths/paths.service.js";
-import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
+import { resolveFromDownloadRoot } from "@bilibili-downloader/server-common";
 import isNil from "lodash/isNil.js";
 
 export interface ScreenshotSourceResolverInput {

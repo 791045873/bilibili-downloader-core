@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { join } from "node:path";
-import type { TaskRecord } from "../src/database/database.service.js";
+import type { TaskRecord } from "@bilibili-downloader/server-common";
 import { PathsService } from "../../src/paths/paths.service.js";
 import {
   initTestDb,

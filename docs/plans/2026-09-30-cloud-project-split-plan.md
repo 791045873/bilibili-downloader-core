@@ -38,19 +38,25 @@
 
 ### Stage A - server-common 抽离（纯重构，无行为变更）
 
-Status: planned
+Status: done
 Targets: 新增 `packages/server-common`；从 `packages/server` 迁出 DB/Prisma、logging、worker_job 仓储、settings/cookie、共享类型/配置；`server` 改依赖 `server-common`
 - Item Types: `Add | Fix`
 - Prereqs: 无（不改部署/不公网暴露）
-- [ ] `Add`：建 `@bilibili-downloader/server-common` 包（tsconfig/exports 比照 `adapters`）。迁入 `DatabaseService`/`PrismaService`/contract 访问、`server-log.util`、worker_job 仓储、settings/cookie 读写、共享 record 类型。
-- [ ] `Fix`（B1 反向依赖）：`DatabaseService` 现 import `../analysis/prompt-template.js`（builtin 提示词播种，`database.service.ts:14-17,219-220`）——将 `prompt-template.ts` 的 builtin 常量迁入 server-common，`analysis` 改从 server-common 引用；消除 `server-common → analysis` 反向边。
-- [ ] `Fix`（B2 路径耦合）：`DatabaseService` 现 import `PathsService` + `path-anchor`（`database.service.ts:19-21,175-176`，写规范化 `toRelativeDownloadRootPath(...,DOWNLOAD_ROOT)`）——将纯函数 `path-anchor.ts` 迁入 server-common，并把 `DOWNLOAD_ROOT` 作为**字符串配置**注入 `DatabaseService`（去掉对 `PathsService` 的 import）；`PathsService` 本体保持 nas-worker 专属。运行期不变（读侧返回原始相对值；云端 createTask 不传 outputFile → 规范化为 no-op）。
-- [ ] `Fix`：`server` 内引用改指向 `server-common`；`prisma:emit` 产物归属与脚本路径对齐（产物随 contract 落 server-common，emit 脚本路径同步）。
-- [ ] `Fix`（S2 测试/产物归属）：随迁移移动相关测试至 server-common——`tests/database/*`、`tests/prisma/prisma-service.test.ts`、`tests/worker/worker-loop.test.ts`、`tests/database/worker-job.test.ts`、`tests/database/settings.test.ts`、`tests/paths/path-anchor.test.ts`；`TEST_DATABASE_URL`/globalSetup 随包对齐。
-- [ ] `Proof`：`pnpm typecheck`、`pnpm build`、`pnpm --filter @bilibili-downloader/server test` 全绿（行为不变）。
+- [x] `Add`：建 `@bilibili-downloader/server-common` 包（tsconfig/exports 比照 `adapters`）。迁入 `DatabaseService`/`PrismaService`/contract 访问、`server-log.util`、worker_job 仓储、settings/cookie 读写、共享 record 类型。
+- [x] `Fix`（B1 反向依赖）：`DatabaseService` 现 import `../analysis/prompt-template.js`（builtin 提示词播种，`database.service.ts:14-17,219-220`）——将 `prompt-template.ts` 的 builtin 常量迁入 server-common，`analysis` 改从 server-common 引用；消除 `server-common → analysis` 反向边。
+- [x] `Fix`（B2 路径耦合）：`DatabaseService` 现 import `PathsService` + `path-anchor`（`database.service.ts:19-21,175-176`，写规范化 `toRelativeDownloadRootPath(...,DOWNLOAD_ROOT)`）——将纯函数 `path-anchor.ts` 迁入 server-common，并把 `DOWNLOAD_ROOT` 作为**字符串配置**注入 `DatabaseService`（去掉对 `PathsService` 的 import）；`PathsService` 本体保持 nas-worker 专属。运行期不变（读侧返回原始相对值；云端 createTask 不传 outputFile → 规范化为 no-op）。
+- [x] `Fix`：`server` 内引用改指向 `server-common`；`prisma:emit` 产物归属与脚本路径对齐（产物随 contract 落 server-common，emit 脚本路径同步）。
+- [x] `Fix`（S2 测试/产物归属）：随迁移移动相关测试至 server-common——`tests/database/*`、`tests/prisma/prisma-service.test.ts`、`tests/worker/worker-loop.test.ts`、`tests/database/worker-job.test.ts`、`tests/database/settings.test.ts`、`tests/paths/path-anchor.test.ts`；`TEST_DATABASE_URL`/globalSetup 随包对齐。
+- [x] `Proof`：`pnpm typecheck`、`pnpm build`、两包 `test` 全绿（行为不变）。
+- [x] `Note`（实施口径）：`DOWNLOAD_ROOT` 注入保留 getter 语义（未注入时每次求值读 `OUTPUT_DIR`），与原 `PathsService.DOWNLOAD_ROOT` 同源同时机，避免构造期固化导致测试/运行差异。
+- [x] `Note`（WorkerService 归属）：generic 轮询循环 `worker.service.ts` 随 worker_job 仓储迁入 server-common（Stage B 由 nas-worker 注册 handler 消费）；`worker.controller.ts`/`worker.module.ts` 留在 server（属云端 HTTP 面）。
+- [x] `Note`（测试归属细化）：`tests/database/` 中 `task`/`analysis-sub-task`/`ai-summary-task`/`summary-integrity`/`screenshot-retry` 仍 import `analysis/*` 与 `PathsService`，留在 server 以避免 `server-common → server` 反向边；其余 8 个 + prisma/worker/paths 共 11 文件 75 用例迁入 server-common。计数守恒：迁移前 28 files / 216 tests = 迁移后 server 17/141 + server-common 11/75。
+- [x] `Note`（prisma 配置双份，刻意）：contract 真源随 DB 层落 `server-common/src/prisma/`；`server/prisma.config.ts` 保留并把 contract 指向 `../server-common/src/prisma/contract.prisma`，使**部署链与 vitest globalSetup 仍能从 server 包执行 `prisma db init`**，本阶段不触碰部署脚本。`prisma:emit` 脚本改由 server-common 拥有。
+- [x] `Note`（顺带修正）：`tests/database/task.test.ts` 原有一处失效 import（`../src/database/...`，因 server 的 `tsc --noEmit` 只 include `src` 而从未被类型检查发现）随迁移修正；server-common 的 typecheck 覆盖 `src` + `tests`，并顺带修掉 `chat.test.ts` 一处 `unknown` 索引的类型错误（仅测试断言写法，无行为变化）。
 Exit Criteria:
-- [ ] server-common 独立可编译；server 经其访问 DB/日志/作业仓储；全量测试绿（零行为变更）。
-- [ ] `docs/logs/` 记录。
+- [x] server-common 独立可编译；server 经其访问 DB/日志/作业仓储；全量测试绿（零行为变更）。
+- [x] `docs/logs/` 记录。
+
 
 ### Stage B - 新建 cloud-server 与 nas-worker 骨架 + 模块搬迁
 
@@ -123,8 +129,16 @@ Exit Criteria:
 
 ### Stage D 部署与公网暴露
 - Classification: `protected-area gate`
-- Why Not Blocking (A-C) Closure: 代码重构（A-C）不改部署、不公网暴露，可独立验证；部署为保护区，需人工批准且以 auth 完成为前置。
+- Why Not Blocking (A-C) Closure: 代码重构（A-C）不改部署、不公网暴露，可独立验证；部署为保护区，需人工批准且以 auth 完成为前置（**auth 已于 2026-09-30 闭合**，仅余人工批准）。
 - Successor Required: `yes`（auth 需求 + 人工批准部署）
+
+### Stage A 已使 `pnpm docker:build` 失效（计划未预见，须在 Stage D 修复）
+- Classification: `protected-area gate`（部署文件变更需人工批准）
+- What Broke: `packages/docker/Dockerfile.server` 仍按单体布局取件——`COPY packages/server/...`（无 server-common）、`COPY --from=builder /app/packages/server/src/prisma/ ./src/prisma/`（contract 已迁至 server-common）、运行镜像内 `prisma.config.ts` 的 contract 相对路径（现为 `../server-common/...`，flatten 后不存在）。容器 CMD 链 `prisma db init` 因此会失败。
+- Why Not Fixed Now: 计划前置门规定「Stage A–C 纯代码重构、不改部署」，且部署文件变更须人工显式批准；本阶段不擅自改 Dockerfile/compose。
+- Consequence Until Fixed: 本地开发/测试/typecheck/build 全部正常；**仅镜像构建与容器部署不可用**（自 Stage A 起到 Stage D 批准前）。
+- Successor Required: `yes`（Stage D：三镜像重写时一并接线 server-common 与 contract 取件路径）
+
 
 ## Closure
 

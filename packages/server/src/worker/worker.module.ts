@@ -1,5 +1,5 @@
 import { Global, Module } from "@nestjs/common";
-import { WorkerService } from "./worker.service.js";
+import { WorkerService } from "@bilibili-downloader/server-common";
 import { WorkerController } from "./worker.controller.js";
 
 @Global()

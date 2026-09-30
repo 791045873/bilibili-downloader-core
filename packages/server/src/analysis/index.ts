@@ -19,4 +19,4 @@ export {
   AI_PROMPT_FORMAT_SNIPPET,
   BUILTIN_AI_PROMPT_CONTENT,
   BUILTIN_AI_PROMPT_NAME,
-} from "./prompt-template.js";
+} from "@bilibili-downloader/server-common";

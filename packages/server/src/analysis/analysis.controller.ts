@@ -14,14 +14,14 @@ import { AnalysisEngine, type AnalysisInput } from "./analysis-engine.js";
 import type { LlmConfig } from "@bilibili-downloader/adapters/llm";
 import type { VideoPage } from "@bilibili-downloader/core/ports";
 import { AnalysisVideoResolver } from "./analysis-video-resolver.js";
-import { DatabaseService } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
 import { DownloadScheduler } from "../download/download-scheduler.js";
 import { DownloadService } from "../download/download.service.js";
 import {
   createLogMessage,
   summarizeText,
-} from "../logging/server-log.util.js";
+} from "@bilibili-downloader/server-common";
 import { PromptService } from "./prompt.service.js";
 
 interface AnalysisRequest {

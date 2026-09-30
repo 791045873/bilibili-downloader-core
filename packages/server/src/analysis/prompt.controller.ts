@@ -19,7 +19,7 @@ import {
   Query,
 } from "@nestjs/common";
 import { PromptService } from "./prompt.service.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 
 @Controller("api/analysis/prompts")
 export class PromptController {

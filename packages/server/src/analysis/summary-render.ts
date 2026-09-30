@@ -10,7 +10,7 @@
 import { ConflictException } from "@nestjs/common";
 import { generateMarkdown, type DocumentInput } from "./document-generator.js";
 import { extractSummaryMeta, type SummaryMeta } from "./summary-dir.js";
-import type { AiSummaryTaskRecord } from "../database/database.service.js";
+import type { AiSummaryTaskRecord } from "@bilibili-downloader/server-common";
 
 export interface SummarySegmentView {
   seq: number;

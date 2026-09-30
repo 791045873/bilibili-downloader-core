@@ -1,4 +1,4 @@
-const { DatabaseService } = await import("../dist/database/database.service.js");
+const { DatabaseService } = await import("@bilibili-downloader/server-common");
 
 const db = new DatabaseService();
 try {

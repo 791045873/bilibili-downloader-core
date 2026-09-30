@@ -12,8 +12,8 @@ import {
   ParseIntPipe,
   Post,
 } from "@nestjs/common";
-import { DatabaseService } from "../database/database.service.js";
-import type { UserRecord } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
+import type { UserRecord } from "@bilibili-downloader/server-common";
 import { AuthService } from "./auth.service.js";
 import { ROLE_ADMIN, ROLE_USER } from "./auth.constants.js";
 import type { AuthUser } from "./auth.constants.js";

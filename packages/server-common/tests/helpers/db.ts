@@ -1,4 +1,4 @@
-import { DatabaseService } from "@bilibili-downloader/server-common";
+import { DatabaseService } from "../../src/database/database.service.js";
 
 export type { DatabaseService };
 

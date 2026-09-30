@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
-import { DatabaseService } from "../database/database.service.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 import { hashPassword } from "./password.util.js";
 import { ADMIN_USERNAME, ROLE_ADMIN } from "./auth.constants.js";
 

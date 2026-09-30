@@ -11,7 +11,6 @@
     "start:debug": "nest start --debug --watch",
     "start:vision-proxy": "node ../../scripts/start-vision-proxy.mjs",
     "start:prod": "node --env-file-if-exists=.env dist/main",
-    "prisma:emit": "prisma contract emit",
     "prisma:seed": "node --env-file-if-exists=.env scripts/seed.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -19,6 +18,7 @@
   "dependencies": {
     "@bilibili-downloader/adapters": "workspace:*",
     "@bilibili-downloader/core": "workspace:*",
+    "@bilibili-downloader/server-common": "workspace:*",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.0",

@@ -13,7 +13,7 @@ import {
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { CosStoreService } from "../knowledge/cos-store.service.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 import { getChatConfig } from "./chat-config.js";
 import type { ChatPhotoFile } from "./chat.types.js";
 

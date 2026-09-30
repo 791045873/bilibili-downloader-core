@@ -7,7 +7,7 @@
 import {
   resolveFromDownloadRoot,
   toRelativeDownloadRootPath,
-} from "../paths/path-anchor.js";
+} from "@bilibili-downloader/server-common";
 
 /**
  * 写侧：把 summary_output 绝对路径转为相对 downloadRoot 的相对路径（POSIX 分隔符）。

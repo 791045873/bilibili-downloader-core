@@ -1,0 +1,40 @@
+{
+  "name": "@bilibili-downloader/server-common",
+  "version": "0.0.1",
+  "description": "云端/NAS 共用的服务端基础设施：DB/Prisma 契约、日志、worker_job 仓储、路径锚点纯函数",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b && node scripts/copy-contract-artifacts.mjs",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "vitest run",
+    "prisma:emit": "prisma contract emit"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@prisma/orm-postgres": "8.0.0-rc.8",
+    "pg": "^8.16.0",
+    "rotating-file-stream": "^3.2.9",
+    "rxjs": "^7.8.1",
+    "temporal-polyfill": "1.0.4"
+  },
+  "devDependencies": {
+    "@prisma/cli-engine": "0.3.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.0",
+    "prisma": "8.0.0-rc.12",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.8"
+  }
+}

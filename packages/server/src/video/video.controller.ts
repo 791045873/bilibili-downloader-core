@@ -9,7 +9,7 @@ import {
 } from "@nestjs/common";
 import type { Response } from "express";
 import { DownloadService } from "../download/download.service.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 
 @Controller("api/video")
 export class VideoController {

@@ -10,7 +10,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import COS from "cos-nodejs-sdk-v5";
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 
 @Injectable()
 export class CosStoreService {

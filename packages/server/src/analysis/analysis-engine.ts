@@ -25,9 +25,9 @@ import {
 import type { DocumentInput } from "./document-generator.js";
 import type { ScreenshotSourceResolver } from "./analysis-video-resolver.js";
 import { parseTimestampCandidates, pickTimestampSeconds } from "./timestamp.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 import { sanitizeFileName } from "../download/file-naming.js";
-import { BUILTIN_AI_PROMPT_CONTENT } from "./prompt-template.js";
+import { BUILTIN_AI_PROMPT_CONTENT } from "@bilibili-downloader/server-common";
 
 function formatSubtitleEntry(entry: SrtEntry): string {
   return `[${entry.index}] ${entry.text}`;

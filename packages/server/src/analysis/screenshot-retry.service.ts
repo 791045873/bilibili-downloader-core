@@ -2,13 +2,13 @@ import { Injectable, Logger } from "@nestjs/common";
 import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { FfmpegScreenshot } from "@bilibili-downloader/adapters/ffmpeg";
-import { DatabaseService } from "../database/database.service.js";
+import { DatabaseService } from "@bilibili-downloader/server-common";
 import { DownloadService } from "../download/download.service.js";
 import { AnalysisVideoResolver } from "./analysis-video-resolver.js";
 import { CosStoreService } from "../knowledge/cos-store.service.js";
 import { PathsService } from "../paths/paths.service.js";
-import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
-import { createLogMessage } from "../logging/server-log.util.js";
+import { resolveFromDownloadRoot } from "@bilibili-downloader/server-common";
+import { createLogMessage } from "@bilibili-downloader/server-common";
 
 export interface RetrySegment {
   seq: number;

@@ -2,8 +2,8 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_INTERCEPTOR } from "@nestjs/core";
 import { PathsModule } from "./paths/paths.module.js";
-import { DatabaseModule } from "./database/database.module.js";
-import { PrismaModule } from "./database/prisma.module.js";
+import { DatabaseModule } from "@bilibili-downloader/server-common";
+import { PrismaModule } from "@bilibili-downloader/server-common";
 import { DownloadModule } from "./download/download.module.js";
 import { AnalysisModule } from "./analysis/analysis.module.js";
 import { ParseModule } from "./parse/parse.module.js";
@@ -11,7 +11,7 @@ import { NotificationModule } from "./notification/notification.module.js";
 import { ChatModule } from "./chat/chat.module.js";
 import { WorkerModule } from "./worker/worker.module.js";
 import { UserAuthModule } from "./user-auth/user-auth.module.js";
-import { RequestLoggingInterceptor } from "./logging/request-logging.interceptor.js";
+import { RequestLoggingInterceptor } from "@bilibili-downloader/server-common";
 
 @Module({
   imports: [

@@ -5,7 +5,7 @@ import {
   renderSummaryFromDb,
   type SummaryView,
 } from "../../src/analysis/summary-render.js";
-import type { AiSummaryTaskRecord } from "../../src/database/database.service.js";
+import type { AiSummaryTaskRecord } from "@bilibili-downloader/server-common";
 
 function task(overrides: Partial<AiSummaryTaskRecord> = {}): AiSummaryTaskRecord {
   return {
