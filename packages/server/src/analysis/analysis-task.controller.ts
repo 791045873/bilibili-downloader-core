@@ -361,10 +361,10 @@ export class AnalysisTaskController {
       throw new NotFoundException("AI 总结任务不存在");
     }
     if (record.status !== "completed") {
-      throw new ConflictException("仅已完成的 AI 总结可使用存储内容重新构建");
+      throw new ConflictException("仅已完成的 AI 总结可重试截图");
     }
     if (!record.rawResponse) {
-      throw new ConflictException("无可用的大模型返回内容，无法重新构建");
+      throw new ConflictException("无可用的大模型返回内容，无法重试截图");
     }
     await this.databaseService.enqueueJob({
       kind: "screenshot_retry",
@@ -375,7 +375,7 @@ export class AnalysisTaskController {
       payload: { summaryTaskId },
     });
 
-    return { message: "重新构建已开始" };
+    return { message: "重试截图已开始" };
   }
 
 }

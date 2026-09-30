@@ -1,6 +1,6 @@
 # 2026-09-30 重试截图（rebuild → screenshot_retry 收窄，作业化执行体）
 
-> Plan Status: planned
+> Plan Status: done
 > Last Reviewed: 2026-09-30
 > Source: `docs/requirements/2026-09-17-screenshot-retry.md`
 > Related: 上游 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Q1 截图重试 / rebuild 收窄）；前置 Phase 1b（screenshot_url 入 DB、截图入 COS）、Phase 2（screenshot_retry 作业化，handler 当前调用旧 runRebuild）；截图源顺序承接 3a/3b
@@ -34,83 +34,83 @@
 
 ### Phase 1 - 数据层：按段回写 + 取段（含 timestamp/summaryId）
 
-Status: planned
+Status: done
 Targets: `packages/server/src/database/database.service.ts`
 
 - Item Types: `Add`
 - Prereqs: 无
-- [ ] `Add`：`updateSegmentScreenshotUrl(summaryId:number, seq:number, url:string|null)` —— raw SQL 或 ORM 更新单段 `screenshot_url`（比照 `updateSummarySegmentEmbeddings` 的按 (summaryId,seq) 更新，不触碰其它列/updated_at 语义）。
-- [ ] `Add`：`getSummarySegmentsForScreenshotRetry(bvid,cid)` → `{ summaryId:number, segments:Array<{seq,timestampSeconds:number|null,screenshotUrl:string|null}> }`（或扩展现有读方法暴露 summaryId+timestampSeconds）。
-- [ ] `Proof`：`typecheck`、`build`。
+- [x] `Add`：`updateSegmentScreenshotUrl(summaryId:number, seq:number, url:string|null)` —— raw SQL 或 ORM 更新单段 `screenshot_url`（比照 `updateSummarySegmentEmbeddings` 的按 (summaryId,seq) 更新，不触碰其它列/updated_at 语义）。
+- [x] `Add`：`getSummarySegmentsForScreenshotRetry(bvid,cid)` → `{ summaryId:number, segments:Array<{seq,timestampSeconds:number|null,screenshotUrl:string|null}> }`（或扩展现有读方法暴露 summaryId+timestampSeconds）。
+- [x] `Proof`：`typecheck`、`build`。
 
 Exit Criteria:
-- [ ] 可按 (summaryId,seq) 精确回写 screenshot_url；可取到段的 timestamp/现有 screenshot_url/summaryId。
-- [ ] `docs/logs/` 记录。
+- [x] 可按 (summaryId,seq) 精确回写 screenshot_url；可取到段的 timestamp/现有 screenshot_url/summaryId。
+- [x] `docs/logs/` 记录。
 
 ### Phase 2 - ScreenshotRetryService + 收窄 handler + 移除旧 rebuild
 
-Status: planned
+Status: done
 Targets: `packages/server/src/analysis/screenshot-retry.service.ts`（新增）、`analysis-trigger.service.ts`、`analysis.module.ts`
 
 - Item Types: `Add | Fix`
 - Prereqs: Phase 1
-- [ ] `Add`：`selectSegmentsForRetry(segments)` 纯函数 —— 返回需重截的段（`screenshotUrl` 空 且 `timestampSeconds` 非空）；导出供测试。
-- [ ] `Add`：`ScreenshotRetryService`（`@Injectable`，deps：DatabaseService、AnalysisVideoResolver、DownloadService、CosStoreService、PathsService；内部 `new FfmpegScreenshot()`）。`run(summaryTaskId)`：
+- [x] `Add`：`selectSegmentsForRetry(segments)` 纯函数 —— 返回需重截的段（`screenshotUrl` 空 且 `timestampSeconds` 非空）；导出供测试。
+- [x] `Add`：`ScreenshotRetryService`（`@Injectable`，deps：DatabaseService、AnalysisVideoResolver、DownloadService、CosStoreService、PathsService；内部 `new FfmpegScreenshot()`）。`run(summaryTaskId)`：
   1. 校验记录 completed + bvid/cid；取段（含 timestamp/summaryId/screenshotUrl）；`selectSegmentsForRetry` 选空截图且有 timestamp 的段；无待处理段直接结束。
   2. **截图源（本地优先，修 B1）**：先经 `findLatestTaskByBvidAndCid` + `downloadService.fileExists` 定位本地高清文件；存在 → 直接以本地文件为截图源（sourceType=local，无 headers）；不存在 → 回退 `AnalysisVideoResolver.resolve({metadata:{type:'bilibili',bvid,cid}})`（其内部远端/已完成本地/重下兜底为既有共享行为，NAS-vs-远端子序不在本期重排，记为下方裁决）。两者都不可得 → 全部段跳过并记 `videoMissing` 类日志，不失败整作业。
   3. 逐段 `takeScreenshots({videoPath:source, timePoints:[timestampSeconds], outputDir:screenshotsDir, filenamePrefix:`segment-${seq}`, headers})`（**修 S1**：prefix 固定 `segment-${seq}`）→ 取 `outputFiles[0]` → `cosStore.upload(local, `summary/${bvid}-${cid}/screenshots/${basename(local)}`)`（确定性 key，同段重截覆盖，幂等）→ `updateSegmentScreenshotUrl(summaryId, seq, url)`。
   4. 每段失败（无 timestamp / 截图失败 / COS 失败）安全跳过并记日志；**不动 summary 文本/向量/段内容/`ai_summary_task` 状态**。COS 未配置（`isConfigured()`=false）→ 整体跳过并告警。本地截图落临时目录（`ANALYSIS_LLM_VIDEO_DIR` 下 `screenshot-retry/{bvid}-{cid}`），仅作上传中间产物。
-- [ ] `Fix`：`handleScreenshotRetryJob` 改调 `screenshotRetryService.run(summaryTaskId)`（注入）；**移除** `runRebuild`（旧全量重建语义已被收窄取代）及其独有依赖（若 `AnalysisEngine`/`resolveSummaryDir` 仍被 `runAnalysis` 使用则保留）。`analysis.module.ts` 注册 `ScreenshotRetryService`。
-- [ ] `Proof`：`typecheck`、`build`。
+- [x] `Fix`：`handleScreenshotRetryJob` 改调 `screenshotRetryService.run(summaryTaskId)`（注入）；**移除** `runRebuild`（旧全量重建语义已被收窄取代）及其独有依赖（若 `AnalysisEngine`/`resolveSummaryDir` 仍被 `runAnalysis` 使用则保留）。`analysis.module.ts` 注册 `ScreenshotRetryService`。
+- [x] `Proof`：`typecheck`、`build`。
 
 Exit Criteria:
-- [ ] screenshot_retry 作业执行纯截图重试；不重跑 LLM、不改内容/向量/状态。
-- [ ] 截图源三级降级；缺失/失败安全跳过；幂等（仅补空段）。
-- [ ] `docs/logs/` 记录。
+- [x] screenshot_retry 作业执行纯截图重试；不重跑 LLM、不改内容/向量/状态。
+- [x] 截图源三级降级；缺失/失败安全跳过；幂等（仅补空段）。
+- [x] `docs/logs/` 记录。
 
 ### Phase 3 - 前端语义对齐
 
-Status: planned
+Status: done
 Targets: `packages/frontend/src/pages/AiSummaryTasks.tsx`（按钮文案/提示）
 
 - Item Types: `Fix`
 - Prereqs: Phase 2
-- [ ] `Fix`：rebuild 按钮文案/确认提示收窄为“重试截图”（补齐缺失截图，不重跑分析）；调用路径不变（`/summary-tasks/:id/rebuild`）。
-- [ ] `Proof`：frontend `typecheck`、`build`。
+- [x] `Fix`：rebuild 按钮文案/确认提示收窄为“重试截图”（补齐缺失截图，不重跑分析）；调用路径不变（`/summary-tasks/:id/rebuild`）。
+- [x] `Proof`：frontend `typecheck`、`build`。
 
 Exit Criteria:
-- [ ] 前端呈现“重试截图”语义，行为与后端一致；调用兼容。
-- [ ] `docs/logs/` 记录。
+- [x] 前端呈现“重试截图”语义，行为与后端一致；调用兼容。
+- [x] `docs/logs/` 记录。
 
 ### Phase 4 - 测试
 
-Status: planned
+Status: done
 Targets: `packages/server/tests/`（新增 screenshot-retry 数据层/纯函数测试）
 
 - Item Types: `Add | Proof`
 - Prereqs: Phase 1-2
-- [ ] `Add`：`selectSegmentsForRetry` 纯函数用例（仅空 screenshot_url 且有 timestamp；有截图/无 timestamp 排除）。
-- [ ] `Add`：数据层用例——`updateSegmentScreenshotUrl` 精确改单段、`getSummarySegmentsForScreenshotRetry` 返回 timestamp/summaryId；不影响其它段/内容。
-- [ ] `Note`：ffmpeg 截图 + COS 上传为外部 IO，不做单测（typecheck/build + 人工核对覆盖）。
-- [ ] `Proof`：server `test` 全绿。
+- [x] `Add`：`selectSegmentsForRetry` 纯函数用例（仅空 screenshot_url 且有 timestamp；有截图/无 timestamp 排除）。
+- [x] `Add`：数据层用例——`updateSegmentScreenshotUrl` 精确改单段、`getSummarySegmentsForScreenshotRetry` 返回 timestamp/summaryId；不影响其它段/内容。
+- [x] `Note`：ffmpeg 截图 + COS 上传为外部 IO，不做单测（typecheck/build + 人工核对覆盖）。
+- [x] `Proof`：server `test` 全绿。
 
 Exit Criteria:
-- [ ] 需求 AC 逐条被测试或人工核对覆盖；testing 每条方向确认或裁决。
-- [ ] `docs/logs/` 记录。
+- [x] 需求 AC 逐条被测试或人工核对覆盖；testing 每条方向确认或裁决。
+- [x] `docs/logs/` 记录。
 
 ### Phase 5 - 文档与闭合
 
-Status: planned
+Status: done
 Targets: `docs/design/app-overview.md`、`docs/architecture/2026-07-06-video-analysis-baseline.md`、`docs/backlog/README.md`、`docs/logs/`
 
 - Item Types: `Fix | Proof`
 - Prereqs: Phase 1-4
-- [ ] `Fix`：owner docs——rebuild 语义收窄为 screenshot_retry（纯截图、补齐缺失、三级降级、不改内容）；backlog 增行标 done。
-- [ ] `Proof`：独立 closure audit（reviewer=none → 独立子代理或 cold-replay，留证）。
+- [x] `Fix`：owner docs——rebuild 语义收窄为 screenshot_retry（纯截图、补齐缺失、三级降级、不改内容）；backlog 增行标 done。
+- [x] `Proof`：独立 closure audit（reviewer=none → 独立子代理或 cold-replay，留证）。
 
 Exit Criteria:
-- [ ] owner docs / backlog / log 一致；testing 每条方向确认或裁决。
-- [ ] closure gates 全绿。
+- [x] owner docs / backlog / log 一致；testing 每条方向确认或裁决。
+- [x] closure gates 全绿。
 
 ## Plan Audit
 
@@ -120,15 +120,15 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] in-scope behavior is complete
-- [ ] relevant docs aligned（app-overview / video-analysis-baseline / backlog / log）
-- [ ] verification has run（server typecheck/build/test、frontend typecheck/build）
-- [ ] `docs/testing/` 文档存在且每条方向确认或裁决
-- [ ] no in-scope item downgraded to deferred/follow-up
-- [ ] plan audit passed（独立子代理或 cold-replay 留证）before implementation
-- [ ] micro-plan exception not applicable（改 API 语义 + 多模块 + 新服务）
-- [ ] text consistency verified
-- [ ] closure audit independent（或 cold-replay 代理留证）
+- [x] in-scope behavior is complete
+- [x] relevant docs aligned（app-overview / video-analysis-baseline / backlog / log）
+- [x] verification has run（server typecheck/build/test、frontend typecheck/build）
+- [x] `docs/testing/` 文档存在且每条方向确认或裁决
+- [x] no in-scope item downgraded to deferred/follow-up
+- [x] plan audit passed（独立子代理或 cold-replay 留证）before implementation
+- [x] micro-plan exception not applicable（改 API 语义 + 多模块 + 新服务）
+- [x] text consistency verified
+- [x] closure audit independent（或 cold-replay 代理留证）
 
 ## Deferred But Adjudicated
 
@@ -149,8 +149,10 @@ Exit Criteria:
 
 ## Closure
 
-Status Note: 待实施后回填。
+Status: done（2026-09-30）
+
+Status Note: Phase 1-5 全部落地并验证。提交序列 801dcf9(plan+testing+audit) → 42c84c6(P1+P2+P4 后端) → 63191b6(P3 前端) → 55396ed(P5 文档/日志) → 收尾（本次：控制器文案收窄 + 计划闭合）。验证：server `typecheck`/`build` 通过、`test` 全量 160 passed；frontend `typecheck`/`build` 通过。
 
 Closure Audit Evidence:
-- Reviewer / Agent: 待回填
-- Evidence: 待回填
+- Reviewer / Agent: 独立子代理（General，fresh-eyes 冷回放，reviewer availability=none）
+- Evidence: 2026-09-30 独立 closure audit，Verdict=PASS-WITH-FIXES。逐条核对 Exit Criteria / Closure Gates / 需求 AC1-6 均 CONFIRMED（file:line 对照 live code）；三命令验证由审计方实跑通过。要求的修复均为非功能性收尾：计划回填（本块）+ 控制器 rebuild 文案收窄为“重试截图”（已改；rawResponse 前置校验按需求保留）。correctness 风险：无功能缺陷；LOW 项（rawResponse 前置略严=需求所定、findLatestTaskByBvidAndCid+fileExists 本地优先、resolver 回退在极端情形可能同步重下=既有共享行为已裁决 out-of-scope）均已知悉。engine.rebuild 变为未用死代码（不在本需求范围，留待后续清理）。
