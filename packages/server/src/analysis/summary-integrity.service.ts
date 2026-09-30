@@ -1,19 +1,60 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { access, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { access } from "node:fs/promises";
 import { DatabaseService, type AiSummaryTaskRecord } from "../database/database.service.js";
 import { PathsService } from "../paths/paths.service.js";
+import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
 import { createLogMessage } from "../logging/server-log.util.js";
-import { listLocalImageRefs, resolveSummaryOutputPath } from "./summary-dir.js";
-
-/** integrity_detail 缺失项展示上限，超出截断并保留总计数 */
-const MAX_DETAIL_ITEMS = 40;
 
 /** integrity_status 取值词表（NULL=未检查） */
 export const INTEGRITY_STATUS = {
   complete: "complete",
+  partial: "partial",
   missing: "missing",
 } as const;
+
+/** 结构化完整性明细（存入 integrity_detail 文本列，JSON 序列化） */
+export interface IntegrityDetail {
+  /** 内容缺失标记：无 summary 头 -> "summary"；零段 -> "segments" */
+  contentMissing: string[];
+  /** 缺失截图的段 seq 列表 */
+  screenshotMissing: number[];
+  /** 视频缺失标记（仅告警）：缺失 -> "video" */
+  videoMissing: string[];
+}
+
+export interface IntegrityJudgeInput {
+  hasSummary: boolean;
+  segmentCount: number;
+  screenshotMissingSeqs: number[];
+  videoMissing: boolean;
+}
+
+/**
+ * 纯函数：由采集到的三类事实判定完整性等级与结构化明细。
+ * 严重度：内容 > 截图 > 视频（视频仅告警，不单独降级）。
+ */
+export function judgeIntegrity(
+  input: IntegrityJudgeInput,
+): { status: string; detail: IntegrityDetail } {
+  const contentMissing: string[] = [];
+  if (!input.hasSummary) {
+    contentMissing.push("summary");
+  } else if (input.segmentCount === 0) {
+    contentMissing.push("segments");
+  }
+  const screenshotMissing = [...input.screenshotMissingSeqs];
+  const videoMissing = input.videoMissing ? ["video"] : [];
+
+  let status: string;
+  if (contentMissing.length > 0) {
+    status = INTEGRITY_STATUS.missing;
+  } else if (screenshotMissing.length > 0) {
+    status = INTEGRITY_STATUS.partial;
+  } else {
+    status = INTEGRITY_STATUS.complete;
+  }
+  return { status, detail: { contentMissing, screenshotMissing, videoMissing } };
+}
 
 async function fileExists(file: string): Promise<boolean> {
   try {
@@ -24,19 +65,14 @@ async function fileExists(file: string): Promise<boolean> {
   }
 }
 
-function truncateDetail(missing: string[]): string {
-  if (missing.length <= MAX_DETAIL_ITEMS) {
-    return missing.join("\n");
-  }
-  return `${missing.slice(0, MAX_DETAIL_ITEMS).join("\n")}\n…共 ${missing.length} 项缺失`;
-}
-
 /**
- * AI 总结本地原始内容完整性检查（md + 相对截图）
+ * AI 总结完整性检查（云端为真源，三类判据）：
+ * - 内容：云 DB `summary` + `summary_segment` 完备（不读本地 md）
+ * - 截图：`summary_segment.screenshot_url` 是否齐全
+ * - 视频：NAS 本地视频文件是否存在（仅告警）
  *
- * 仅由用户手动触发（analysis-task.controller POST /api/summary-tasks/integrity-check），
- * 无自动/定时路径；进程内全局互斥，同一时刻至多一个全量检查。
- * 只读磁盘、不修改任何文件；结果逐条写回 ai_summary_task（不触碰 updated_at）。
+ * 并发去重与状态查询经 worker_job（integrity_check）承担；本服务只读，
+ * 仅写 `integrity_*` 三列（不触碰 updated_at）。结果幂等可覆盖。
  */
 @Injectable()
 export class SummaryIntegrityService {
@@ -46,20 +82,19 @@ export class SummaryIntegrityService {
     private readonly paths: PathsService,
   ) {}
 
-  /**
-   * 全量完整性检查。并发去重与状态查询已迁移至 worker_job（integrity_check）。
-   * 注：其执行判据仍读本地 md，随「完整性检查重定义」需求重写；当前经作业 gated。
-   */
   async run(): Promise<void> {
     const records = await this.db.listCompletedAiSummaryTasks();
     const downloadRoot = this.paths.DOWNLOAD_ROOT;
     let completeCount = 0;
+    let partialCount = 0;
     let missingCount = 0;
     const checkedAt = new Date();
     for (const record of records) {
       const verdict = await this.checkRecord(record, downloadRoot);
       if (verdict.status === INTEGRITY_STATUS.complete) {
         completeCount++;
+      } else if (verdict.status === INTEGRITY_STATUS.partial) {
+        partialCount++;
       } else {
         missingCount++;
       }
@@ -67,7 +102,7 @@ export class SummaryIntegrityService {
         {
           id: record.id!,
           status: verdict.status,
-          detail: verdict.detail,
+          detail: JSON.stringify(verdict.detail),
           checkedAt,
         },
       ]);
@@ -76,6 +111,7 @@ export class SummaryIntegrityService {
       createLogMessage("Summary integrity check finished", {
         total: records.length,
         complete: completeCount,
+        partial: partialCount,
         missing: missingCount,
       }),
     );
@@ -84,33 +120,40 @@ export class SummaryIntegrityService {
   private async checkRecord(
     record: AiSummaryTaskRecord,
     downloadRoot: string,
-  ): Promise<{ status: string; detail: string | null }> {
-    if (!record.summaryOutput) {
-      return { status: INTEGRITY_STATUS.missing, detail: "无输出文档记录" };
-    }
-    const mdPath = resolveSummaryOutputPath(record.summaryOutput, downloadRoot);
-    let content: string;
-    try {
-      content = await readFile(mdPath, "utf-8");
-    } catch {
-      return {
-        status: INTEGRITY_STATUS.missing,
-        detail: "总结文档不存在或不可读",
-      };
-    }
+  ): Promise<{ status: string; detail: IntegrityDetail }> {
+    const summary = await this.db.getSummaryWithSegmentsByResource(
+      record.bvid,
+      record.cid,
+    );
+    const hasSummary = summary != null;
+    const segments = summary?.segments ?? [];
+    const screenshotMissingSeqs = segments
+      .filter((s) => !s.screenshotUrl)
+      .map((s) => s.seq);
+    const videoMissing = await this.isVideoMissing(
+      record.bvid,
+      record.cid,
+      downloadRoot,
+    );
+    return judgeIntegrity({
+      hasSummary,
+      segmentCount: segments.length,
+      screenshotMissingSeqs,
+      videoMissing,
+    });
+  }
 
-    const missing: string[] = [];
-    for (const ref of listLocalImageRefs(content)) {
-      if (!(await fileExists(join(dirname(mdPath), ref)))) {
-        missing.push(ref);
-      }
+  /** NAS 本地视频缺失：无完成下载任务 / 无 outputFile / 文件不存在 均视为缺失（仅告警） */
+  private async isVideoMissing(
+    bvid: string,
+    cid: number,
+    downloadRoot: string,
+  ): Promise<boolean> {
+    const task = await this.db.findCompletedTaskByBvidAndCid(bvid, cid);
+    const abs = resolveFromDownloadRoot(task?.outputFile, downloadRoot);
+    if (!abs) {
+      return true;
     }
-    if (missing.length === 0) {
-      return { status: INTEGRITY_STATUS.complete, detail: null };
-    }
-    return {
-      status: INTEGRITY_STATUS.missing,
-      detail: truncateDetail(missing),
-    };
+    return !(await fileExists(abs));
   }
 }

@@ -23,6 +23,7 @@ import { PathsService } from "../paths/paths.service.js";
 import { resolveFromDownloadRoot } from "../paths/path-anchor.js";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
 import { WorkerService } from "../worker/worker.service.js";
+import { SummaryIntegrityService } from "./summary-integrity.service.js";
 import type { WorkerJobRecord } from "../database/database.service.js";
 
 /** AI 总结任务执行耗时明细 */
@@ -68,6 +69,7 @@ export class AnalysisTriggerService implements OnModuleInit {
     private readonly knowledgePublisher: KnowledgePublisherService,
     private readonly paths: PathsService,
     private readonly worker: WorkerService,
+    private readonly summaryIntegrity: SummaryIntegrityService,
   ) {
     this.llmVideoDir = paths.ANALYSIS_LLM_VIDEO_DIR;
   }
@@ -133,11 +135,8 @@ export class AnalysisTriggerService implements OnModuleInit {
   }
 
   private async handleIntegrityCheckJob(_job: WorkerJobRecord): Promise<void> {
-    // 执行判据 deferred 到「完整性检查重定义」需求；当前仅落地投递/去重/状态机制，
-    // 不运行旧的本地 md 判据（Phase 1b 已停写，会误报全缺失）。
-    this.logger.warn(
-      createLogMessage("integrity_check handler is gated; execution deferred", {}),
-    );
+    // 完整性检查重定义：以云 DB(内容) + screenshot_url(截图) + NAS 视频三类判据执行。
+    await this.summaryIntegrity.run();
   }
 
   private async handleScreenshotRetryJob(job: WorkerJobRecord): Promise<void> {
