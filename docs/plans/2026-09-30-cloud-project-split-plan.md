@@ -72,9 +72,11 @@ Targets: `packages/server` → `packages/cloud-server` + `packages/nas-worker`
 
 #### B-1 清理与删端点
 
-- [ ] `Fix`：删 5 处死注入（`analysis.controller.ts:18,56`、`analysis-video-resolver.ts:56`、`analysis-task.controller.ts:38`）、`download.service.ts:742-748` `getTasks`、no-op 的 `abortControllers`/`abortTask`（含 `download-scheduler.ts:117`）、`download.dto.ts:23-32` `SingleDownloadDto`、`POST /api/analysis/run`（`analysis.controller.ts:63-101`）及其连带死码（`:13/14/16/27-43/55/60/536-594`、`prompt.service.ts:111-129` `resolveForRun`）。
-- [ ] `Note`（须与 Stage C 协调）：`analysis.controller.ts:495-517` `getLlmConfig` 在删 `runAnalyze` 后变无引用，而 Stage C 要改它 → 本片保留并标注「待 Stage C 复用」，Stage C 条目同步指向该行号。
-- [ ] `Proof`：`pnpm typecheck` + `pnpm build` + 两包 `test` 全绿；`rg -n "AnalysisEngine|AnalysisVideoResolver|PromptService" packages/server/src/analysis/analysis.controller.ts` → 0 命中；`rg -n "abortTask|SingleDownloadDto|resolveForRun" packages/*/src` → 0 命中；路由表仅少 `/api/analysis/run`。
+Status: done
+- [x] `Fix`：删 5 处死注入（`analysis.controller.ts:18,56`、`analysis-video-resolver.ts:56`、`analysis-task.controller.ts:38`）、`download.service.ts:742-748` `getTasks`、no-op 的 `abortControllers`/`abortTask`（含 `download-scheduler.ts:117`）、`download.dto.ts:23-32` `SingleDownloadDto`、`POST /api/analysis/run`（`analysis.controller.ts:63-101`）及其连带死码（`:13/14/16/27-43/55/60/536-594`、`prompt.service.ts:111-129` `resolveForRun`）。
+- [x] `Note`（须与 Stage C 协调）：`analysis.controller.ts:495-517` `getLlmConfig` 在删 `runAnalyze` 后变无引用，而 Stage C 要改它 → 本片保留并**已在代码内加注「待 Stage C 复用」**，Stage C 条目须指向该方法。
+- [x] `Proof`：全仓 `typecheck` + `build` 绿；server 17 files/141 tests + server-common 11 files/75 tests（**216 计数不变**）；三条 grep 断言 0 命中；`/api/analysis/run` 已从路由表移除。
+
 
 #### B-2 作业契约下沉 + N2 纯 DB 去重
 
