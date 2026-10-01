@@ -104,7 +104,7 @@ Status: done
 
 #### B-5 建骨架 + 拆类 + 双向搬迁 + 退役 server
 
-- [ ] `Add`：`cloud-server` / `nas-worker` 骨架（**cloud 不 provide `WorkerService`**；nas 的 `registerHandler` 移到构造器以先于轮询）。
+- [x] `Add`（已完成，第 2 子步）：`cloud-server`（HTTP，`NestFactory.create`+listen，**不 provide WorkerService**）/ `nas-worker`（无 HTTP，`createApplicationContext`+shutdown hooks）骨架；均依赖 server-common/adapters/core，`tsc -b` 构建，typecheck/build 绿。**待办**：nas 的 `registerHandler` 移到构造器以先于轮询（随 WorkerService 消费端迁入 nas 时做）。
 - [x] `Add`（已完成，第 1 子步）：`adapters/src/cos`（框架无关 `CosClient` + `resolvePublicUrlPrefix`，比照 `adapters/src/embedding`）；`cos-store.service` 改薄 wrapper、调用点零改动；`cos-nodejs-sdk-v5` 依赖移至 adapters。typecheck/build/测试绿。**待办**：下沉 `normalizeEmbeddingText` 等 embedding 易漂移项（随 nas 搬迁时做）。不扩 server-common 职责、不改需求。
 - [ ] `Fix`：三大类拆分——`AnalysisTriggerService`（903 行）→ cloud `analysis-job-producer.service.ts` + `ai-summary-query.service.ts` / nas `analysis-job-handlers.service.ts` + `analysis-executor.service.ts`（`claimAiSummaryTask` 与执行同侧同窗口；`reconcileStaleAnalysisState` 留 nas）；`DownloadService`（947 行）与 `DownloadScheduler` 按底图拆；`document-generator.ts` 两侧各一份并互标「渲染输出须逐字节一致」。
 - [ ] `Fix`（N4 扩大口径）：cloud 侧三处 `PathsService` 残留全部解除——`COOKIE_FILE_PATH`（改 `app_settings` 物化或独立 env）、`BILI_API_CACHE_DIR`（cloud 独立 cache dir 配置）、`main.ts:24-25/32`（删 `SUMMARY_BASE_DIR` mkdir 与 DOWNLOAD_ROOT 日志）。

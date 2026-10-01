@@ -121,3 +121,14 @@ contract 真源随 DB 层落 server-common，`prisma:emit` 脚本改由 server-c
 - 全仓 typecheck/build 绿；server 17 files / 138 tests（含 COS 路径的 `knowledge/vector-search`、`chat/photo-compress`）全绿；无行为变化。
 
 > 说明：B-5 其余步骤（建 cloud-server/nas-worker 骨架、拆 AnalysisTriggerService/DownloadService/DownloadScheduler 三大类、cloud/nas 双向搬迁、`packages/server` 退役）为后续子步，仍待实施。
+
+
+## Stage B-5（进行中）— 第 2 步：建 cloud-server / nas-worker 骨架
+
+- 新增 `packages/cloud-server`：对外 HTTP 应用骨架（`NestFactory.create` + `listen`），`AppModule` 仅 `ConfigModule.forRoot`，静态资源挂载保留（非媒体目录）。**不 provide WorkerService**（队列消费归 nas）。
+- 新增 `packages/nas-worker`：无 HTTP 的应用上下文骨架（`NestFactory.createApplicationContext` + `enableShutdownHooks`），`AppModule` 仅 `ConfigModule.forRoot`。
+- 两包均 `workspace:*` 依赖 `server-common`/`adapters`/`core`，`tsconfig` references 对齐，`tsc -b` 构建；日志复用 server-common 的 `FileConsoleLogger`。
+- `packages/server` 保持不动、仍是当前唯一真实应用；两骨架目前为空壳，待后续子步迁入模块。
+
+### 验证
+- `pnpm install` 纳入两新包（workspace 10 projects）；`pnpm typecheck`、`pnpm build` 全绿（含 cloud-server/nas-worker）；server 测试不受影响。
