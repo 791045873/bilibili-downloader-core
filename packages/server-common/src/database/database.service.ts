@@ -2216,8 +2216,8 @@ export async function verifySchemaTables(query: {
   if (missingTables.length > 0) {
     throw new Error(
       `Database schema is missing tables: ${missingTables.join(", ")}. ` +
-        `For a fresh database run: pnpm --filter @bilibili-downloader/server exec prisma db init --db <DATABASE_URL>. ` +
-        `To adopt an existing database run: pnpm --filter @bilibili-downloader/server exec prisma db sign --db <DATABASE_URL>. ` +
+        `For a fresh database run: pnpm --filter @bilibili-downloader/cloud-server exec prisma db init --db <DATABASE_URL>. ` +
+        `To adopt an existing database run: pnpm --filter @bilibili-downloader/cloud-server exec prisma db sign --db <DATABASE_URL>. ` +
         `For schema evolution see packages/server/prisma/baseline/README.md.`,
     );
   }
@@ -2229,7 +2229,7 @@ export async function verifySchemaTables(query: {
   if (missingColumns.length > 0) {
     throw new Error(
       `Database schema is stale: ai_summary_task is missing columns: ${missingColumns.join(", ")}. ` +
-        `Run: pnpm --filter @bilibili-downloader/server exec prisma db update --db <DATABASE_URL> then prisma db sign --db <DATABASE_URL>.`,
+        `Run: pnpm --filter @bilibili-downloader/cloud-server exec prisma db update --db <DATABASE_URL> then prisma db sign --db <DATABASE_URL>.`,
     );
   }
   const convColumns = await query(
@@ -2242,7 +2242,7 @@ export async function verifySchemaTables(query: {
   if (missingConvColumns.length > 0) {
     throw new Error(
       `Database schema is stale: conversation is missing columns: ${missingConvColumns.join(", ")}. ` +
-        `Run: pnpm --filter @bilibili-downloader/server exec prisma db migrate --db <DATABASE_URL>.`,
+        `Run: pnpm --filter @bilibili-downloader/cloud-server exec prisma db migrate --db <DATABASE_URL>.`,
     );
   }
 }
