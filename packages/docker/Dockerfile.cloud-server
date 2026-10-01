@@ -3,7 +3,7 @@
 ARG APT_MIRROR=http://mirrors.tuna.tsinghua.edu.cn
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 
-# ---- Stage 1: Build Node and frontend ----
+# ---- Stage 1: Build Node backend (cloud-server) + frontend ----
 FROM node:24.16.0-bookworm-slim AS builder
 
 ARG APT_MIRROR
@@ -34,11 +34,14 @@ RUN --mount=type=cache,id=bilibili-corepack,target=/root/.cache/node/corepack \
     corepack enable
 WORKDIR /app
 
+# frozen-lockfile 安装需要全部 workspace 包的 package.json 都存在
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json tsconfig.base.json ./
 COPY packages/bilibili-api-sdk/package.json packages/bilibili-api-sdk/tsconfig.json packages/bilibili-api-sdk/
 COPY packages/core/package.json packages/core/tsconfig.json packages/core/
 COPY packages/adapters/package.json packages/adapters/tsconfig.json packages/adapters/
-COPY packages/server/package.json packages/server/tsconfig.json packages/server/
+COPY packages/server-common/package.json packages/server-common/tsconfig.json packages/server-common/
+COPY packages/cloud-server/package.json packages/cloud-server/tsconfig.json packages/cloud-server/
+COPY packages/nas-worker/package.json packages/nas-worker/tsconfig.json packages/nas-worker/
 COPY packages/frontend/package.json packages/frontend/tsconfig.json packages/frontend/vite.config.ts packages/frontend/
 COPY packages/docker/package.json packages/docker/
 COPY packages/vision-proxy/package.json packages/vision-proxy/
@@ -50,10 +53,12 @@ RUN --mount=type=cache,id=bilibili-pnpm-store,target=/pnpm/store \
     if [ -n "$NPM_REGISTRY" ]; then pnpm config set registry "$NPM_REGISTRY"; fi; \
     pnpm install --frozen-lockfile --ignore-scripts
 
+# 只拷贝构建 cloud-server + frontend 所需源码（不含 nas-worker 源码）
 COPY packages/bilibili-api-sdk/ packages/bilibili-api-sdk/
 COPY packages/core/ packages/core/
 COPY packages/adapters/ packages/adapters/
-COPY packages/server/ packages/server/
+COPY packages/server-common/ packages/server-common/
+COPY packages/cloud-server/ packages/cloud-server/
 COPY packages/frontend/ packages/frontend/
 
 RUN --mount=type=cache,id=bilibili-pnpm-store,target=/pnpm/store \
@@ -65,13 +70,14 @@ RUN pnpm rebuild esbuild
 RUN pnpm --filter bilibili-api-sdk build
 RUN pnpm --filter @bilibili-downloader/core build
 RUN pnpm --filter @bilibili-downloader/adapters build
-RUN pnpm --filter @bilibili-downloader/server build
+RUN pnpm --filter @bilibili-downloader/server-common build
+RUN pnpm --filter @bilibili-downloader/cloud-server build
 RUN pnpm --filter @bilibili-downloader/frontend build
 RUN --mount=type=cache,id=bilibili-pnpm-store,target=/pnpm/store \
-    pnpm --filter @bilibili-downloader/server deploy --prod --legacy --ignore-scripts /app/runtime
+    pnpm --filter @bilibili-downloader/cloud-server deploy --prod --legacy --ignore-scripts /app/runtime
 
-# ---- Stage 2: Server runtime (Node + frontend + FFmpeg) ----
-FROM node:24.16.0-bookworm-slim AS server
+# ---- Stage 2: cloud-server runtime (Node + frontend static, 无 ffmpeg / 无 Python) ----
+FROM node:24.16.0-bookworm-slim AS cloud-server
 
 ARG APT_MIRROR
 
@@ -92,27 +98,29 @@ RUN --mount=type=cache,id=bilibili-apt-archives,target=/var/cache/apt,sharing=lo
         /etc/apt/sources.list.d/debian.sources; \
     fi; \
     apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates ffmpeg tini; \
+    apt-get install -y --no-install-recommends ca-certificates tini; \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY --from=builder /app/runtime ./
 COPY --from=builder /app/packages/frontend/dist ./public
-COPY --from=builder /app/packages/server/prisma.config.ts ./prisma.config.ts
-COPY --from=builder /app/packages/server/src/prisma/ ./src/prisma/
-COPY --from=builder /app/packages/server/scripts/ensure-pgvector.mjs ./scripts/ensure-pgvector.mjs
+COPY --from=builder /app/packages/cloud-server/prisma.config.ts ./prisma.config.ts
+# prisma.config.ts 写死 contract 相对路径 ../server-common/src/prisma/contract.prisma；
+# 相对 /app/prisma.config.ts 落在镜像内 /server-common/src/prisma/，故把 contract 放到该处。
+COPY --from=builder /app/packages/server-common/src/prisma/ /server-common/src/prisma/
+COPY --from=builder /app/packages/server-common/scripts/ensure-pgvector.mjs ./scripts/ensure-pgvector.mjs
 
-RUN mkdir -p /download /download/logs
+RUN mkdir -p /app/logs /download
 
 EXPOSE 3000
 ENV PORT=3000 \
     OUTPUT_DIR=/download \
-    LOG_DIR=/download/logs \
-    MAX_CONCURRENT_DOWNLOADS=10
+    LOG_DIR=/app/logs
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || '3000') + '/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
+# cloud-server 为 schema 属主：用特权 DATABASE_URL 建表 + 幂等播种，再启动 HTTP。
 CMD ["sh", "-c", "node node_modules/prisma/dist/prisma.js db init --verbose && node scripts/ensure-pgvector.mjs && exec node --env-file-if-exists=.env /app/dist/main.js"]

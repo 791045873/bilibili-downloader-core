@@ -1,0 +1,110 @@
+# syntax=docker/dockerfile:1.7
+
+ARG APT_MIRROR=http://mirrors.tuna.tsinghua.edu.cn
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
+# ---- Stage 1: Build Node backend (nas-worker) ----
+FROM node:24.16.0-bookworm-slim AS builder
+
+ARG APT_MIRROR
+ARG NPM_REGISTRY
+
+RUN --mount=type=cache,id=bilibili-apt-archives,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=bilibili-apt-lists,target=/var/lib/apt/lists,sharing=locked \
+    set -eux; \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    if [ -n "$APT_MIRROR" ]; then \
+      case "$APT_MIRROR" in http://*|https://*) ;; *) exit 1 ;; esac; \
+      mirror_host="${APT_MIRROR#http://}"; \
+      mirror_host="${mirror_host#https://}"; \
+      case "$mirror_host" in ""|*/*|*@*|*[[:space:]]*) exit 1 ;; esac; \
+      sed -i \
+        -e "s#http://deb.debian.org#${APT_MIRROR%/}#g" \
+        -e "s#https://deb.debian.org#${APT_MIRROR%/}#g" \
+        -e "s#http://security.debian.org#${APT_MIRROR%/}#g" \
+        -e "s#https://security.debian.org#${APT_MIRROR%/}#g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates python3 make g++
+
+# corepack 下载 pnpm 走 npmmirror，避免访问 registry.npmjs.org 卡住
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+RUN --mount=type=cache,id=bilibili-corepack,target=/root/.cache/node/corepack \
+    corepack enable
+WORKDIR /app
+
+# frozen-lockfile 安装需要全部 workspace 包的 package.json 都存在
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json tsconfig.base.json ./
+COPY packages/bilibili-api-sdk/package.json packages/bilibili-api-sdk/tsconfig.json packages/bilibili-api-sdk/
+COPY packages/core/package.json packages/core/tsconfig.json packages/core/
+COPY packages/adapters/package.json packages/adapters/tsconfig.json packages/adapters/
+COPY packages/server-common/package.json packages/server-common/tsconfig.json packages/server-common/
+COPY packages/cloud-server/package.json packages/cloud-server/tsconfig.json packages/cloud-server/
+COPY packages/nas-worker/package.json packages/nas-worker/tsconfig.json packages/nas-worker/
+COPY packages/frontend/package.json packages/frontend/tsconfig.json packages/frontend/vite.config.ts packages/frontend/
+COPY packages/docker/package.json packages/docker/
+COPY packages/vision-proxy/package.json packages/vision-proxy/
+COPY scripts/check-ffmpeg.mjs scripts/setup-vision-proxy.mjs scripts/
+
+RUN --mount=type=cache,id=bilibili-pnpm-store,target=/pnpm/store \
+    set -eux; \
+    pnpm config set store-dir /pnpm/store; \
+    if [ -n "$NPM_REGISTRY" ]; then pnpm config set registry "$NPM_REGISTRY"; fi; \
+    pnpm install --frozen-lockfile --ignore-scripts
+
+# 只拷贝构建 nas-worker 所需源码（不含 cloud-server / frontend 源码）
+COPY packages/bilibili-api-sdk/ packages/bilibili-api-sdk/
+COPY packages/core/ packages/core/
+COPY packages/adapters/ packages/adapters/
+COPY packages/server-common/ packages/server-common/
+COPY packages/nas-worker/ packages/nas-worker/
+
+RUN --mount=type=cache,id=bilibili-pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile --offline --ignore-scripts
+
+RUN pnpm --filter bilibili-api-sdk build
+RUN pnpm --filter @bilibili-downloader/core build
+RUN pnpm --filter @bilibili-downloader/adapters build
+RUN pnpm --filter @bilibili-downloader/server-common build
+RUN pnpm --filter @bilibili-downloader/nas-worker build
+RUN --mount=type=cache,id=bilibili-pnpm-store,target=/pnpm/store \
+    pnpm --filter @bilibili-downloader/nas-worker deploy --prod --legacy --ignore-scripts /app/runtime
+
+# ---- Stage 2: nas-worker runtime (Node + FFmpeg, 无 frontend / 无 Python / 不建库) ----
+FROM node:24.16.0-bookworm-slim AS nas-worker
+
+ARG APT_MIRROR
+
+RUN --mount=type=cache,id=bilibili-apt-archives,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=bilibili-apt-lists,target=/var/lib/apt/lists,sharing=locked \
+    set -eux; \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    if [ -n "$APT_MIRROR" ]; then \
+      case "$APT_MIRROR" in http://*|https://*) ;; *) exit 1 ;; esac; \
+      mirror_host="${APT_MIRROR#http://}"; \
+      mirror_host="${mirror_host#https://}"; \
+      case "$mirror_host" in ""|*/*|*@*|*[[:space:]]*) exit 1 ;; esac; \
+      sed -i \
+        -e "s#http://deb.debian.org#${APT_MIRROR%/}#g" \
+        -e "s#https://deb.debian.org#${APT_MIRROR%/}#g" \
+        -e "s#http://security.debian.org#${APT_MIRROR%/}#g" \
+        -e "s#https://security.debian.org#${APT_MIRROR%/}#g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates ffmpeg tini; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /app/runtime ./
+
+RUN mkdir -p /download /download/logs
+
+ENV OUTPUT_DIR=/download \
+    LOG_DIR=/download/logs
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# nas-worker 用受限角色、不建 schema（由 cloud-server 建）；无对外 HTTP。
+CMD ["sh", "-c", "exec node --env-file-if-exists=.env /app/dist/main.js"]

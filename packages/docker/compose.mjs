@@ -1,5 +1,6 @@
-// 镜像版本解析与 docker 命令派发：镜像 tag = 对应包 package.json 的 version（server/vision-proxy 各取自身包），每次构建显式指定。
-// SERVER_VERSION / VISION_PROXY_VERSION 环境变量可覆盖包版本（如发测试 tag）。
+// 镜像版本解析与 docker 命令派发：镜像 tag = 对应包 package.json 的 version
+// （cloud-server / nas-worker / vision-proxy 各取自身包），每次构建显式指定。
+// CLOUD_SERVER_VERSION / NAS_WORKER_VERSION / VISION_PROXY_VERSION 环境变量可覆盖包版本（如发测试 tag）。
 // 版本同步写入本目录 .env（保留用户其他配置行），使直接 docker compose 命令也可用。
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -9,31 +10,30 @@ import { fileURLToPath } from "node:url";
 const dockerDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(dockerDir, "../..");
 
-function readServerVersion() {
-  const pkg = JSON.parse(
-    readFileSync(join(root, "packages/server/package.json"), "utf8"),
-  );
-  return pkg.version;
-}
-
-function readVisionProxyVersion() {
-  const pkg = JSON.parse(
-    readFileSync(join(root, "packages/vision-proxy/package.json"), "utf8"),
-  );
-  if (!pkg.version)
-    throw new Error("packages/vision-proxy/package.json 缺少 version 字段");
+function readPkgVersion(pkgPath) {
+  const pkg = JSON.parse(readFileSync(join(root, pkgPath), "utf8"));
+  if (!pkg.version) throw new Error(`${pkgPath} 缺少 version 字段`);
   return pkg.version;
 }
 
 const versions = {
-  SERVER_VERSION: process.env.SERVER_VERSION ?? readServerVersion(),
+  CLOUD_SERVER_VERSION:
+    process.env.CLOUD_SERVER_VERSION ??
+    readPkgVersion("packages/cloud-server/package.json"),
+  NAS_WORKER_VERSION:
+    process.env.NAS_WORKER_VERSION ??
+    readPkgVersion("packages/nas-worker/package.json"),
   VISION_PROXY_VERSION:
-    process.env.VISION_PROXY_VERSION ?? readVisionProxyVersion(),
+    process.env.VISION_PROXY_VERSION ??
+    readPkgVersion("packages/vision-proxy/package.json"),
 };
 
-// 统一仓库命名：server 用版本号作 tag，vision-proxy 用 vision-proxy-<版本> 作 tag
-const serverImage = `bilibili-downloader:${versions.SERVER_VERSION}`;
-const visionProxyImage = `bilibili-downloader:vision-proxy-${versions.VISION_PROXY_VERSION}`;
+// 统一仓库命名：<目标>-<版本> 作 tag
+const images = {
+  "cloud-server": `bilibili-downloader:cloud-server-${versions.CLOUD_SERVER_VERSION}`,
+  "nas-worker": `bilibili-downloader:nas-worker-${versions.NAS_WORKER_VERSION}`,
+  "vision-proxy": `bilibili-downloader:vision-proxy-${versions.VISION_PROXY_VERSION}`,
+};
 
 const TAG_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
 for (const [name, value] of Object.entries(versions)) {
@@ -45,7 +45,7 @@ for (const [name, value] of Object.entries(versions)) {
   }
 }
 
-// 合并写 .env：仅更新/追加版本两键，保留用户自定义行
+// 合并写 .env：仅更新/追加三版本键，保留用户自定义行
 const envPath = join(dockerDir, ".env");
 const existing = (() => {
   try {
@@ -70,11 +70,11 @@ while (lines.length && lines[lines.length - 1] === "") lines.pop();
 writeFileSync(envPath, lines.join("\n") + "\n");
 
 console.log(
-  `[compose.mjs] server=${versions.SERVER_VERSION} vision-proxy=${versions.VISION_PROXY_VERSION}`,
+  `[compose.mjs] cloud-server=${versions.CLOUD_SERVER_VERSION} nas-worker=${versions.NAS_WORKER_VERSION} vision-proxy=${versions.VISION_PROXY_VERSION}`,
 );
 
 const env = { ...process.env, ...versions };
-const [cmd, ...args] = process.argv.slice(2);
+const [cmd] = process.argv.slice(2);
 
 function run(argv) {
   const r = spawnSync("docker", argv, {
@@ -89,39 +89,41 @@ function run(argv) {
   process.exit(r.status ?? 1);
 }
 
-if (cmd === "build-server" || cmd === "build-vision-proxy") {
+const BUILD_TARGETS = new Set(["cloud-server", "nas-worker", "vision-proxy"]);
+
+if (cmd && cmd.startsWith("build-")) {
   const target = cmd.replace("build-", "");
+  if (!BUILD_TARGETS.has(target)) {
+    console.error(`[compose.mjs] 未知构建目标：${target}`);
+    process.exit(1);
+  }
   run([
     "build",
-    // 镜像面向 amd64 NAS 部署，跨架构机器（如 Apple Silicon）构建时固定平台
+    // 镜像面向 amd64 部署，跨架构机器（如 Apple Silicon）构建时固定平台
     "--platform",
     "linux/amd64",
     "-f",
     `Dockerfile.${target}`,
     "-t",
-    target === "server" ? serverImage : visionProxyImage,
+    images[target],
     "../..",
   ]);
-} else if (
-  cmd === "save" ||
-  cmd === "save-server" ||
-  cmd === "save-vision-proxy"
-) {
-  const images =
-    cmd === "save"
-      ? [serverImage, visionProxyImage]
-      : [cmd === "save-server" ? serverImage : visionProxyImage];
-  const outDir =
-    cmd === "save" ? join(root, "dist") : join(root, "dist", "docker");
-  const outFile =
-    cmd === "save"
-      ? "bilibili-downloader-images.tar"
-      : `${cmd.replace("save-", "bilibili-downloader-")}_linux-amd64.tar`;
+} else if (cmd === "save" || (cmd && cmd.startsWith("save-"))) {
+  const target = cmd === "save" ? null : cmd.replace("save-", "");
+  if (target && !BUILD_TARGETS.has(target)) {
+    console.error(`[compose.mjs] 未知保存目标：${target}`);
+    process.exit(1);
+  }
+  const imageList = target ? [images[target]] : Object.values(images);
+  const outDir = target ? join(root, "dist", "docker") : join(root, "dist");
+  const outFile = target
+    ? `bilibili-downloader-${target}_linux-amd64.tar`
+    : "bilibili-downloader-images.tar";
   mkdirSync(outDir, { recursive: true });
-  run(["save", "-o", join(outDir, outFile), ...images]);
+  run(["save", "-o", join(outDir, outFile), ...imageList]);
 } else if (cmd === undefined) {
   console.error(
-    "用法: node compose.mjs <docker compose 参数...> | build-server | build-vision-proxy | save | save-server | save-vision-proxy",
+    "用法: node compose.mjs <docker compose 参数...> | build-cloud-server | build-nas-worker | build-vision-proxy | save | save-cloud-server | save-nas-worker | save-vision-proxy",
   );
   process.exit(1);
 } else {

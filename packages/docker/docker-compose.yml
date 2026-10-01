@@ -17,28 +17,28 @@ services:
     volumes:
       - "${DOWNLOAD_HOST_PATH:-${HOME:-$USERPROFILE}/Downloads/bilibili_download}:/download"
 
-  server:
+  # 对外 HTTP + 前端静态 + 作业生产 + schema 属主（db init）。无媒体卷、无 ffmpeg/Python。
+  cloud-server:
     platform: linux/amd64
     depends_on:
       vision-proxy:
         condition: service_healthy
     build:
       context: ../..
-      dockerfile: packages/docker/Dockerfile.server
-    image: bilibili-downloader:${SERVER_VERSION:?未设置 SERVER_VERSION：请先运行任意 pnpm docker:* 命令同步版本，或设置 SERVER_VERSION 环境变量}
+      dockerfile: packages/docker/Dockerfile.cloud-server
+    image: bilibili-downloader:cloud-server-${CLOUD_SERVER_VERSION:?未设置 CLOUD_SERVER_VERSION：请先运行任意 pnpm docker:* 命令同步版本，或设置 CLOUD_SERVER_VERSION 环境变量}
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       PORT: "3000"
-      OUTPUT_DIR: /download
-      LOG_DIR: /download/logs
+      LOG_DIR: /app/logs
       LOG_MAX_FILES: ${LOG_MAX_FILES:-7}
-      MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-10}
+      # 特权连接串：cloud-server 建表 + 幂等播种。
+      DATABASE_URL: ${DATABASE_URL:?未设置 DATABASE_URL：请配置云端 PostgreSQL 特权连接串（见 packages/docker/.env.example）}
       MAX_CONCURRENT_LLM_CALLS: ${MAX_CONCURRENT_LLM_CALLS:-2}
       QWEN_VISION_PROXY_URL: ${QWEN_VISION_PROXY_URL:-http://vision-proxy:8765/v1/chat/completions}
       QWEN_VISION_PROXY_TIMEOUT_MS: ${QWEN_VISION_PROXY_TIMEOUT_MS:-}
-      DATABASE_URL: ${DATABASE_URL:?未设置 DATABASE_URL：请配置云端 PostgreSQL 连接串（见 packages/docker/.env.example）}
       TENCENT_COS_SECRET_ID: ${TENCENT_COS_SECRET_ID:-}
       TENCENT_COS_SECRET_KEY: ${TENCENT_COS_SECRET_KEY:-}
       TENCENT_COS_REGION: ${TENCENT_COS_REGION:-}
@@ -62,4 +62,50 @@ services:
       LOGIN_FAILURE_WINDOW_MINUTES: ${LOGIN_FAILURE_WINDOW_MINUTES:-15}
       LOGIN_BLOCK_MINUTES: ${LOGIN_BLOCK_MINUTES:-15}
     volumes:
+      - "cloud-logs:/app/logs"
+
+  # 作业消费与执行（下载/分析/截图），含 ffmpeg。无对外 HTTP、不建库、挂载媒体卷。
+  nas-worker:
+    platform: linux/amd64
+    depends_on:
+      vision-proxy:
+        condition: service_healthy
+      cloud-server:
+        condition: service_healthy
+    build:
+      context: ../..
+      dockerfile: packages/docker/Dockerfile.nas-worker
+    image: bilibili-downloader:nas-worker-${NAS_WORKER_VERSION:?未设置 NAS_WORKER_VERSION：请先运行任意 pnpm docker:* 命令同步版本，或设置 NAS_WORKER_VERSION 环境变量}
+    restart: unless-stopped
+    environment:
+      # 最小权限角色：ops 配 WORKER_DATABASE_URL 指向受限角色；缺省回退特权 DATABASE_URL。
+      DATABASE_URL: ${WORKER_DATABASE_URL:-${DATABASE_URL:?未设置 DATABASE_URL：请配置云端 PostgreSQL 连接串（见 packages/docker/.env.example）}}
+      OUTPUT_DIR: /download
+      LOG_DIR: /download/logs
+      LOG_MAX_FILES: ${LOG_MAX_FILES:-7}
+      QWEN_VISION_PROXY_URL: ${QWEN_VISION_PROXY_URL:-http://vision-proxy:8765/v1/chat/completions}
+      QWEN_VISION_PROXY_TIMEOUT_MS: ${QWEN_VISION_PROXY_TIMEOUT_MS:-}
+      MAX_CONCURRENT_LLM_CALLS: ${MAX_CONCURRENT_LLM_CALLS:-2}
+      MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-10}
+      WORKER_MAX_CONCURRENT: ${WORKER_MAX_CONCURRENT:-}
+      WORKER_MAX_CONCURRENT_DOWNLOAD: ${WORKER_MAX_CONCURRENT_DOWNLOAD:-}
+      WORKER_MAX_CONCURRENT_ANALYZE: ${WORKER_MAX_CONCURRENT_ANALYZE:-}
+      TENCENT_COS_SECRET_ID: ${TENCENT_COS_SECRET_ID:-}
+      TENCENT_COS_SECRET_KEY: ${TENCENT_COS_SECRET_KEY:-}
+      TENCENT_COS_REGION: ${TENCENT_COS_REGION:-}
+      TENCENT_COS_BUCKET: ${TENCENT_COS_BUCKET:-}
+      TENCENT_COS_PUBLIC_URL_PREFIX: ${TENCENT_COS_PUBLIC_URL_PREFIX:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-qwen3.7-text-embedding}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      NOTIFICATION_EMAIL: ${NOTIFICATION_EMAIL:-}
+    volumes:
       - "${DOWNLOAD_HOST_PATH:-${HOME:-$USERPROFILE}/Downloads/bilibili_download}:/download"
+
+volumes:
+  cloud-logs: {}
