@@ -83,8 +83,10 @@ Rule:
 
 Primary source:
 
-- `packages/docker/Dockerfile.server`
+- `packages/docker/Dockerfile.cloud-server`
+- `packages/docker/Dockerfile.nas-worker`
 - `packages/docker/Dockerfile.vision-proxy`
+- `packages/docker/docker-compose.yml`
 - `pnpm-workspace.yaml`
 - `package.json` scripts
 

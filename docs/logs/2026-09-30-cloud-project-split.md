@@ -175,3 +175,28 @@ contract 真源随 DB 层落 server-common，`prisma:emit` 脚本改由 server-c
 
 > Stage C 完成后 Phase 3 仅余 **Stage D 部署**（三镜像 + 公网暴露）延后，属部署保护区、待人工显式批准；在此之前 `pnpm docker:build` 仍失效（见 plan Deferred）。
 
+## Stage D — 部署三镜像 + compose（2026-10-01，人工批准实施，commit ada1513）
+
+部署保护区，经用户显式批准（「批准，继续」）后实施。替代失效的旧单体 `Dockerfile.server`。
+
+- **Dockerfile.cloud-server**（对外 HTTP + 前端静态 + schema 属主）：runtime 仅 `ca-certificates`+`tini`，**无 ffmpeg、无 Python**；frontend dist → `/app/public`；`cloud-server/prisma.config.ts` 写死 contract 相对路径 `../server-common/src/prisma/contract.prisma`，故把 server-common contract 复制到镜像内 `/server-common/src/prisma/`（相对 `/app/prisma.config.ts` 成立）；`ensure-pgvector.mjs` 取自 `server-common/scripts`；CMD = `prisma db init && ensure-pgvector.mjs && node dist/main.js`（特权 DATABASE_URL 建表）。EXPOSE 3000、LOG_DIR=/app/logs。
+- **Dockerfile.nas-worker**（作业执行）：runtime `ca-certificates`+**ffmpeg**+`tini`，**无前端、无 Python、无 prisma.config、不建库**；CMD 仅 `node dist/main.js`；OUTPUT_DIR=/download、LOG_DIR=/download/logs；无 EXPOSE。
+- **docker-compose.yml** 三服务：
+  - `cloud-server`：ports 3000；云端 env 集合（特权 DATABASE_URL〔`:?` fail-closed〕、QWEN_VISION_PROXY_URL、COS/EMBEDDING、CHAT_/PHOTO_、auth/session、ADMIN_INITIAL_PASSWORD）；具名卷 `cloud-logs:/app/logs`，**不挂媒体卷**；depends_on vision-proxy healthy。
+  - `nas-worker`：无 ports；执行侧 env（`DATABASE_URL=${WORKER_DATABASE_URL:-${DATABASE_URL}}` 实现**最小权限角色**、OUTPUT_DIR/LOG_DIR、QWEN_VISION_PROXY_URL、MAX_CONCURRENT_DOWNLOADS、WORKER_MAX_CONCURRENT*、COS/EMBEDDING、SMTP_*/NOTIFICATION_EMAIL）；挂 download 卷；depends_on vision-proxy + cloud-server healthy（等 schema 建好）。
+  - `vision-proxy`：不变，8765 不映射宿主。顶层新增 `volumes: cloud-logs`。
+- **compose.mjs** 改读 cloud-server/nas-worker/vision-proxy 三包版本（覆盖键 CLOUD_SERVER_VERSION/NAS_WORKER_VERSION/VISION_PROXY_VERSION），`build-*`/`save-*` 三目标分派；`.env.example` 补 WORKER_DATABASE_URL（最小权限角色）与三镜像说明。
+- **dev 脚本**（原 Deferred）：根 `dev:server` 不再引用已删 server，改并行起 cloud-server+nas-worker+frontend；两包各加 `start:dev`；`build:deps` 加 server-common。
+
+### 验证
+- `pnpm docker:build` 三镜像真实构建成功：cloud-server-0.0.1(1.13GB) / nas-worker-0.0.1(808MB) / vision-proxy-0.0.1(348MB)。
+- `docker compose config` 渲染三服务通过；未设 DATABASE_URL 时 `:?` fail-closed 报错。
+- 容器内静态实证：cloud 无 ffmpeg/python、`/server-common/src/prisma/contract.prisma` 在位、`/app/public/index.html` 有；nas `ffmpeg 5.1.9` 有、无 `/app/public`、无 `/app/prisma.config.ts`。
+- 独立 closure audit：PASS-WITH-FIXES（无 Blocker），should-fix 均为上线前运维待办。
+
+### 遗留（运维上线动作，不在本次范围）
+- 真实 `docker compose up` 到生产、公网暴露、跨主机 RDS 连通、端到端五链路未执行。
+- 公网暴露前须：置于 TLS/反代之后、播种 `ADMIN_INITIAL_PASSWORD`（否则全 API 401）、HTTPS 下 `SESSION_COOKIE_SECURE=true`。
+- cloud-server healthcheck 命中 `/`（前端静态，经 ServeStatic 不过 AuthGuard）；上线时确认返回 200，否则 nas-worker 的 `depends_on cloud-server: healthy` 不满足。
+- 既有陈旧引用（与本次无关，待清理）：`cloud-server/scripts/db-init.sh|.ps1` 与 one-off-migrations SQL 注释仍提 `packages/server/.env` 旧路径；`.env.example`/docs 内嵌真实 RDS 实例名/COS 桶可泛化为占位。
+

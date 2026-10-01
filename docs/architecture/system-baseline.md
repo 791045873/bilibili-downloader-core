@@ -18,7 +18,7 @@ packages/
 ├── nas-worker/       — NAS 侧作业消费与执行（NestJS 应用上下文，无对外 HTTP）：下载执行/分析引擎/截图/screenshot_retry/完整性检查/通知(SMTP)/PathsService/vision-proxy 客户端
 ├── frontend/         — React 19 前端
 ├── vision-proxy/     — 可选 Python 视觉薄代理（独立容器）
-└── docker/           — Dockerfile 与构建脚本（当前仍为旧单体布局，三镜像接线待 Stage D 人工批准）
+└── docker/           — 三镜像 Dockerfile 与 compose 编排（Stage D 已于 2026-10-01 人工批准实施，`pnpm docker:build` 通过）
 ```
 
 依赖方向（不可反向，经各包 package.json workspace 依赖核对）：
@@ -69,7 +69,7 @@ Phase 3 代码已落地的三应用职责与物理隔离（模块边界与依赖
 ## Async Job Queue (worker_job)
 
 - 持久化作业队列（2026-09 Phase 2 起）：新增 `worker_job`（模型 `WorkerJob`）与 `worker_heartbeat`（模型 `WorkerHeartbeat`）两张表（`packages/server-common/src/prisma/contract.prisma`，additive）。`worker_job` 在 `dedup_key` 上有 partial-unique 索引，条件 `WHERE status IN (queued, leased, running)`，据此在库层强制并发/去重（取代旧的进程内互斥与低清队列）。
-- 作业生产与消费拆分（Phase 3 起）：`WorkerService` 类下沉 `packages/server-common/src/worker/worker.service.ts`，作业契约在 `src/worker/job-kinds.ts`。**消费端**仅在 `nas-worker` 运行（`main.ts` 建应用上下文、`onModuleInit` 驱动轮询，构造器注册各 kind handler 先于轮询）；**生产端**在 `cloud-server`（触发方入队、`worker-controller` 只读查询，不 provide WorkerService）。执行环：轮询 `worker_job` → 以带 SKIP LOCKED 的守卫型原子 `UPDATE` claim 作业 → 心跳续租 `lease_expires_at` → 写终态时以 `lease_owner` fencing 防越权覆盖；reaper 周期性把过期租约的作业重置为 `queued`（`attempts++`）。worker 存活写入 `worker_heartbeat`。作业队列即云端生产者与 NAS 消费者的跨主机解耦通道（部署分离待 Stage D；代码已就绪）。
+- 作业生产与消费拆分（Phase 3 起）：`WorkerService` 类下沉 `packages/server-common/src/worker/worker.service.ts`，作业契约在 `src/worker/job-kinds.ts`。**消费端**仅在 `nas-worker` 运行（`main.ts` 建应用上下文、`onModuleInit` 驱动轮询，构造器注册各 kind handler 先于轮询）；**生产端**在 `cloud-server`（触发方入队、`worker-controller` 只读查询，不 provide WorkerService）。执行环：轮询 `worker_job` → 以带 SKIP LOCKED 的守卫型原子 `UPDATE` claim 作业 → 心跳续租 `lease_expires_at` → 写终态时以 `lease_owner` fencing 防越权覆盖；reaper 周期性把过期租约的作业重置为 `queued`（`attempts++`）。worker 存活写入 `worker_heartbeat`。作业队列即云端生产者与 NAS 消费者的跨主机解耦通道（部署分离已随 Stage D 三镜像落地，2026-10-01）。
 - 作业类型：`analyze`、`low_res_download`、`screenshot_retry`、`integrity_check`、`retrigger`（当前经 `analyze` 路由），另有预留 `cos_cleanup`（生产者见 Phase 4）。高清 `download` 自 Stage B-4 起已接通 `download` 作业 kind（cloud 入队、nas `download-job-handler` 认领执行）。
 - `integrity_check` 处理体自 2026-09-30「完整性检查重定义」起已解除 Phase 2 的 gated 状态，经 nas-worker 的 `SummaryIntegrityService.run()` 执行以云端为真源的三类判据（内容：云 DB `summary`+`summary_segment`；截图：`summary_segment.screenshot_url` 非空；视频：NAS 本地视频文件存在性），把 `integrity_status`（新增 `partial`）与结构化 JSON 的 `integrity_detail`（`{contentMissing,screenshotMissing,videoMissing}`）写回 `ai_summary_task`，复用既有 `integrity_status`/`integrity_detail`/`integrity_checked_at` 三列、无 schema 变更。
 - 配置经环境变量：`WORKER_POLL_INTERVAL_MS`、`WORKER_LEASE_TTL_SEC`、`WORKER_HEARTBEAT_MS`、`WORKER_REAP_INTERVAL_MS`、`WORKER_MAX_CONCURRENT`（全局上限）、`WORKER_QUEUE`、`WORKER_ID`、`WORKER_ENABLED`；per-kind 上限经 `WORKER_MAX_CONCURRENT_<KIND>`（如 `WORKER_MAX_CONCURRENT_DOWNLOAD`，`download` 回退旧 `MAX_CONCURRENT_DOWNLOADS`），未配置则取全局上限、不额外限制。
@@ -95,17 +95,18 @@ Phase 3 代码已落地的三应用职责与物理隔离（模块边界与依赖
 - pnpm workspace（monorepo 管理）
 - Vite（Frontend 打包）
 - tsc（core / adapters / server-common / cloud-server / nas-worker 编译）
-- Docker（**部署形态待 Stage D**：代码已拆分为三应用，但 `packages/docker/` 仍是旧单体布局——`Dockerfile.server` 仍 COPY 已删除的 `packages/server/`，故 `pnpm docker:build` 当前失效。三镜像（cloud-server / nas-worker / vision-proxy）接线须待 Stage D 人工批准后统一进行。以下为拆分前既有描述，保留以备 Stage D 对照：两个独立 Dockerfile `packages/docker/Dockerfile.server` / `Dockerfile.vision-proxy` 分别构建 `bilibili-downloader:{version}` 与 `bilibili-downloader:vision-proxy-{version}`，经 `packages/docker/docker-compose.yml` 编排、`compose.mjs` 按包 version 推导 tag、`SERVER_VERSION`/`VISION_PROXY_VERSION` 可覆盖）
+- Docker（**Stage D 已于 2026-10-01 人工批准实施**）：三镜像构建——`packages/docker/Dockerfile.cloud-server`（Node + 前端静态，无 ffmpeg/Python，schema 属主跑 `db init`，EXPOSE 3000）、`Dockerfile.nas-worker`（Node + ffmpeg，无前端/Python、不建库、无对外端口）、`Dockerfile.vision-proxy`（Python 独立）；旧 `Dockerfile.server` 已删除。经 `packages/docker/docker-compose.yml` 编排、`compose.mjs` 按三包 version 推导镜像 tag `bilibili-downloader:{cloud-server|nas-worker|vision-proxy}-{version}`（`CLOUD_SERVER_VERSION`/`NAS_WORKER_VERSION`/`VISION_PROXY_VERSION` 可覆盖）。`pnpm docker:build` 三镜像构建通过、`docker compose config`（`pnpm docker:config`）校验通过（DATABASE_URL fail-closed）；真实 `docker compose up`/公网暴露仍属运维上线动作
 
 ## Deployment Shape
 
-> **部署形态（Stage D 保护区，待人工批准）**：Phase 3 **代码已拆分**为 cloud-server / nas-worker / server-common 三应用，但**部署尚未动**——`packages/docker/` 的 Dockerfile 与 compose 仍是旧单体布局（`Dockerfile.server` 仍引用已删除的 `packages/server/`），**`pnpm docker:build` 当前失效**。三镜像（cloud-server 对外 HTTP + nas-worker 作业执行 + vision-proxy）的编排接线属 Stage D，须人工批准后统一进行。下方为拆分前既有部署描述，保留以备 Stage D 迁移对照，**不代表当前可直接构建运行**。
+> **部署形态（Stage D 已于 2026-10-01 人工批准实施并闭合）**：Phase 3 代码三应用（cloud-server / nas-worker / server-common）已配套三镜像部署布局——`packages/docker/` 含 `Dockerfile.cloud-server` / `Dockerfile.nas-worker` / `Dockerfile.vision-proxy`（旧 `Dockerfile.server` 已删除），经 `docker-compose.yml` 编排、`compose.mjs` 按三包 version 出 tag（`CLOUD_SERVER_VERSION`/`NAS_WORKER_VERSION`/`VISION_PROXY_VERSION` 可覆盖）。`pnpm docker:build` 三镜像构建通过、`docker compose config` 校验通过（DATABASE_URL fail-closed），独立 closure audit PASS-WITH-FIXES（无 Blocker）。**真实 `docker compose up`、公网暴露、跨主机 RDS 连通、端到端五链路仍属运维上线动作、未执行**；公网暴露前须 TLS/反代 + 播种 `ADMIN_INITIAL_PASSWORD` + HTTPS 下 `SESSION_COOKIE_SECURE=true`。
 
-- Docker compose 双容器部署：`server`（NestJS + 静态文件托管前端构建产物 + FFmpeg）与 `vision-proxy`（Python 视觉薄代理）各自独立容器，镜像以各自包 version 打 tag（见 Build And Package Tools），均配置 `restart: unless-stopped`，任一容器主进程崩溃由 Docker 单独自动重启，不影响健康容器；对外仅暴露 `server` 的 3000 端口。
-- server 经 compose 默认网络的服务名 `vision-proxy:8765` 调用代理（`QWEN_VISION_PROXY_URL` 默认 `http://vision-proxy:8765/v1/chat/completions`，由 compose 注入，运行期可完全自定义）；vision-proxy 容器内监听 `0.0.0.0:8765` 实现跨容器可达，但不向宿主机发布端口。
-- 两容器共享同一宿主机目录挂载到 `/download`（默认 `${HOME:-$USERPROFILE}/Downloads/bilibili_download`，可用 `DOWNLOAD_HOST_PATH` 覆盖，Windows 宿主经 `USERPROFILE` 回退）；日志默认写入 `/download/logs`
-- NAS 用户通过挂载 volume 将容器内下载目录映射到宿主机；大模型密钥由前端设置页存 DB，Node 经 `Authorization` 头传给 vision-proxy 容器，不写入镜像、不经 compose env
-- **数据库 schema 引导（2026-09-02 P4 起）**：server 容器启动命令为 `prisma db init`（幂等）→ 应用主进程。`db init` 覆盖三种状态：fresh 空库建表+签名 / 未签名存量库（schema 匹配）零操作采纳+签名 / 已签名库零操作。镜像内含 `prisma` CLI（prod 依赖）、`prisma.config.ts` 与 `src/prisma/contract.*`；DATABASE_URL 由 compose 注入。schema 演进（如 Phase 2 向量化加列）走"改 contract → emit → migration plan → db migrate"，随后升级镜像即可。启动期 DB 瞬断由 compose `restart: unless-stopped` 退避重试兜底；应用内哨兵（表+关键列）为最后防线
+- Docker compose 三容器部署：`cloud-server`（NestJS 对外 HTTP + 静态托管前端构建产物 + 作业生产 + schema 属主 `db init`，无 ffmpeg/Python、无媒体卷）、`nas-worker`（作业消费与执行 + FFmpeg，无对外 HTTP、不建库、挂载媒体卷）与 `vision-proxy`（Python 视觉薄代理）各自独立容器，镜像以各自包 version 打 tag（见 Build And Package Tools），均配置 `restart: unless-stopped`，任一容器主进程崩溃由 Docker 单独自动重启，不影响健康容器；**对外仅暴露 `cloud-server` 的 3000 端口**，nas-worker 与 vision-proxy 均不向宿主机发布端口。
+- cloud-server / nas-worker 经 compose 默认网络的服务名 `vision-proxy:8765` 调用代理（`QWEN_VISION_PROXY_URL` 默认 `http://vision-proxy:8765/v1/chat/completions`，由 compose 注入，运行期可完全自定义）；vision-proxy 容器内监听 `0.0.0.0:8765` 实现跨容器可达，但不向宿主机发布端口。
+- 媒体卷归 nas-worker（与 vision-proxy）：宿主机下载目录挂载到 `/download`（默认 `${DOWNLOAD_HOST_PATH:-${HOME:-$USERPROFILE}/Downloads/bilibili_download}`，Windows 宿主经 `USERPROFILE` 回退），nas-worker `OUTPUT_DIR=/download`、`LOG_DIR=/download/logs`；cloud-server **不挂媒体卷**，仅挂顶层命名卷 `cloud-logs:/app/logs` 存自身日志。
+- worker 最小权限 DB 角色：nas-worker 连接串经 `DATABASE_URL=${WORKER_DATABASE_URL:-${DATABASE_URL}}`（ops 配受限角色，缺省回退特权 `DATABASE_URL`）；cloud-server 用特权 `DATABASE_URL` 负责建表 + 幂等播种。大模型密钥由前端设置页存 DB，Node 经 `Authorization` 头传给 vision-proxy 容器，不写入镜像、不经 compose env
+- NAS 用户通过挂载 volume 将 nas-worker 容器内下载目录映射到宿主机
+- **数据库 schema 引导**：`cloud-server` 容器启动命令为 `prisma db init`（幂等）→ 应用主进程。`db init` 覆盖三种状态：fresh 空库建表+签名 / 未签名存量库（schema 匹配）零操作采纳+签名 / 已签名库零操作。镜像内含 `prisma` CLI（prod 依赖）、`prisma.config.ts` 与 `src/prisma/contract.*`；DATABASE_URL 由 compose 注入。schema 演进（如 Phase 2 向量化加列）走"改 contract → emit → migration plan → db migrate"，随后升级镜像即可。启动期 DB 瞬断由 compose `restart: unless-stopped` 退避重试兜底；应用内哨兵（表+关键列）为最后防线
 
 ## External Platforms
 

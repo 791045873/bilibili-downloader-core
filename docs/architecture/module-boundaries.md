@@ -76,7 +76,7 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 
 ### `packages/docker/`
 
-- Responsibility: Dockerfile 与构建脚本及 compose 编排。**当前仍为拆分前的旧单体布局**（`Dockerfile.server` 仍 COPY 已删除的 `packages/server/`，`pnpm docker:build` 失效）；三镜像（cloud-server / nas-worker / vision-proxy）接线属 **Stage D 保护区**，待人工批准后统一改造。
+- Responsibility: 三镜像 Dockerfile 与构建脚本及 compose 编排（Stage D，2026-10-01 人工批准实施）：`Dockerfile.cloud-server`（Node + 前端静态，无 ffmpeg/Python，schema 属主跑 db init）、`Dockerfile.nas-worker`（Node + ffmpeg，无前端/Python，不建库）、`Dockerfile.vision-proxy`（Python 独立）；`docker-compose.yml` 编排 cloud-server(ports 3000) + nas-worker(无端口) + vision-proxy(不映射宿主)，worker 最小权限 DB 角色经 `${WORKER_DATABASE_URL:-${DATABASE_URL}}` 接线。`pnpm docker:build` 三镜像构建通过、`docker compose config` 校验通过；真实 `compose up`/公网暴露/端到端为运维上线动作。
 - Allowed dependencies: `packages/cloud-server/`, `packages/nas-worker/`, `packages/frontend/`, `packages/vision-proxy/`（仅通过构建流程，不通过代码导入）
 - Forbidden dependencies: 不包含业务代码
 - Owner docs: `docs/architecture/system-baseline.md`
@@ -97,9 +97,9 @@ docker ──(build)──→ cloud-server + nas-worker + frontend | vision-prox
 - Adapters 依赖 Core（实现其 Ports）；COS 客户端 `CosClient` 位于 adapters
 - server-common 仅依赖外部库，不依赖 core/adapters，供 cloud-server 与 nas-worker 共用
 - cloud-server / nas-worker 并列依赖 core + adapters + server-common（非线性链）
-- cloud-server 是唯一对外 HTTP 入口；nas-worker 无对外 HTTP，经 `worker_job` 表与 cloud-server 跨主机解耦（部署分离待 Stage D）
+- cloud-server 是唯一对外 HTTP 入口；nas-worker 无对外 HTTP，经 `worker_job` 表与 cloud-server 跨主机解耦（部署分离已随 Stage D 三镜像落地，2026-10-01）
 - Frontend 通过 HTTP 与 cloud-server 通信，不直接导入任何内部包
-- Docker 仅作为构建打包层（当前为旧单体布局，待 Stage D 改造）
+- Docker 仅作为构建打包层（Stage D 三镜像布局已于 2026-10-01 落地：`Dockerfile.cloud-server` / `Dockerfile.nas-worker` / `Dockerfile.vision-proxy` + `docker-compose.yml`）
 
 ## Test Ownership
 

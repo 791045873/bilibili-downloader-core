@@ -13,7 +13,7 @@ Track the stable feature map for the application.
 | FFmpeg 音视频合并 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | 分离下载后合并为 MP4 |
 | Web 前端 | done | `docs/design/app-overview.md` | `docs/requirements/mvp.md` | React 19 SPA，视频输入 + 下载列表 + 设置 |
 | Server 后端 API | done | `docs/design/app-overview.md` | `docs/requirements/mvp.md` | NestJS + PostgreSQL（Prisma 8），任务管理；自 Phase 3 拆分为 cloud-server（对外 HTTP）/ nas-worker（作业执行）/ server-common（共享内核） |
-| Docker 容器化部署 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | compose 双容器（server + vision-proxy），NAS 挂载共享 volume；**三镜像接线待 Stage D**（见下方云端/NAS 拆分行） |
+| Docker 容器化部署 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | compose 三镜像（cloud-server + nas-worker + vision-proxy），NAS 挂载共享 volume；Stage D 三镜像部署已于 2026-10-01 人工批准实施，`docker:build` 通过（见下方云端/NAS 拆分行） |
 | HTTP 内置下载器 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | 支持重试和基础进度 |
 | 下载目录配置 | done | `docs/design/app-overview.md` | `docs/requirements/mvp.md` | 可配置输出目录 |
 | 临时文件清理 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | 成功后清理，失败可配置保留 |
@@ -25,7 +25,7 @@ Track the stable feature map for the application.
 | AI 总结查看（Markdown DB 渲染） | done | `docs/design/app-overview.md` | `docs/requirements/2026-09-17-cloud-read-path-db-render.md` | Phase 1a：两 markdown 端点从云 DB 渲染（summary/segment，回退 raw_response），图片用 COS URL，读侧不触盘 |
 | 异步任务队列（worker_job） | done | `docs/architecture/system-baseline.md` | `docs/requirements/2026-09-17-cloud-worker-jobs.md` | Phase 2：DB 队列 + 租约/心跳/reaper + dedup_key 活跃唯一，取代进程内队列与互斥 |
 | 小用户系统与写操作鉴权 | done | `docs/design/app-overview.md` | `docs/requirements/2026-09-17-user-auth.md` | 两级角色（admin/user）、可吊销会话 + HttpOnly cookie、全局 fail-closed 守卫、QA 会话按用户隔离、admin 用户管理页 |
-| 云端/NAS 拆分（cloud-server / nas-worker / server-common） | done（代码；部署待 Stage D） | `docs/architecture/module-boundaries.md`、`docs/architecture/system-baseline.md` | `docs/requirements/2026-09-17-cloud-project-split.md` | Phase 3：退役单体 `packages/server`，拆分 cloud-server（对外 HTTP + 作业生产）/ nas-worker（无 HTTP、作业消费执行）/ server-common（共享内核），COS 客户端下沉 adapters；作业队列为跨主机解耦通道。Stage A–C/B-5 代码完成，三镜像部署接线属 Stage D 保护区待人工批准（当前 `docker:build` 失效）。Plan：`docs/plans/2026-09-30-cloud-project-split-plan.md` |
+| 云端/NAS 拆分（cloud-server / nas-worker / server-common） | done | `docs/architecture/module-boundaries.md`、`docs/architecture/system-baseline.md` | `docs/requirements/2026-09-17-cloud-project-split.md` | Phase 3：退役单体 `packages/server`，拆分 cloud-server（对外 HTTP + 作业生产）/ nas-worker（无 HTTP、作业消费执行）/ server-common（共享内核），COS 客户端下沉 adapters；作业队列为跨主机解耦通道。Stage A–C/B-5 代码完成；Stage D 三镜像部署已于 2026-10-01 人工批准实施，`docker:build`/`compose config` 通过；真实上线（`docker compose up`/公网暴露）为运维动作。Plan：`docs/plans/2026-09-30-cloud-project-split-plan.md` |
 
 ## Rule
 

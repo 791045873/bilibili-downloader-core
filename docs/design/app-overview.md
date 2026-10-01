@@ -9,7 +9,7 @@ Describe the current supported app-level baseline for `bilibili-downloader-core`
 | Surface | Description | Runtime |
 | --- | --- | --- |
 | Web Frontend | 登录、视频链接输入、Section 选择器、视频解析、下载列表查看、AI 总结任务列表、穿搭问答、设置管理、用户管理（admin） | React 19 SPA（浏览器） |
-| Docker | 容器化部署（**部署形态待 Stage D 人工批准**）：Phase 3 后端代码已拆分为 `cloud-server`（对外 HTTP + 前端静态 + 作业生产）、`nas-worker`（无对外 HTTP、作业消费执行 + FFmpeg + 本地媒体）与可选 `vision-proxy`（Python 视觉薄代理）。但 `packages/docker/` 仍是拆分前的旧单体 compose 布局（`Dockerfile.server` 仍引用已删除的 `packages/server/`），**`pnpm docker:build` 当前失效**；三镜像编排接线须待 Stage D 批准后统一进行。既有运行约定（Stage D 对照）：外部仅暴露 `PORT=3000`，`vision-proxy` 经 compose 网络服务名 `vision-proxy:8765` 供调用（URL 经 `QWEN_VISION_PROXY_URL` 可完全自定义）、监听 `0.0.0.0` 但不发布宿主机端口；共享宿主机 volume（`/download`），`OUTPUT_DIR=/download`、`LOG_DIR=/download/logs`，日志按天轮转保留最近 7 天 | Docker 容器 |
+| Docker | 容器化部署（Stage D 三镜像已于 2026-10-01 人工批准实施）：Phase 3 后端代码拆分为 `cloud-server`（对外 HTTP + 前端静态 + 作业生产）、`nas-worker`（无对外 HTTP、作业消费执行 + FFmpeg + 本地媒体）与可选 `vision-proxy`（Python 视觉薄代理），`packages/docker/` 已落地三镜像布局：`Dockerfile.cloud-server` / `Dockerfile.nas-worker` / `Dockerfile.vision-proxy` 经 `docker-compose.yml` 编排，**`pnpm docker:build` 三镜像构建通过、`docker compose config` 校验通过**。运行约定：外部仅暴露 cloud-server 的 `PORT=3000`，`vision-proxy` 经 compose 网络服务名 `vision-proxy:8765` 供调用（URL 经 `QWEN_VISION_PROXY_URL` 可完全自定义）、监听 `0.0.0.0` 但不发布宿主机端口；nas-worker 无对外端口；共享宿主机 volume（`/download`），`OUTPUT_DIR=/download`、`LOG_DIR=/download/logs`，日志按天轮转保留最近 7 天。**真实 `docker compose up` / 公网暴露属运维上线动作**（公网暴露前须 TLS/反代 + 播种 `ADMIN_INITIAL_PASSWORD` + HTTPS 下 `SESSION_COOKIE_SECURE=true`） | Docker 容器 |
 
 ## Primary Navigation Model
 

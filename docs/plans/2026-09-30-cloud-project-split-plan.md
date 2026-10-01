@@ -1,6 +1,6 @@
 # 2026-09-30 Phase 3 — 拆分 cloud-server / nas-worker（server-common 前置 + 项目拆分 + 部署[gated]）
 
-> Plan Status: done（Stage A–C 代码拆分完成并过独立 closure 评审；Stage D 部署为保护区、延后待人工批准，见 Closure 与 Deferred）
+> Plan Status: done（Stage A–E 全部完成并过独立 closure 评审；Stage D 部署三镜像经人工批准 2026-10-01 实施，`pnpm docker:build` 三镜像构建通过、`docker compose config` 校验通过。真实 compose up/公网暴露/端到端五链路属运维上线动作）
 > Last Reviewed: 2026-09-30
 > Source: `docs/requirements/2026-09-17-cloud-project-split.md`
 > Related: 上游 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Phase 3）；前置 Phase 1a/1b/2（已闭合）、完整性检查重定义、重试截图（已闭合）
@@ -134,16 +134,17 @@ Exit Criteria:
 - [x] 云端 SDK 连接配置化 URL；缓存/cookie 策略按需求；行为与 Phase 2 一致（请求契约逐字段等价，运行期连通性待部署前人工确认）。
 - [x] `docs/logs/` 记录。
 
-### Stage D - 部署（保护区，人工批准 + auth 前置，默认 blocked）
+### Stage D - 部署（保护区，人工批准 2026-10-01 实施）
 
-Status: blocked（部署保护区 reviewer=none；且公网暴露前置 auth 未完成）
+Status: done（人工显式批准后实施；三镜像构建通过、compose 校验通过、容器内物理隔离实证）
 Targets: 三 Dockerfile、compose、worker 最小权限 DB 角色
 - Item Types: `Fix | Proof`
-- Prereqs: Stage A-C + **auth 完成** + **用户显式批准部署动作**
-- [ ] `Fix`：cloud-server 镜像（无 ffmpeg/Python/vision-proxy）、nas-worker 镜像（含 ffmpeg + compose 内 vision-proxy）、vision-proxy 独立镜像；worker 独立最小权限 DB 角色。
-- [ ] `Proof`：`pnpm docker:build`、`docker compose config`。
+- Prereqs: Stage A-C + **auth 完成**（已闭合）+ **用户显式批准部署动作**（已批准）
+- [x] `Fix`：新增 `Dockerfile.cloud-server`（无 ffmpeg/Python，含前端静态，schema 属主跑 db init）、`Dockerfile.nas-worker`（含 ffmpeg，无前端/Python，不建库），删旧 `Dockerfile.server`；`docker-compose.yml` 三服务（cloud-server HTTP + nas-worker 执行 + vision-proxy，vision-proxy/ nas 不暴露宿主端口）；worker 最小权限 DB 角色经 `DATABASE_URL=${WORKER_DATABASE_URL:-${DATABASE_URL}}` 接线；`compose.mjs`/脚本/`.env.example` 三目标化。
+- [x] `Proof`：`pnpm docker:build` 三镜像真实构建成功（cloud-server/nas-worker/vision-proxy）；`docker compose config` 渲染三服务通过、DATABASE_URL fail-closed；容器内实证 cloud 无 ffmpeg/python、contract 在位、/app/public 有，nas 有 ffmpeg、无前端/prisma.config。
 Exit Criteria:
-- [ ] 三镜像构建通过；compose 校验通过；部署变更经人工批准。
+- [x] 三镜像构建通过；compose 校验通过；部署变更经人工批准。
+- [~] 真实 `docker compose up`、公网暴露、跨主机 DB 连通、端到端五链路：属运维上线动作，待运维执行（见 Closure 的部署期待办）。
 
 ### Stage E - 文档与闭合
 
@@ -186,17 +187,17 @@ Exit Criteria:
 - [x] verification has run（全仓 typecheck/build 绿；Stage C 后 server-common 13/84 + cloud-server 14/85 + nas-worker 7/63 = 232）
 - [x] no in-scope item downgraded（Stage D 为受控 gate，非静默降级）
 - [x] plan audit passed before implementation（+ Stage B 二次复审）
-- [~] 部署/公网暴露：auth 已完成；**人工批准 + Stage D 实施仍待办** → Phase 3 **部分闭合**，Stage D 延后
+- [x] 部署/公网暴露：auth 已完成；人工批准 2026-10-01 后 Stage D 已实施（三镜像 build 通过、compose config 通过）→ Phase 3 **全量闭合**；真实上线（compose up/公网/E2E）为运维动作，见 Closure 部署期待办
 - [x] closure audit independent（PASS-WITH-FIXES，无 Blocker，should-fix 已并入）
 
 ## Deferred But Adjudicated
 
-### Stage D 部署与公网暴露
+### Stage D 部署与公网暴露 ✅ 已解决（2026-10-01 经人工批准实施，commit `ada1513`；真实上线仍待运维）
 - Classification: `protected-area gate`
 - Why Not Blocking (A-C) Closure: 代码重构（A-C）不改部署、不公网暴露，可独立验证；部署为保护区，需人工批准且以 auth 完成为前置（**auth 已于 2026-09-30 闭合**，仅余人工批准）。
 - Successor Required: `yes`（auth 需求 + 人工批准部署）
 
-### Stage A 已使 `pnpm docker:build` 失效（计划未预见，须在 Stage D 修复）
+### Stage A 已使 `pnpm docker:build` 失效（计划未预见，须在 Stage D 修复） ✅ 已解决（Stage D 三镜像重写，docker:build 恢复通过）
 - Classification: `protected-area gate`（部署文件变更需人工批准）
 - What Broke: `packages/docker/Dockerfile.server` 仍按单体布局取件——`COPY packages/server/...`（无 server-common）、`COPY --from=builder /app/packages/server/src/prisma/ ./src/prisma/`（contract 已迁至 server-common）、运行镜像内 `prisma.config.ts` 的 contract 相对路径（现为 `../server-common/...`，flatten 后不存在）。容器 CMD 链 `prisma db init` 因此会失败。
 - Why Not Fixed Now: 计划前置门规定「Stage A–C 纯代码重构、不改部署」，且部署文件变更须人工显式批准；本阶段不擅自改 Dockerfile/compose。
@@ -209,7 +210,7 @@ Exit Criteria:
 - Why Not Blocking: 两份已加「须逐字一致」注释，当前行为正确；下沉是防漂移加固。
 - Successor Required: `yes`（随 Stage C 或独立小切片下沉至 `adapters/src/embedding`）
 
-### 本地 dev 脚本与 server 退役后的运行入口
+### 本地 dev 脚本与 server 退役后的运行入口 ✅ 已解决（Stage D：dev:server 改并行 cloud+nas+frontend，cloud/nas 各加 start:dev）
 - Classification: `deploy-stage item`
 - What: 根 `package.json` 的 `dev:server` 仍引用已删除的 `@bilibili-downloader/server`；cloud-server/nas-worker 仅有 `start:prod`、无 `start:dev`。
 - Why Not Blocking: 属本地联调/运行便利，非产品行为、非测试/构建门禁；运行入口接线与部署同属 Stage D。
@@ -218,9 +219,10 @@ Exit Criteria:
 
 ## Closure
 
-Status Note: **部分闭合（代码完成）**。Stage A（server-common 抽离）、Stage B（B-1 清理+删 /analysis/run、B-2 作业契约下沉+纯 DB 去重、B-3 WorkerService per-kind 并发、B-4 接通 download kind、B-5 COS 下沉 adapters + 建骨架 + 拆三大类 + 双向搬迁 + 退役 server）、Stage E（文档）均完成。`packages/server` 已删，`cloud-server`/`nas-worker`/`server-common` 三应用成立；物理隔离 grep 断言通过（cloud 无 ffmpeg/引擎/PathsService 真实 import；nas 无 @Controller）；测试 218 守恒。**Stage C（云端多模态改 openai SDK）与 Stage D（部署三镜像 + 公网暴露）延后**：Stage D 属部署保护区，须人工显式批准；在此之前 `pnpm docker:build` 失效（见 Deferred）。commit：`583fe0d`(A) … `c2d7937`(B-5 ③④⑤) + 文档。**Stage C 已于 2026-10-01 实现并闭合**：C-1 `545bb61`（openai SDK）、C-2 `acb420c`（NAS 内存缓存）、C-3 `77e66d8`（cookie app_settings 物化+版本刷新）；现仅 **Stage D 部署**延后待人工批准。
+Status Note: **部分闭合（代码完成）**。Stage A（server-common 抽离）、Stage B（B-1 清理+删 /analysis/run、B-2 作业契约下沉+纯 DB 去重、B-3 WorkerService per-kind 并发、B-4 接通 download kind、B-5 COS 下沉 adapters + 建骨架 + 拆三大类 + 双向搬迁 + 退役 server）、Stage E（文档）均完成。`packages/server` 已删，`cloud-server`/`nas-worker`/`server-common` 三应用成立；物理隔离 grep 断言通过（cloud 无 ffmpeg/引擎/PathsService 真实 import；nas 无 @Controller）；测试 218 守恒。**Stage C（云端多模态改 openai SDK）与 Stage D（部署三镜像 + 公网暴露）延后**：Stage D 属部署保护区，须人工显式批准；在此之前 `pnpm docker:build` 失效（见 Deferred）。commit：`583fe0d`(A) … `c2d7937`(B-5 ③④⑤) + 文档。**Stage C 已于 2026-10-01 实现并闭合**：C-1 `545bb61`（openai SDK）、C-2 `acb420c`（NAS 内存缓存）、C-3 `77e66d8`（cookie app_settings 物化+版本刷新）。**Stage D 部署**已于 2026-10-01 经人工批准实施（commit `ada1513`）：三镜像 `pnpm docker:build` 构建通过、`docker compose config` 校验通过、容器内物理隔离实证——Phase 3 **全量闭合**（代码+部署产物）；真实 compose up/公网暴露/端到端五链路为运维上线动作。
 
 Closure Audit Evidence:
 - Reviewer / Agent: 独立子代理（General，fresh-eyes，非 cold-replay；Phase 3 邻接部署保护区）
 - Evidence: 2026-10-01，Verdict=**PASS-WITH-FIXES，无 Blocker**。实跑 typecheck/build/三包测试全绿（218 守恒）；逐条核验物理隔离（cloud 仅注释提及隔离词、QwenClient 为已登记 Stage C 例外、ffmpeg/引擎/PathsService 真实 import 0 命中；nas `@Controller`/`listen` 0 命中）、作业契约闭环（download 入队/认领、claimAiSummaryTask 与 reconcileStaleAnalysisState 在 nas、handler 构造器注册先于轮询、cloud 未 provide WorkerService）、行为等价（截图兜底同步链可用、document-generator/COS/embedding 两侧仅头注释差异）、Stage D 门禁（docker 零改动、docker:build 失效如实标注、未伪装完成）。should-fix 已并入：system-baseline 的 `claimNextCreatedTask`→`claimCreatedTaskById`；owner doc 登记 Stage C 的 QwenClient→vision-proxy 例外；陈旧路径修正；embedding 常量未下沉 adapters 转后继门（见 Deferred）。
 - Stage C 独立 closure audit（General，fresh-eyes）：2026-10-01，Verdict=**PASS-WITH-FIXES，无 Blocker**。实证 openai 端点/参数等价（Q12）、cookie 安全（全链路无明文日志、`POST /api/auth/cookie` 受 fail-closed AuthGuard、空值 400）、物理隔离未破坏、测试条数属实（84/85/63）；should-fix「NAS `COOKIE_FILE_PATH` 死代码」已并入清理。
+- Stage D 独立 closure audit（General，fresh-eyes；部署保护区）：2026-10-01，Verdict=**PASS-WITH-FIXES，无 Blocker**。实证三镜像存在、容器内物理隔离（cloud 无 ffmpeg/python + contract 在位 + /app/public 有；nas 有 ffmpeg + 无前端/prisma.config）、`docker compose config` 三服务渲染 + DATABASE_URL fail-closed、最小权限角色接线、env 名逐一对照源码无误、无密钥入库、端口不公网暴露。should-fix 均为上线前运维待办（healthcheck `/` 行为、本地 .env 凭据处置、.env.example/docs 真实基础设施标识泛化、公网暴露前 TLS+admin 播种+cookie secure），不阻断镜像/compose 产物闭合。
