@@ -439,9 +439,6 @@ describe("PathsService", () => {
     expect(paths.ANALYSIS_LLM_VIDEO_DIR).toBe(
       join(paths.DOWNLOAD_ROOT, ".analysis-llm"),
     );
-    expect(paths.BILI_API_CACHE_DIR).toBe(
-      join(paths.DOWNLOAD_ROOT, "bili-api-cache"),
-    );
     expect(paths.COOKIE_FILE_PATH).toBe(
       join(paths.DOWNLOAD_ROOT, ".cookies.json"),
     );

@@ -4,7 +4,6 @@ import type { BilibiliSdkClient } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliResourceParser } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliStreamProvider } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliSubtitleProvider } from "@bilibili-downloader/adapters/bilibili";
-import { FileCacheStore } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliAuthProvider } from "@bilibili-downloader/adapters/bilibili-auth";
 import { HttpDownloader } from "@bilibili-downloader/adapters/downloader";
 import { FfmpegMerger } from "@bilibili-downloader/adapters/ffmpeg";
@@ -88,9 +87,8 @@ export class DownloadExecutorService implements OnModuleInit {
     const cookieString = this.cookieFile
       ? await this.loadCookieString(this.cookieFile)
       : undefined;
-    this.biliClient = createBilibiliSdkClient(cookieString, {
-      cacheStore: new FileCacheStore(this.paths.BILI_API_CACHE_DIR),
-    });
+    // NAS 不落磁盘缓存：使用 SDK 默认内存缓存（MemoryCacheStore），磁盘缓存仅云端用。
+    this.biliClient = createBilibiliSdkClient(cookieString);
     this.fileStore = new NodeFileStore();
     this.merger = new FfmpegMerger();
 

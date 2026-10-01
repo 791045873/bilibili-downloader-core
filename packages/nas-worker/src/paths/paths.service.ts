@@ -21,7 +21,7 @@ import { join, resolve } from "node:path";
  */
 @Injectable()
 export class PathsService {
-  /** 下载根目录：视频、summary/、.analysis-llm/、cookies、SDK 缓存均在此目录内 */
+  /** 下载根目录：视频、summary/、.analysis-llm/、cookies 均在此目录内 */
   get DOWNLOAD_ROOT(): string {
     return resolve(
       process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads"),
@@ -31,11 +31,6 @@ export class PathsService {
   /** 登录 cookies 文件路径（COOKIE_FILE env 可覆盖） */
   get COOKIE_FILE_PATH(): string {
     return process.env.COOKIE_FILE || join(this.DOWNLOAD_ROOT, ".cookies.json");
-  }
-
-  /** bilibili-api-sdk 磁盘缓存目录 */
-  get BILI_API_CACHE_DIR(): string {
-    return join(this.DOWNLOAD_ROOT, "bili-api-cache");
   }
 
   /** AI 分析低清视频目录（固定在下载根目录内，不可 env 覆盖） */
