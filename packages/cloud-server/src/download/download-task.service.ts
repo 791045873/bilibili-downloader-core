@@ -18,10 +18,7 @@ import {
 } from "@bilibili-downloader/server-common";
 import type { DownloadDto } from "./download.dto.js";
 import { decideCreateDedupVerdict } from "./create-dedup.js";
-import {
-  resolveCloudBiliApiCacheDir,
-  resolveCloudCookieFilePath,
-} from "../config/bili-cache.js";
+import { resolveCloudBiliApiCacheDir } from "../config/bili-cache.js";
 
 export type CreateTaskResult =
   | { created: true; id: number; message: string }
@@ -44,7 +41,6 @@ export interface ParseResultItem {
 @Injectable()
 export class DownloadTaskService implements OnModuleInit {
   private readonly logger = new Logger(DownloadTaskService.name);
-  private readonly cookieFile: string;
   private readonly cacheDir: string;
 
   private biliClient!: BilibiliSdkClient;
@@ -53,8 +49,10 @@ export class DownloadTaskService implements OnModuleInit {
   private streamProvider!: BilibiliStreamProvider;
   private resolutionService!: ResolutionService;
 
+  private cookieString?: string;
+  private cookieVersion = 0;
+
   constructor(private readonly db: DatabaseService) {
-    this.cookieFile = resolveCloudCookieFilePath();
     this.cacheDir = resolveCloudBiliApiCacheDir();
   }
 
@@ -64,10 +62,10 @@ export class DownloadTaskService implements OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
-    const cookieString = this.cookieFile
-      ? await this.loadCookieString(this.cookieFile)
-      : undefined;
-    this.biliClient = createBilibiliSdkClient(cookieString, {
+    const { cookie, version } = await this.db.getBiliCookie();
+    this.cookieString = cookie;
+    this.cookieVersion = version;
+    this.biliClient = createBilibiliSdkClient(cookie, {
       cacheStore: new FileCacheStore(this.cacheDir),
     });
     this.authProvider = new BilibiliAuthProvider();
@@ -80,7 +78,8 @@ export class DownloadTaskService implements OnModuleInit {
     );
     this.logger.log(
       createLogMessage("Download task service (cloud) initialized", {
-        fileExists: Boolean(cookieString),
+        hasCookie: Boolean(cookie),
+        cookieVersion: version,
       }),
     );
   }
@@ -88,16 +87,14 @@ export class DownloadTaskService implements OnModuleInit {
   // ==================== 视频信息 / 解析 ====================
 
   async getVideoInfo(input: string): Promise<ResolvedVideo> {
-    return this.resolutionService.resolve(input, {
-      cookieFile: this.cookieFile,
-    });
+    await this.refreshCookieIfChanged();
+    return this.resolutionService.resolve(input);
   }
 
   async parseVideo(bvid: string, cid: number): Promise<ParseResultItem> {
+    await this.refreshCookieIfChanged();
     const parsed = await this.resourceParser.parse(bvid);
-    const cookieString = this.cookieFile
-      ? await this.loadCookieString(this.cookieFile)
-      : undefined;
+    const cookieString = this.cookieString;
 
     const streams = await this.resolutionService.resolveStreams({
       bvid,
@@ -280,19 +277,22 @@ export class DownloadTaskService implements OnModuleInit {
 
   async confirmLogin(callbackUrl: string) {
     const cookies = this.authProvider.extractCookies(callbackUrl);
-    await this.authProvider.saveCookies(cookies, this.cookieFile);
     const cookieString = this.authProvider.toCookieString(cookies);
-    this.biliClient.setCookieString(cookieString);
+    await this.persistCookie(cookieString);
     return { message: "登录成功" };
   }
 
-  async getUserInfo(): Promise<UserInfo | null> {
-    const cookieString = this.cookieFile
-      ? await this.loadCookieString(this.cookieFile)
-      : undefined;
-    if (!cookieString) return null;
-    return this.authProvider.getUserInfo(cookieString);
+  /** 手动粘贴 cookie 入口：物化真源 + 刷新本进程 SDK + 更新版本缓存。 */
+  async setCookieManually(cookie: string): Promise<void> {
+    await this.persistCookie(cookie);
   }
+
+  async getUserInfo(): Promise<UserInfo | null> {
+    await this.refreshCookieIfChanged();
+    if (!this.cookieString) return null;
+    return this.authProvider.getUserInfo(this.cookieString);
+  }
+
 
   // ==================== 图片代理（含 SSRF 白名单） ====================
 
@@ -340,13 +340,22 @@ export class DownloadTaskService implements OnModuleInit {
 
   // ==================== 工具 ====================
 
-  private async loadCookieString(file: string): Promise<string | undefined> {
-    try {
-      const cookies = await this.authProvider.loadCookies(file);
-      return this.authProvider.toCookieString(cookies);
-    } catch {
-      return undefined;
-    }
+  /** 写入 cookie 真源并同步本进程 SDK 与版本缓存（扫码登录 / 手动粘贴共用）。 */
+  private async persistCookie(cookieString: string): Promise<void> {
+    const version = await this.db.setBiliCookie(cookieString);
+    this.biliClient.setCookieString(cookieString);
+    this.cookieString = cookieString ? cookieString : undefined;
+    this.cookieVersion = version;
+  }
+
+  /** 对外使用 biliClient 前按版本刷新：版本未变不动，变化则重取并刷新 SDK。 */
+  private async refreshCookieIfChanged(): Promise<void> {
+    const version = await this.db.getBiliCookieVersion();
+    if (version === this.cookieVersion) return;
+    const { cookie, version: latest } = await this.db.getBiliCookie();
+    this.biliClient.setCookieString(cookie);
+    this.cookieString = cookie;
+    this.cookieVersion = latest;
   }
 }
 

@@ -59,7 +59,6 @@ export interface AdHocTaskInput {
 export class DownloadExecutorService implements OnModuleInit {
   private readonly logger = new Logger(DownloadExecutorService.name);
   private readonly outputDir: string;
-  private readonly cookieFile: string;
 
   private biliClient!: BilibiliSdkClient;
   private authProvider!: BilibiliAuthProvider;
@@ -75,20 +74,22 @@ export class DownloadExecutorService implements OnModuleInit {
   private fileStore!: NodeFileStore;
   private merger!: FfmpegMerger;
 
+  private cookieString?: string;
+  private cookieVersion = 0;
+
   constructor(
     private readonly db: DatabaseService,
     private readonly paths: PathsService,
   ) {
     this.outputDir = paths.DOWNLOAD_ROOT;
-    this.cookieFile = paths.COOKIE_FILE_PATH;
   }
 
   async onModuleInit(): Promise<void> {
-    const cookieString = this.cookieFile
-      ? await this.loadCookieString(this.cookieFile)
-      : undefined;
+    const { cookie, version } = await this.db.getBiliCookie();
+    this.cookieString = cookie;
+    this.cookieVersion = version;
     // NAS 不落磁盘缓存：使用 SDK 默认内存缓存（MemoryCacheStore），磁盘缓存仅云端用。
-    this.biliClient = createBilibiliSdkClient(cookieString);
+    this.biliClient = createBilibiliSdkClient(cookie);
     this.fileStore = new NodeFileStore();
     this.merger = new FfmpegMerger();
 
@@ -116,22 +117,21 @@ export class DownloadExecutorService implements OnModuleInit {
     this.logger.log(
       createLogMessage("Download executor service (nas) initialized", {
         outputPath: this.outputDir,
-        fileExists: Boolean(cookieString),
+        hasCookie: Boolean(cookie),
+        cookieVersion: version,
       }),
     );
   }
 
   async getVideoInfo(input: string): Promise<ResolvedVideo> {
-    return this.resolutionService.resolve(input, {
-      cookieFile: this.cookieFile,
-    });
+    await this.ensureFreshCookie();
+    return this.resolutionService.resolve(input);
   }
 
   async parseVideo(bvid: string, cid: number): Promise<ParseResultItem> {
+    await this.ensureFreshCookie();
     const parsed = await this.resourceParser.parse(bvid);
-    const cookieString = this.cookieFile
-      ? await this.loadCookieString(this.cookieFile)
-      : undefined;
+    const cookieString = this.cookieString;
 
     const streams = await this.resolutionService.resolveStreams({
       bvid,
@@ -176,10 +176,9 @@ export class DownloadExecutorService implements OnModuleInit {
     bvid: string,
     cid: number,
   ): Promise<{ url: string; quality: number }> {
+    await this.ensureFreshCookie();
     const parsed = await this.resourceParser.parse(bvid);
-    const cookieString = this.cookieFile
-      ? await this.loadCookieString(this.cookieFile)
-      : undefined;
+    const cookieString = this.cookieString;
 
     const streams = await this.resolutionService.resolveStreams({
       bvid,
@@ -223,9 +222,8 @@ export class DownloadExecutorService implements OnModuleInit {
 
     const parsedType =
       resourceType ?? (await this.resourceParser.parse(bvid)).type;
-    const cookieString = this.cookieFile
-      ? await this.loadCookieString(this.cookieFile)
-      : undefined;
+    await this.ensureFreshCookie();
+    const cookieString = this.cookieString;
 
     const streams = await this.resolutionService.resolveStreams({
       bvid,
@@ -355,9 +353,8 @@ export class DownloadExecutorService implements OnModuleInit {
     );
 
     try {
-      const cookieString = this.cookieFile
-        ? await this.loadCookieString(this.cookieFile)
-        : undefined;
+      await this.ensureFreshCookie();
+      const cookieString = this.cookieString;
 
       const parsed = await this.resourceParser.parse(claimed.bvid!);
       const streams = await this.resolutionService.resolveStreams({
@@ -504,13 +501,14 @@ export class DownloadExecutorService implements OnModuleInit {
     return this.db.getTaskById(id);
   }
 
-  private async loadCookieString(file: string): Promise<string | undefined> {
-    try {
-      const cookies = await this.authProvider.loadCookies(file);
-      return this.authProvider.toCookieString(cookies);
-    } catch {
-      return undefined;
-    }
+  /** 作业执行前按版本刷新 cookie：版本未变不动，变化则重取并刷新 SDK 客户端。 */
+  private async ensureFreshCookie(): Promise<void> {
+    const version = await this.db.getBiliCookieVersion();
+    if (version === this.cookieVersion) return;
+    const { cookie, version: latest } = await this.db.getBiliCookie();
+    this.biliClient.setCookieString(cookie);
+    this.cookieString = cookie;
+    this.cookieVersion = latest;
   }
 }
 

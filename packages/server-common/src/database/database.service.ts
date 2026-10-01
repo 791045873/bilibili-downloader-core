@@ -186,6 +186,15 @@ export interface ChatMessageRecord {
   createdAt?: string;
 }
 
+/** B 站 cookie 真源在 app_settings 的键（物化 + 版本刷新，见 Stage C-3）。 */
+const BILI_COOKIE_KEY = "bili.cookie";
+const BILI_COOKIE_VERSION_KEY = "bili.cookie.version";
+
+function parseBiliCookieVersion(raw: string | undefined): number {
+  const parsed = Number.parseInt(raw ?? "", 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(DatabaseService.name);
@@ -795,6 +804,41 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       }
     }
   }
+
+  /** 读取 B 站 cookie 真源（物化于 app_settings）：空串视为未登录（undefined）。version 缺省 0。 */
+  async getBiliCookie(): Promise<{ cookie: string | undefined; version: number }> {
+    const settings = await this.getSettings([
+      BILI_COOKIE_KEY,
+      BILI_COOKIE_VERSION_KEY,
+    ]);
+    const raw = settings[BILI_COOKIE_KEY];
+    return {
+      cookie: raw ? raw : undefined,
+      version: parseBiliCookieVersion(settings[BILI_COOKIE_VERSION_KEY]),
+    };
+  }
+
+  /** 仅读取 B 站 cookie 版本号（消费方据此判断是否需要刷新）。缺省/非法返回 0。 */
+  async getBiliCookieVersion(): Promise<number> {
+    const settings = await this.getSettings([BILI_COOKIE_VERSION_KEY]);
+    return parseBiliCookieVersion(settings[BILI_COOKIE_VERSION_KEY]);
+  }
+
+  /**
+   * 写入 B 站 cookie 真源并自增版本号，返回新版本号。
+   *
+   * 空串表示清除 cookie（setSettings 会删除 `bili.cookie` 键），但版本号仍自增、
+   * 且恒为非空串，以保证消费方能感知清除事件。
+   */
+  async setBiliCookie(cookie: string): Promise<number> {
+    const newVersion = (await this.getBiliCookieVersion()) + 1;
+    await this.setSettings({
+      [BILI_COOKIE_KEY]: cookie,
+      [BILI_COOKIE_VERSION_KEY]: String(newVersion),
+    });
+    return newVersion;
+  }
+
 
   async insertAnalysisSubTask(record: AnalysisSubTaskRecord): Promise<number> {
     // output_file 统一存相对 DOWNLOAD_ROOT 的相对路径；根外/遗留绝对值原样保留

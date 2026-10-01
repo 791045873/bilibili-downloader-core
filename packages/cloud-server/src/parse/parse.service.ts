@@ -13,6 +13,7 @@ import {
   FileCacheStore,
   createBilibiliSdkClient,
 } from "@bilibili-downloader/adapters/bilibili";
+import type { BilibiliSdkClient } from "@bilibili-downloader/adapters/bilibili";
 import { BilibiliAuthProvider } from "@bilibili-downloader/adapters/bilibili-auth";
 import { ResolutionService } from "@bilibili-downloader/core/usecases";
 import {
@@ -24,19 +25,16 @@ import {
   type UgcSeasonResult,
   type UserSpaceResult,
 } from "@bilibili-downloader/core/ports";
-import {
-  resolveCloudBiliApiCacheDir,
-  resolveCloudCookieFilePath,
-} from "../config/bili-cache.js";
-import { createLogMessage } from "@bilibili-downloader/server-common";
+import { resolveCloudBiliApiCacheDir } from "../config/bili-cache.js";
+import { DatabaseService, createLogMessage } from "@bilibili-downloader/server-common";
 
 @Injectable()
 export class ParseService implements OnModuleInit {
   private readonly logger = new Logger(ParseService.name);
   private readonly outputDir: string;
-  private readonly cookieFile: string;
   private readonly cacheDir: string;
 
+  private biliClient!: BilibiliSdkClient;
   private authProvider!: BilibiliAuthProvider;
   private resourceParser!: BilibiliResourceParser;
   private streamProvider!: BilibiliStreamProvider;
@@ -45,24 +43,26 @@ export class ParseService implements OnModuleInit {
   private resolutionService!: ResolutionService;
 
   private cookieString?: string;
+  private cookieVersion = 0;
 
-  constructor() {
+  constructor(private readonly db: DatabaseService) {
     this.outputDir = process.env.OUTPUT_DIR ?? "";
-    this.cookieFile = resolveCloudCookieFilePath();
     this.cacheDir = resolveCloudBiliApiCacheDir();
   }
 
   async onModuleInit(): Promise<void> {
     this.authProvider = new BilibiliAuthProvider();
-    this.cookieString = await this.loadCookieString(this.cookieFile);
+    const { cookie, version } = await this.db.getBiliCookie();
+    this.cookieString = cookie;
+    this.cookieVersion = version;
 
-    const biliClient = createBilibiliSdkClient(this.cookieString, {
+    this.biliClient = createBilibiliSdkClient(this.cookieString, {
       cacheStore: new FileCacheStore(this.cacheDir),
     });
     this.resourceParser = new BilibiliResourceParser();
-    this.streamProvider = new BilibiliStreamProvider(biliClient);
-    this.favoritesProvider = new BilibiliFavoritesProvider(biliClient);
-    this.spaceProvider = new BilibiliSpaceProvider(biliClient);
+    this.streamProvider = new BilibiliStreamProvider(this.biliClient);
+    this.favoritesProvider = new BilibiliFavoritesProvider(this.biliClient);
+    this.spaceProvider = new BilibiliSpaceProvider(this.biliClient);
     this.resolutionService = new ResolutionService(
       this.resourceParser,
       this.streamProvider,
@@ -72,12 +72,14 @@ export class ParseService implements OnModuleInit {
     this.logger.log(
       createLogMessage("Parse service initialized", {
         outputPath: this.outputDir,
-        fileExists: Boolean(this.cookieString),
+        hasCookie: Boolean(this.cookieString),
+        cookieVersion: this.cookieVersion,
       }),
     );
   }
 
   async parseLink(input: string): Promise<ParseLinkResult> {
+    await this.refreshCookieIfChanged();
     const parseResult = await this.resourceParser.parse(input);
     this.logger.log(
       createLogMessage("Resolved parse-link resource type", {
@@ -207,6 +209,7 @@ export class ParseService implements OnModuleInit {
     page: number,
     pageSize: number,
   ): Promise<PaginatedVideos> {
+    await this.refreshCookieIfChanged();
     this.logger.log(
       createLogMessage("Fetching user space videos", {
         mid,
@@ -227,6 +230,7 @@ export class ParseService implements OnModuleInit {
     page: number,
     pageSize: number,
   ): Promise<PaginatedVideos> {
+    await this.refreshCookieIfChanged();
     this.logger.log(
       createLogMessage("Fetching UGC season videos", {
         seasonId,
@@ -254,6 +258,7 @@ export class ParseService implements OnModuleInit {
     page: number,
     pageSize: number,
   ): Promise<PaginatedVideos> {
+    await this.refreshCookieIfChanged();
     this.logger.log(
       createLogMessage("Fetching favorites videos", {
         mediaId,
@@ -314,12 +319,13 @@ export class ParseService implements OnModuleInit {
     throw new BadGatewayException(msg);
   }
 
-  private async loadCookieString(file: string): Promise<string | undefined> {
-    try {
-      const cookies = await this.authProvider.loadCookies(file);
-      return this.authProvider.toCookieString(cookies);
-    } catch {
-      return undefined;
-    }
+  /** 对外解析/取流前按版本刷新 cookie：版本未变不动，变化则重取并刷新 SDK 客户端。 */
+  private async refreshCookieIfChanged(): Promise<void> {
+    const version = await this.db.getBiliCookieVersion();
+    if (version === this.cookieVersion) return;
+    const { cookie, version: latest } = await this.db.getBiliCookie();
+    this.biliClient.setCookieString(cookie);
+    this.cookieString = cookie;
+    this.cookieVersion = latest;
   }
 }

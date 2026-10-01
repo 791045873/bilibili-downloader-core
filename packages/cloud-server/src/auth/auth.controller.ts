@@ -1,4 +1,11 @@
-import { Controller, Get, Post, Query, Body } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+} from "@nestjs/common";
 import { DownloadTaskService } from "../download/download-task.service.js";
 
 @Controller("api/auth")
@@ -20,6 +27,17 @@ export class AuthController {
       await this.service.confirmLogin(result.callbackUrl);
     }
     return result;
+  }
+
+  /** 手动粘贴 B 站 cookie（受登录保护；不记录 cookie 明文）。 */
+  @Post("/cookie")
+  async setCookie(@Body() body: { cookie?: string }) {
+    const cookie = body?.cookie;
+    if (typeof cookie !== "string" || cookie.trim() === "") {
+      throw new BadRequestException("cookie 不能为空");
+    }
+    await this.service.setCookieManually(cookie);
+    return { message: "cookie 已更新" };
   }
 
   /** 获取当前登录用户信息 */
