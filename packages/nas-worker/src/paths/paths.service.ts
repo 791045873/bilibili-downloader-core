@@ -21,16 +21,11 @@ import { join, resolve } from "node:path";
  */
 @Injectable()
 export class PathsService {
-  /** 下载根目录：视频、summary/、.analysis-llm/、cookies 均在此目录内 */
+  /** 下载根目录：视频、summary/、.analysis-llm/ 均在此目录内 */
   get DOWNLOAD_ROOT(): string {
     return resolve(
       process.env.OUTPUT_DIR ?? join(process.cwd(), "downloads"),
     );
-  }
-
-  /** 登录 cookies 文件路径（COOKIE_FILE env 可覆盖） */
-  get COOKIE_FILE_PATH(): string {
-    return process.env.COOKIE_FILE || join(this.DOWNLOAD_ROOT, ".cookies.json");
   }
 
   /** AI 分析低清视频目录（固定在下载根目录内，不可 env 覆盖） */

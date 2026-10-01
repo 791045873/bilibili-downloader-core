@@ -439,8 +439,5 @@ describe("PathsService", () => {
     expect(paths.ANALYSIS_LLM_VIDEO_DIR).toBe(
       join(paths.DOWNLOAD_ROOT, ".analysis-llm"),
     );
-    expect(paths.COOKIE_FILE_PATH).toBe(
-      join(paths.DOWNLOAD_ROOT, ".cookies.json"),
-    );
   });
 });

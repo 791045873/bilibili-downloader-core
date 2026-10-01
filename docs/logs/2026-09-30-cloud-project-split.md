@@ -153,3 +153,25 @@ contract 真源随 DB 层落 server-common，`prisma:emit` 脚本改由 server-c
 - 全仓 `pnpm typecheck` / `pnpm build` 绿；测试 **218 守恒**（server-common 12/80 + cloud-server 12/76 + nas-worker 6/62），与拆分前计数一致。
 - 独立子代理 closure audit：**PASS-WITH-FIXES，无 Blocker**（物理隔离 grep、作业契约闭环、行为等价、Stage D 门禁均逐条核验；should-fix 已并入——见 plan Closure Audit Evidence）。
 
+## Stage C — LLM 客户端 / 缓存 / Cookie 落位（2026-10-01）
+
+### C-1 云端多模态改 OpenAI Node SDK（commit 545bb61）
+- 新增 `cloud-server/src/chat/openai-vision-client.ts`：`OpenAiVisionClient` 用 `openai` 包连所配置的 `QWEN_VISION_PROXY_URL`。代理为 OpenAI 兼容端点 `POST {base}/v1/chat/completions`，故 baseURL = 去掉 URL 结尾 `/chat/completions`（端点/模型/配置不变）。请求体与原 adapters `QwenClient` 逐字段一致（透传 messages/stream/enable_thinking/response_format + model），响应解析 `choices[0].message.content → JSON.parse`，接口/返回形状对齐以使 chat 调用点零改动。保留 Base64 媒体拒绝、模块级并发信号量、超时；重试用 SDK `maxRetries=1` 近似原 2 次尝试口径。
+- **Q12 确认**：vision-proxy 的 `build_call_options` 从 body 透传 `enable_thinking`/`response_format`，OpenAI SDK 原样序列化这些 body 字段，等价成立；单测断言命中 URL、Authorization、body 透传与 JSON 解析。
+- `chat.service.ts` 改用新客户端（createQwenClient→createVisionClient），三处调用点不变；删除 `analysis.controller.ts` 拆分后无调用方的私有 `getLlmConfig`。`openai` 仅加入 cloud-server 依赖；NAS 侧 `QwenClient`/vision-proxy 不动。
+- 验证：typecheck/build 绿；cloud-server 测试 76→83（+7 新单测）。对真实 proxy 的运行期连通性属部署前人工验证。
+
+### C-2 NAS 改用默认内存缓存（commit acb420c）
+- 需求「云端 FileCacheStore，NAS 不落磁盘缓存（SDK 默认 MemoryCacheStore）」：`download-executor` 创建 SDK 客户端不再传 `cacheStore`；删 `FileCacheStore` import 与 `paths.service.ts` 无用的 `BILI_API_CACHE_DIR` getter。云端 FileCacheStore 保持。
+- 验证：typecheck/build 绿；三包测试全绿。
+
+### C-3 Cookie 真源改 app_settings 物化 + 版本刷新（commit 77e66d8）
+- server-common `DatabaseService` 新增 `getBiliCookie`/`getBiliCookieVersion`/`setBiliCookie`（`app_settings` 两键 `bili.cookie`/`bili.cookie.version`，复用 getSettings/setSettings；setBiliCookie 自增版本并返回；空串清除但版本仍自增）。
+- cloud：扫码登录 `confirmLogin` 改写库（不再写 `.cloud-cookies.json`，删 `resolveCloudCookieFilePath`）；新增手动粘贴入口 `POST /api/auth/cookie`（未加 `@Public()`，受全局 fail-closed AuthGuard；空值 400；**不记录 cookie 明文**）；`parse.service`/`download-task.service` 读取改从 app_settings 取初始值并在对外调用前按版本刷新 SDK 客户端（含 ParseService 刷新）。
+- nas：`download-executor` 启动从 app_settings 物化 cookie，作业前按版本刷新，替代原每次读 cookie 文件；随之清理 `COOKIE_FILE_PATH` 死代码。
+- 安全：cookie 全链路仅记 `hasCookie`/`version`，无明文入日志。
+- 验证：typecheck/build 绿；新增单测（server-common bili-cookie 4、cloud cookie-refresh 2、nas cookie-refresh 1）；三包 server-common 84 / cloud-server 85 / nas-worker 63 全绿。
+- 独立 closure audit：PASS-WITH-FIXES（无 Blocker）；should-fix「NAS COOKIE_FILE_PATH 死代码」已清理。
+
+> Stage C 完成后 Phase 3 仅余 **Stage D 部署**（三镜像 + 公网暴露）延后，属部署保护区、待人工显式批准；在此之前 `pnpm docker:build` 仍失效（见 plan Deferred）。
+

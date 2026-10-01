@@ -122,16 +122,17 @@ Exit Criteria:
 
 ### Stage C - LLM 客户端 / 缓存 / Cookie 落位
 
-Status: planned
+Status: done（C-1 openai SDK / C-2 缓存 / C-3 cookie 物化，三子片各自验证并过独立 closure 评审）
 Targets: cloud-server 多模态改 `openai` SDK；缓存策略；cookie 物化/刷新
 - Item Types: `Fix | Add`
 - Prereqs: Stage B
-- [ ] `Fix`：云端多模态改 `openai` SDK 连 `QWEN_VISION_PROXY_URL`——云端调用点：`chat/chat.service.ts` `createQwenClient()`(:280)、读 URL(:289)、三处 `enable_thinking:false`/`response_format:{type:'json_object'}`(:167-168,202-203,246-247)，以及 `analysis/analysis.controller.ts:499` `getLlmConfig`。**逐点确认** Q12（`enable_thinking` DashScope 专有 / `response_format`）在 `openai` SDK 下的等价与语义；新增 `openai` 为 cloud-server 依赖。NAS 保留 `QwenClient`/vision-proxy（`analysis-engine.ts:21,116,121,179-180`）不变。
-- [ ] `Fix`：云端 `FileCacheStore`、NAS 内存缓存；cookie `app_settings` 物化 + 版本刷新（含 ParseService 客户端刷新）+ 云端手动粘贴 cookie 入口。
-- [ ] `Proof`：`typecheck`/`build`；问答图片路径与分析路径行为核对。
+- [x] `Fix`（C-1）：云端多模态改 `openai` SDK 连 `QWEN_VISION_PROXY_URL`——新增 `cloud-server/src/chat/openai-vision-client.ts`（baseURL = 去 `/chat/completions` 后缀，端点/模型/配置不变），`chat.service.ts` 三处调用点零改动；删除拆分后无调用方的 `analysis.controller.ts` 私有 `getLlmConfig`。**Q12 已确认**：代理从 body 透传 `enable_thinking`/`response_format`，SDK 原样序列化，单测断言 URL+body+header 等价。`openai` 仅加入 cloud-server 依赖；NAS 保留 `QwenClient`/vision-proxy 不变。
+- [x] `Fix`（C-2）：云端 `FileCacheStore`（parse/download-task）保留；NAS `download-executor` 去 `cacheStore` 用 SDK 默认内存缓存。
+- [x] `Fix`（C-3）：cookie 真源改 `app_settings`（`bili.cookie`/`bili.cookie.version`）+ 版本刷新（含 ParseService 客户端刷新）+ 云端手动粘贴入口 `POST /api/auth/cookie`（受全局 AuthGuard 保护、不记明文）；NAS 启动物化 + 作业前按版本刷新；DatabaseService 新增 getBiliCookie/getBiliCookieVersion/setBiliCookie。
+- [x] `Proof`：`typecheck`/`build` 绿；新增单测（server-common bili-cookie 4、cloud openai-vision-client 7 + cookie-refresh 2、nas cookie-refresh 1）。问答图片路径/分析路径对真实 vision-proxy 的运行期行为属部署前人工验证。
 Exit Criteria:
-- [ ] 云端 SDK 连接配置化 URL；缓存/cookie 策略按需求；行为与 Phase 2 一致。
-- [ ] `docs/logs/` 记录。
+- [x] 云端 SDK 连接配置化 URL；缓存/cookie 策略按需求；行为与 Phase 2 一致（请求契约逐字段等价，运行期连通性待部署前人工确认）。
+- [x] `docs/logs/` 记录。
 
 ### Stage D - 部署（保护区，人工批准 + auth 前置，默认 blocked）
 
@@ -182,7 +183,7 @@ Exit Criteria:
 
 - [x] in-scope 非部署行为完成（Stage A–C + B-1…B-5）
 - [x] relevant docs aligned（system-baseline / module-boundaries / app-overview / feature-inventory / codebase-map / project-context / backlog / log）
-- [x] verification has run（全仓 typecheck/build 绿；server-common 12/80 + cloud-server 12/76 + nas-worker 6/62 = 218 守恒）
+- [x] verification has run（全仓 typecheck/build 绿；Stage C 后 server-common 13/84 + cloud-server 14/85 + nas-worker 7/63 = 232）
 - [x] no in-scope item downgraded（Stage D 为受控 gate，非静默降级）
 - [x] plan audit passed before implementation（+ Stage B 二次复审）
 - [~] 部署/公网暴露：auth 已完成；**人工批准 + Stage D 实施仍待办** → Phase 3 **部分闭合**，Stage D 延后
@@ -217,8 +218,9 @@ Exit Criteria:
 
 ## Closure
 
-Status Note: **部分闭合（代码完成）**。Stage A（server-common 抽离）、Stage B（B-1 清理+删 /analysis/run、B-2 作业契约下沉+纯 DB 去重、B-3 WorkerService per-kind 并发、B-4 接通 download kind、B-5 COS 下沉 adapters + 建骨架 + 拆三大类 + 双向搬迁 + 退役 server）、Stage E（文档）均完成。`packages/server` 已删，`cloud-server`/`nas-worker`/`server-common` 三应用成立；物理隔离 grep 断言通过（cloud 无 ffmpeg/引擎/PathsService 真实 import；nas 无 @Controller）；测试 218 守恒。**Stage C（云端多模态改 openai SDK）与 Stage D（部署三镜像 + 公网暴露）延后**：Stage D 属部署保护区，须人工显式批准；在此之前 `pnpm docker:build` 失效（见 Deferred）。commit：`583fe0d`(A) … `c2d7937`(B-5 ③④⑤) + 文档。
+Status Note: **部分闭合（代码完成）**。Stage A（server-common 抽离）、Stage B（B-1 清理+删 /analysis/run、B-2 作业契约下沉+纯 DB 去重、B-3 WorkerService per-kind 并发、B-4 接通 download kind、B-5 COS 下沉 adapters + 建骨架 + 拆三大类 + 双向搬迁 + 退役 server）、Stage E（文档）均完成。`packages/server` 已删，`cloud-server`/`nas-worker`/`server-common` 三应用成立；物理隔离 grep 断言通过（cloud 无 ffmpeg/引擎/PathsService 真实 import；nas 无 @Controller）；测试 218 守恒。**Stage C（云端多模态改 openai SDK）与 Stage D（部署三镜像 + 公网暴露）延后**：Stage D 属部署保护区，须人工显式批准；在此之前 `pnpm docker:build` 失效（见 Deferred）。commit：`583fe0d`(A) … `c2d7937`(B-5 ③④⑤) + 文档。**Stage C 已于 2026-10-01 实现并闭合**：C-1 `545bb61`（openai SDK）、C-2 `acb420c`（NAS 内存缓存）、C-3 `77e66d8`（cookie app_settings 物化+版本刷新）；现仅 **Stage D 部署**延后待人工批准。
 
 Closure Audit Evidence:
 - Reviewer / Agent: 独立子代理（General，fresh-eyes，非 cold-replay；Phase 3 邻接部署保护区）
 - Evidence: 2026-10-01，Verdict=**PASS-WITH-FIXES，无 Blocker**。实跑 typecheck/build/三包测试全绿（218 守恒）；逐条核验物理隔离（cloud 仅注释提及隔离词、QwenClient 为已登记 Stage C 例外、ffmpeg/引擎/PathsService 真实 import 0 命中；nas `@Controller`/`listen` 0 命中）、作业契约闭环（download 入队/认领、claimAiSummaryTask 与 reconcileStaleAnalysisState 在 nas、handler 构造器注册先于轮询、cloud 未 provide WorkerService）、行为等价（截图兜底同步链可用、document-generator/COS/embedding 两侧仅头注释差异）、Stage D 门禁（docker 零改动、docker:build 失效如实标注、未伪装完成）。should-fix 已并入：system-baseline 的 `claimNextCreatedTask`→`claimCreatedTaskById`；owner doc 登记 Stage C 的 QwenClient→vision-proxy 例外；陈旧路径修正；embedding 常量未下沉 adapters 转后继门（见 Deferred）。
+- Stage C 独立 closure audit（General，fresh-eyes）：2026-10-01，Verdict=**PASS-WITH-FIXES，无 Blocker**。实证 openai 端点/参数等价（Q12）、cookie 安全（全链路无明文日志、`POST /api/auth/cookie` 受 fail-closed AuthGuard、空值 400）、物理隔离未破坏、测试条数属实（84/85/63）；should-fix「NAS `COOKIE_FILE_PATH` 死代码」已并入清理。
