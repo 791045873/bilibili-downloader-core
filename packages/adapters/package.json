@@ -18,6 +18,10 @@
       "import": "./dist/bilibili-auth/index.js",
       "types": "./dist/bilibili-auth/index.d.ts"
     },
+    "./cos": {
+      "import": "./dist/cos/index.js",
+      "types": "./dist/cos/index.d.ts"
+    },
     "./downloader": {
       "import": "./dist/downloader/index.js",
       "types": "./dist/downloader/index.d.ts"
@@ -59,7 +63,8 @@
   },
   "dependencies": {
     "@bilibili-downloader/core": "workspace:*",
-    "bilibili-api-sdk": "workspace:*"
+    "bilibili-api-sdk": "workspace:*",
+    "cos-nodejs-sdk-v5": "^3.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

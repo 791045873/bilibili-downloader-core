@@ -107,3 +107,17 @@ contract 真源随 DB 层落 server-common，`prisma:emit` 脚本改由 server-c
 ### 验证
 - 全仓 typecheck/build 绿；server **17 files / 138 tests**（删 2 条过时 claimNextCreatedTask 用例）、server-common **12 files / 80 tests**（新增 download-job.test 3 例）。
 - 五链路手测留待部署前人工确认（见 plan Note）。
+
+
+## Stage B-5（进行中）— 第 1 步：COS 客户端下沉 adapters
+
+复审 §6 裁决：COS/embedding 客户端下沉 `adapters`（非 server-common，不违反其职责表述），两侧各留薄 Nest wrapper。本步先做 COS（embedding 早已在 `adapters/embedding`）。
+
+- 新增 `packages/adapters/src/cos/`（`cos-client.ts` + `index.ts`）：框架无关 `CosClient`（构造器注入配置、不读 env），方法 `isConfigured`/`upload`/`uploadBuffer`/`publicUrl`，并导出易漂移的 `resolvePublicUrlPrefix`（公网 URL 前缀推导集中一处）。`contentTypeFor` 随之迁入。
+- adapters barrel + `package.json` 增 `./cos` export 与 `cos-nodejs-sdk-v5` 依赖；从 `packages/server` 依赖中移除该 SDK（唯一 importer 已迁走）。
+- `server/src/knowledge/cos-store.service.ts` 改为薄 wrapper：读 env → `new CosClient(...)` → 委托；对外方法签名（`isConfigured`/`upload`/`uploadBuffer`/`publicUrl`）与日志（configured / not-configured）保持不变，调用点零改动。
+
+### 验证
+- 全仓 typecheck/build 绿；server 17 files / 138 tests（含 COS 路径的 `knowledge/vector-search`、`chat/photo-compress`）全绿；无行为变化。
+
+> 说明：B-5 其余步骤（建 cloud-server/nas-worker 骨架、拆 AnalysisTriggerService/DownloadService/DownloadScheduler 三大类、cloud/nas 双向搬迁、`packages/server` 退役）为后续子步，仍待实施。
