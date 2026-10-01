@@ -40,22 +40,6 @@ export type CreateTaskResult =
   | { created: true; id: number; message: string }
   | { created: false; message: string };
 
-// ---------- 公开类型（旧前端兼容） ----------
-
-export interface TaskEntry {
-  id: number;
-  status: string;
-  title?: string;
-  outputFile?: string;
-  fileSize?: number;
-  error?: string;
-  progress?: number;
-  speed?: string;
-  createdAt?: string;
-  completedAt?: string;
-  durationMs?: number;
-}
-
 export interface ParseResultItem {
   cid: number;
   videoQualityList: { id: number; name: string; codecList: string[] }[];
@@ -82,12 +66,6 @@ export class DownloadService implements OnModuleInit {
   private executionDeps!: any;
   private fileStore!: NodeFileStore;
   private merger!: FfmpegMerger;
-
-  // 运行时任务状态缓存（用于快速查询）
-  private readonly taskCache = new Map<number, TaskEntry>();
-
-  // 下载执行完成后的回调（由 Scheduler 设置）
-  onTaskFinished?: (taskId: number) => void;
 
   constructor(
     private readonly db: DatabaseService,
@@ -140,37 +118,6 @@ export class DownloadService implements OnModuleInit {
       createLogMessage("Download service initialized", {
         outputPath: this.outputDir,
         fileExists: Boolean(cookieString),
-      }),
-    );
-  }
-
-  async restoreTaskCacheFromDatabase(): Promise<void> {
-    const tasks = await this.db.getTasks();
-    this.taskCache.clear();
-
-    for (const task of tasks) {
-      if (task.id === undefined) {
-        continue;
-      }
-
-      this.taskCache.set(task.id, {
-        id: task.id,
-        status: task.status,
-        title: task.title,
-        outputFile: task.outputFile,
-        fileSize: task.fileSize,
-        error: task.errorMessage,
-        progress: task.progress,
-        speed: task.speed,
-        createdAt: task.createdAt,
-        completedAt: task.completedAt,
-        durationMs: task.durationMs,
-      });
-    }
-
-    this.logger.log(
-      createLogMessage("Restored download task cache from database", {
-        taskCount: this.taskCache.size,
       }),
     );
   }
@@ -275,7 +222,7 @@ export class DownloadService implements OnModuleInit {
     return { url: best.url, quality: best.quality };
   }
 
-  /** 静默下载低分辨率视频（不进入任务队列，不写 taskCache） */
+  /** 静默下载低分辨率视频（不进入下载任务队列、不改 task 状态） */
   async executeLowResDownload(
     bvid: string,
     cid: number,
@@ -422,13 +369,6 @@ export class DownloadService implements OnModuleInit {
       createdAt: now,
     });
 
-    this.taskCache.set(id, {
-      id,
-      status: TaskStatus.Created,
-      title: dto.title,
-      createdAt: now,
-    });
-
     this.logger.log(
       createLogMessage("Created download task", {
         taskId: id,
@@ -462,58 +402,36 @@ autoSummary: dto.autoSummary,
     });
   }
 
-  /** 执行下载任务（由 Scheduler 调用） */
+  /** 执行下载任务（由 Scheduler 的 download handler 调用）。
+   * 开头做原子认领（created → downloading）；已被认领/删除/非 created 则跳过。 */
   async executeTask(task: TaskRecord): Promise<void> {
     const id = task.id!;
-    const cached = this.taskCache.get(id);
-    if (!cached) {
-      this.logger.error(
-        createLogMessage(
-          "Download task execution aborted because cache entry is missing",
-          {
-            taskId: id,
-            bvid: task.bvid,
-            cid: task.cid,
-          },
-        ),
-      );
-      throw new Error(`任务 ${id} 不在缓存中`);
-    }
-
-    // 校验状态：只有 Created 或 Stopped 可进入 Downloading
-    if (
-      cached.status !== TaskStatus.Created &&
-      cached.status !== TaskStatus.Stopped
-    ) {
+    const claimed = await this.db.claimCreatedTaskById(id);
+    if (!claimed) {
       this.logger.warn(
         createLogMessage(
-          "Download task execution rejected due to invalid cached status",
+          "Download task execution skipped: not in created state",
           {
             taskId: id,
             bvid: task.bvid,
             cid: task.cid,
-            status: cached.status,
           },
         ),
       );
-      throw new Error(`任务 ${id} 状态为 ${cached.status}，无法执行`);
+      return;
     }
 
     this.logger.log(
       createLogMessage("Starting download task execution", {
         taskId: id,
-        bvid: task.bvid,
-        cid: task.cid,
-        requestedQuality: task.quality,
-        requestedCodec: task.codec,
-        outputPath: task.outputPath,
-        autoSummary: task.autoSummary,
+        bvid: claimed.bvid,
+        cid: claimed.cid,
+        requestedQuality: claimed.quality,
+        requestedCodec: claimed.codec,
+        outputPath: claimed.outputPath,
+        autoSummary: claimed.autoSummary,
       }),
     );
-
-    cached.status = TaskStatus.Downloading;
-    cached.title = task.title ?? cached.title;
-    await this.db.updateTaskStatus(id, { status: TaskStatus.Downloading });
 
     try {
       const cookieString = this.cookieFile
@@ -521,18 +439,18 @@ autoSummary: dto.autoSummary,
         : undefined;
 
       // 解析资源
-      const parsed = await this.resourceParser.parse(task.bvid!);
+      const parsed = await this.resourceParser.parse(claimed.bvid!);
       const streams = await this.resolutionService.resolveStreams({
-        bvid: task.bvid!,
-        cid: task.cid!,
+        bvid: claimed.bvid!,
+        cid: claimed.cid!,
         resourceType: parsed.type,
         cookieString,
       });
 
       const videoStream = this.resolutionService.selectBestStream(
         streams.videoStreams,
-        task.codec,
-        task.quality,
+        claimed.codec,
+        claimed.quality,
       );
       const audioStream = this.resolutionService.selectBestStream(
         streams.audioStreams,
@@ -545,42 +463,42 @@ autoSummary: dto.autoSummary,
       this.logger.log(
         createLogMessage("Resolved task streams", {
           taskId: id,
-          bvid: task.bvid,
-          cid: task.cid,
+          bvid: claimed.bvid,
+          cid: claimed.cid,
           quality: videoStream.quality,
-          codec: task.codec,
+          codec: claimed.codec,
           availableQualityCount: streams.videoStreams.length,
         }),
       );
 
       // 构建输出路径
       const fileName = buildOutputFileName({
-        title: task.title!,
-        bvid: task.bvid!,
-        cid: task.cid!,
+        title: claimed.title!,
+        bvid: claimed.bvid!,
+        cid: claimed.cid!,
         quality: videoStream.quality,
-        codec: task.codec,
-        template: task.fileNameTemplate,
+        codec: claimed.codec,
+        template: claimed.fileNameTemplate,
       });
-      const outputFile = task.outputPath
-        ? join(this.outputDir, sanitizeOutputPath(task.outputPath), fileName)
+      const outputFile = claimed.outputPath
+        ? join(this.outputDir, sanitizeOutputPath(claimed.outputPath), fileName)
         : join(this.outputDir, fileName);
 
       this.logger.log(
         createLogMessage("Resolved task output file", {
           taskId: id,
-          bvid: task.bvid,
-          cid: task.cid,
+          bvid: claimed.bvid,
+          cid: claimed.cid,
           quality: videoStream.quality,
           outputFile,
-          hasOutputPath: Boolean(task.outputPath),
+          hasOutputPath: Boolean(claimed.outputPath),
         }),
       );
 
       // 确保子目录存在
-      if (task.outputPath) {
+      if (claimed.outputPath) {
         await this.fileStore.ensureOutputDir(
-          join(this.outputDir, sanitizeOutputPath(task.outputPath)),
+          join(this.outputDir, sanitizeOutputPath(claimed.outputPath)),
         );
       }
 
@@ -589,41 +507,35 @@ autoSummary: dto.autoSummary,
       executionUseCase.on(
         DownloadEventType.DownloadProgress,
         (e: { percentage: number; speedBytesPerSec: number }) => {
-          cached.progress = e.percentage;
-          cached.speed = formatBytes(e.speedBytesPerSec) + "/s";
-          this.db.updateTaskProgress(id, e.percentage, cached.speed).catch(
-            (err: unknown) => {
+          this.db
+            .updateTaskProgress(
+              id,
+              e.percentage,
+              formatBytes(e.speedBytesPerSec) + "/s",
+            )
+            .catch((err: unknown) => {
               this.logger.error(
                 createLogMessage("Failed to persist task progress", {
                   taskId: id,
-                  error:
-                    err instanceof Error ? err.message : String(err),
+                  error: err instanceof Error ? err.message : String(err),
                 }),
               );
-            },
-          );
+            });
         },
       );
 
       const request: DownloadExecutionRequest = {
-        bvid: task.bvid!,
-        cid: task.cid!,
-        title: task.title!,
+        bvid: claimed.bvid!,
+        cid: claimed.cid!,
+        title: claimed.title!,
         outputFile,
         videoStream,
         audioStream,
         cookieString,
-        subtitleLanguages: toSubtitleLanguages(task.subtitleLang),
+        subtitleLanguages: toSubtitleLanguages(claimed.subtitleLang),
       };
 
       const result = await executionUseCase.execute(request);
-
-      cached.status = result.status;
-      cached.outputFile = result.outputFile;
-      cached.fileSize = result.fileSize;
-      cached.error = result.errorMessage;
-      cached.durationMs = result.timing?.totalMs;
-      cached.completedAt = new Date().toISOString();
 
       await this.db.updateTaskStatus(id, {
         status: result.status,
@@ -638,8 +550,8 @@ autoSummary: dto.autoSummary,
       this.logger.log(
         createLogMessage("Download task execution finished", {
           taskId: id,
-          bvid: task.bvid,
-          cid: task.cid,
+          bvid: claimed.bvid,
+          cid: claimed.cid,
           status: result.status,
           outputFile: result.outputFile,
           fileSize: result.fileSize,
@@ -649,8 +561,6 @@ autoSummary: dto.autoSummary,
       );
     } catch (err) {
       const msg = (err as Error).message;
-      cached.status = TaskStatus.Failed;
-      cached.error = msg;
 
       await this.db.updateTaskStatus(id, {
         status: TaskStatus.Failed,
@@ -660,25 +570,22 @@ autoSummary: dto.autoSummary,
       this.logger.error(
         createLogMessage("Download task execution failed", {
           taskId: id,
-          bvid: task.bvid,
-          cid: task.cid,
+          bvid: claimed.bvid,
+          cid: claimed.cid,
           error: msg,
         }),
         err instanceof Error ? err.stack : undefined,
       );
-    } finally {
-      this.onTaskFinished?.(id);
     }
   }
 
-  /** 停止任务：Created → Stopped */
+  /** 停止任务：Created → Stopped（读 DB 守卫） */
   async stopTask(id: number): Promise<{ message: string }> {
-    const cached = this.taskCache.get(id);
-    if (!cached) throw new Error(`任务 ${id} 不存在`);
-    if (cached.status !== TaskStatus.Created) {
-      throw new Error(`任务 ${id} 状态为 ${cached.status}，无法停止`);
+    const task = await this.db.getTaskById(id);
+    if (!task) throw new Error(`任务 ${id} 不存在`);
+    if (task.status !== TaskStatus.Created) {
+      throw new Error(`任务 ${id} 状态为 ${task.status}，无法停止`);
     }
-    cached.status = TaskStatus.Stopped;
     await this.db.updateTaskStatus(id, { status: TaskStatus.Stopped });
     this.logger.log(
       createLogMessage("Stopped queued download task", {
@@ -689,14 +596,13 @@ autoSummary: dto.autoSummary,
     return { message: "已停止" };
   }
 
-  /** 恢复任务：Stopped → Created */
+  /** 恢复任务：Stopped → Created（读 DB 守卫） */
   async resumeTask(id: number): Promise<{ message: string }> {
-    const cached = this.taskCache.get(id);
-    if (!cached) throw new Error(`任务 ${id} 不存在`);
-    if (cached.status !== TaskStatus.Stopped) {
-      throw new Error(`任务 ${id} 状态为 ${cached.status}，无法恢复`);
+    const task = await this.db.getTaskById(id);
+    if (!task) throw new Error(`任务 ${id} 不存在`);
+    if (task.status !== TaskStatus.Stopped) {
+      throw new Error(`任务 ${id} 状态为 ${task.status}，无法恢复`);
     }
-    cached.status = TaskStatus.Created;
     await this.db.updateTaskStatus(id, { status: TaskStatus.Created });
     this.logger.log(
       createLogMessage("Resumed queued download task", {
@@ -727,7 +633,6 @@ autoSummary: dto.autoSummary,
 
   /** 删除任务 */
   async deleteTask(id: number): Promise<{ message: string }> {
-    this.taskCache.delete(id);
     await this.db.deleteTask(id);
     this.logger.log(
       createLogMessage("Deleted download task", {
@@ -739,14 +644,8 @@ autoSummary: dto.autoSummary,
 
   /** 清空所有任务 */
   async clearTasks(): Promise<{ message: string }> {
-    const taskCount = this.taskCache.size;
-    this.taskCache.clear();
     await this.db.clearTasks();
-    this.logger.log(
-      createLogMessage("Cleared all download tasks", {
-        taskCount,
-      }),
-    );
+    this.logger.log(createLogMessage("Cleared all download tasks", {}));
     return { message: "已清空" };
   }
 

@@ -1,39 +1,42 @@
 import { Injectable, OnModuleInit, Logger } from "@nestjs/common";
 import { DownloadService } from "./download.service.js";
-import { DatabaseService } from "@bilibili-downloader/server-common";
+import {
+  DatabaseService,
+  WorkerService,
+  JOB_KIND,
+  downloadDedupKey,
+  createLogMessage,
+  type WorkerJobRecord,
+  type DownloadJobPayload,
+} from "@bilibili-downloader/server-common";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import type { DownloadDto } from "./download.dto.js";
-import { createLogMessage } from "@bilibili-downloader/server-common";
 
 /**
  * 下载任务调度器
  *
- * 职责：
- * - 高清下载并发控制（maxConcurrency）
- * - 任务创建/停止/恢复/删除的入口
- * - 事件驱动的 tryScheduleNext()
- * - 服务重启时恢复
+ * 职责（Phase 3 Stage B-4 起）：
+ * - 下载作业的生产者：创建/恢复任务后入队 download 作业，停止/删除时取消活跃作业
+ * - download kind 的 handler 宿主：从 worker_job 认领后执行下载并触发自动分析
  *
- * 低清分析下载与分析触发已迁移至 worker_job 作业队列（见 WorkerService），
- * 高清下载完成后经 onAnalysisTrigger 钩子入队 analyze 作业。
+ * 高清下载并发由 WorkerService 的 per-kind 上限承担（download kind 读
+ * `WORKER_MAX_CONCURRENT_DOWNLOAD` 回退 `MAX_CONCURRENT_DOWNLOADS`），不再进程内调度。
  */
 @Injectable()
 export class DownloadScheduler implements OnModuleInit {
   private readonly logger = new Logger(DownloadScheduler.name);
-  private readonly maxConcurrency: number;
-  private readonly runningSet = new Set<number>();
 
   onAnalysisTrigger?: (taskId: number) => void;
 
   constructor(
     private readonly downloadService: DownloadService,
     private readonly db: DatabaseService,
-  ) {
-    this.maxConcurrency = Number(process.env.MAX_CONCURRENT_DOWNLOADS) || 2;
-  }
+    private readonly worker: WorkerService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
-    // 恢复：将上次中断的 downloading 任务标记为 failed
+    // 启动恢复：将上次中断的 downloading 任务标记为 failed。
+    // 注：此对账在 Phase 3 Stage B-5 拆分后归 nas-worker（谁推进 downloading 谁对账）。
     const tasks = await this.db.getTasks();
     let recoveredTaskCount = 0;
     for (const t of tasks) {
@@ -46,34 +49,29 @@ export class DownloadScheduler implements OnModuleInit {
       }
     }
 
-    await this.downloadService.restoreTaskCacheFromDatabase();
+    this.worker.registerHandler(JOB_KIND.download, (job) =>
+      this.handleDownloadJob(job),
+    );
 
-    // 注册回调：下载完成时自动调度下一个 + 触发分析入队
-    this.downloadService.onTaskFinished = (taskId: number) => {
-      this.runningSet.delete(taskId);
-      this.logger.log(
-        createLogMessage("High resolution task slot released", {
-          taskId,
-          runningCount: this.runningSet.size,
-          maxConcurrency: this.maxConcurrency,
-        }),
-      );
-      void this.tryScheduleNext();
-      this.onAnalysisTrigger?.(taskId);
-    };
+    // 入队漏失兜底（B6）：为所有 created 任务补入队 download 作业（dedupKey 幂等）。
+    let backfilled = 0;
+    for (const t of tasks) {
+      if (t.status === TaskStatus.Created && t.id != null) {
+        await this.enqueueDownloadJob(t.id, t.bvid, t.cid);
+        backfilled += 1;
+      }
+    }
 
-    // 启动调度
-    await this.tryScheduleNext();
     this.logger.log(
       createLogMessage("Download scheduler started", {
-        maxConcurrency: this.maxConcurrency,
         taskCount: tasks.length,
         count: recoveredTaskCount,
+        backfilled,
       }),
     );
   }
 
-  /** 创建下载任务 + 触发调度（created=false 表示被去重门拒绝，未落库） */
+  /** 创建下载任务 + 入队（created=false 表示被去重门拒绝，未落库） */
   async createDownload(
     dto: DownloadDto,
   ): Promise<
@@ -93,62 +91,86 @@ export class DownloadScheduler implements OnModuleInit {
           hasOutputPath: Boolean(dto.outputPath),
         }),
       );
-      await this.tryScheduleNext();
+      await this.enqueueDownloadJob(result.id, dto.bvid, dto.cid);
     }
     return result;
   }
 
-  /** 停止任务 */
+  /** 停止任务：置 Stopped 后取消活跃 download 作业 */
   async stopTask(id: number): Promise<{ message: string }> {
-    return this.downloadService.stopTask(id);
-  }
-
-  /** 恢复任务 + 触发调度 */
-  async resumeTask(id: number): Promise<{ message: string }> {
-    const result = await this.downloadService.resumeTask(id);
-    await this.tryScheduleNext();
+    const result = await this.downloadService.stopTask(id);
+    await this.cancelActiveDownloadJob(id);
     return result;
   }
 
-  /** 删除任务（运行中的下载无法真正中止，见 owner doc） */
+  /** 恢复任务：置回 Created 后重新入队（dedupKey 幂等；旧 job 已 canceled 不在活跃集合内） */
+  async resumeTask(id: number): Promise<{ message: string }> {
+    const result = await this.downloadService.resumeTask(id);
+    const task = await this.db.getTaskById(id);
+    await this.enqueueDownloadJob(id, task?.bvid, task?.cid);
+    return result;
+  }
+
+  /** 删除任务：先取消活跃 download 作业（避免 handler 认领后查无 task 抛错重试），再删 task */
   async deleteTask(id: number): Promise<{ message: string }> {
+    await this.cancelActiveDownloadJob(id);
     return this.downloadService.deleteTask(id);
   }
 
-  // ==================== 调度核心 ====================
+  // ==================== download handler ====================
 
-  private async tryScheduleNext(): Promise<void> {
-    while (this.runningSet.size < this.maxConcurrency) {
-      // 原子抢占：created -> downloading（单语句守卫更新，防并发双抢）
-      const task = await this.db.claimNextCreatedTask();
-      if (!task) break; // 队列空
+  private async handleDownloadJob(job: WorkerJobRecord): Promise<void> {
+    const payload = job.payload as DownloadJobPayload | null;
+    const taskId = payload?.taskId;
+    if (typeof taskId !== "number") {
+      throw new Error(`download 作业缺少 payload.taskId (jobId=${job.id})`);
+    }
 
-      const id = task.id!;
-      this.runningSet.add(id);
-      this.logger.log(
-        createLogMessage("Claimed download task for execution", {
-          taskId: id,
-          bvid: task.bvid,
-          cid: task.cid,
-          status: TaskStatus.Downloading,
-          runningCount: this.runningSet.size,
-          maxConcurrency: this.maxConcurrency,
+    const task = await this.downloadService.getTaskById(taskId);
+    if (!task) {
+      this.logger.warn(
+        createLogMessage("Download job skipped: task not found", {
+          jobId: job.id,
+          taskId,
         }),
       );
+      return;
+    }
 
-      // fire-and-forget，不阻塞循环
-      this.downloadService.executeTask(task).catch((err) => {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          createLogMessage("Download task execution crashed", {
-            taskId: id,
-            bvid: task.bvid,
-            cid: task.cid,
-            error: message,
-          }),
-          err instanceof Error ? err.stack : undefined,
-        );
-      });
+    await this.downloadService.executeTask(task);
+    // executeTask 内部已把失败写 DB、不抛，故此处 analyze 的 success 校验照旧生效。
+    this.onAnalysisTrigger?.(taskId);
+  }
+
+  // ==================== 作业生产辅助 ====================
+
+  private async enqueueDownloadJob(
+    taskId: number,
+    bvid: string | undefined,
+    cid: number | undefined,
+  ): Promise<void> {
+    if (!bvid || typeof cid !== "number") {
+      this.logger.warn(
+        createLogMessage("Skip enqueue download job: missing bvid/cid", {
+          taskId,
+        }),
+      );
+      return;
+    }
+    await this.db.enqueueJob({
+      kind: JOB_KIND.download,
+      queue: "nas",
+      refType: "task",
+      refId: taskId,
+      dedupKey: downloadDedupKey(bvid, cid),
+      payload: { taskId },
+    });
+  }
+
+  private async cancelActiveDownloadJob(taskId: number): Promise<void> {
+    const job = await this.db.findActiveDownloadJobByTask(taskId);
+    if (job) {
+      await this.db.cancelWorkerJob(job.id);
     }
   }
 }

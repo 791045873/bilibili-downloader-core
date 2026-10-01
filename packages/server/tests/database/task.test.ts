@@ -110,26 +110,6 @@ describe("task lifecycle", () => {
     expect(row!.completedAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
   });
 
-  it("claimNextCreatedTask FIFO 且原子", async () => {
-    const a = await db.insertTask({ status: "created" } as TaskRecord);
-    await db.insertTask({ status: "created" } as TaskRecord);
-    const claimed = await db.claimNextCreatedTask();
-    expect(claimed!.id).toBe(a);
-    expect(claimed!.status).toBe("downloading");
-    const none = await db.claimNextCreatedTask();
-    expect(none).toBeDefined();
-  });
-
-  it("并发 claimNextCreatedTask 恰好一次成功", async () => {
-    await db.insertTask({ status: "created" } as TaskRecord);
-    const results = await Promise.all([
-      db.claimNextCreatedTask(),
-      db.claimNextCreatedTask(),
-    ]);
-    const defined = results.filter((r) => r !== undefined);
-    expect(defined).toHaveLength(1);
-    expect(defined[0]!.status).toBe("downloading");
-  });
 });
 
 describe("task queries", () => {

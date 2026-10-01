@@ -91,12 +91,16 @@ Status: done
 - [x] `Fix`：`claimNextJob` 增 `excludeKinds` 过滤（SQL `kind <> ALL($4)`，空数组=旧行为）；`worker.service.ts` 新增 `runningByKind` 计数 + `perKindLimit(kind)`（读 `WORKER_MAX_CONCURRENT_<KIND>`，download 兼容旧 `MAX_CONCURRENT_DOWNLOADS`，缺省退化为全局 `WORKER_MAX_CONCURRENT`）+ `saturatedKinds()`；`pollOnce` 把已达上限的 kind 排除，避免长耗时 analyze 占满全局槽位。
 - [x] `Proof`：`tests/worker/worker-loop.test.ts` 原 6 用例**零改动仍绿**（向后兼容）+ 新增 2 用例（claimNextJob 排除指定 kind 且空数组=Phase 2 默认；某 kind 达 per-kind 上限时排除该 kind、其他 kind 仍派发）；server-common 11 files/77 tests、server 17/140 全绿；全仓 typecheck/build 绿。
 
-#### B-4 接通 `download` kind（单体内完成，最大一片）
+#### B-4 接通 `download` kind（单体内完成）
 
-- [ ] `Add`：`download` handler；scheduler 四触发点改入队；删 `runningSet` + `tryScheduleNext`。
-- [ ] `Fix`：`stop`/`delete` 调 `cancelWorkerJob`；`resume` 重新入队；`executeTask` **去 `taskCache` 化**（状态门改读 DB 且收紧为仅 `created`，进度只写 DB，`restoreTaskCacheFromDatabase` 与 `TaskEntry` 退役）；`claimNextCreatedTask`（`database.service.ts:623-632`，**跨进程非原子**）删调用点改守卫式 `updateTaskStatus`，或补 `FOR UPDATE SKIP LOCKED` + 复核 status。
-- [ ] `Fix`：入队漏失兜底——「`created` 缺活跃 download job 则补入队」的幂等对账放 **cloud** 启动（靠 dedupKey 幂等）；「`downloading` 无活跃租约 → failed」放 **nas**（`reapExpiredJobs` 只回收 job、不回写 task，须写清谁改 task 行）。
-- [ ] `Proof`：`typecheck`/`build`/两包 `test` 绿 + 新增 download-handler 测试绿；`rg -n "claimNextCreatedTask" packages/*/src` → 仅剩定义或已含 SKIP LOCKED；五链路手测入 `docs/testing/`（创建→执行→完成→analyze 入队 / stop 后 job 变 canceled 且任务不跑 / resume 重入队并跑 / delete 无 5 次重试日志 / 重启时 `downloading` 正确回收且不误杀）。
+Status: done
+- [x] `Add`（原子认领）：server-common 新增 `claimCreatedTaskById(id)`（守卫 `UPDATE ... WHERE id AND status='created' RETURNING`，跨进程安全），**删除**非原子的 `claimNextCreatedTask` 及其唯一调用点。
+- [x] `Add`（download handler）：`DownloadScheduler` 注入 `WorkerService`，`registerHandler(JOB_KIND.download, handleDownloadJob)`；handler 读 `payload.taskId` → `getTaskById`（无则跳过）→ `executeTask` → `onAnalysisTrigger?.(taskId)`。
+- [x] `Fix`（生产者）：`createDownload`/`resumeTask` 成功后 `enqueueJob(download, dedupKey=downloadDedupKey)`；`stopTask`/`deleteTask` 先 `findActiveDownloadJobByTask` → `cancelWorkerJob`（delete 先取消避免 handler 认领后查无 task 重试）。删 `runningSet`/`tryScheduleNext`/`onTaskFinished`；并发交 B-3 的 per-kind（`WORKER_MAX_CONCURRENT_DOWNLOAD` 回退 `MAX_CONCURRENT_DOWNLOADS`）。
+- [x] `Fix`（去 taskCache）：`DownloadService` 删 `taskCache`/`onTaskFinished`/`restoreTaskCacheFromDatabase`/`TaskEntry`；`executeTask` 开头原子认领、状态门收紧为仅 `created`；进度/完成/失败只写 DB；`stopTask`/`resumeTask` 改读 DB 守卫。截图兜底同步链（`analysis-video-resolver` 的 `createTask(skipDedup)+executeTask`）仍可用、不触发 analyze。
+- [x] `Fix`（B6 入队漏失兜底）：`onModuleInit` 对所有 `created` 任务补入队 download 作业（dedupKey 幂等）；启动 `downloading → failed` 对账保留并注明 B-5 归 nas。
+- [x] `Proof`：新增 `server-common/tests/database/download-job.test.ts`（3 例：created 原子认领 / 非 created 返回 undefined / 连续两次仅首次成功）；`task.test.ts` 删 2 条过时的 `claimNextCreatedTask` 用例（随方法删除）。全仓 typecheck/build 绿；server 17 files/138 tests、server-common 12 files/80 tests；无 `claimNextCreatedTask`/`taskCache`/`onTaskFinished`/`restoreTaskCacheFromDatabase` 残留。
+- [ ] `Note`（手测待运行级确认，不阻塞代码闭合）：五链路（创建→执行→完成→analyze 入队 / stop 后 job canceled 且任务不跑 / resume 重入队 / delete 无重试日志 / 重启 downloading 回收不误杀）留待部署前人工确认。
 
 #### B-5 建骨架 + 拆类 + 双向搬迁 + 退役 server
 

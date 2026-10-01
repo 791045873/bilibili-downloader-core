@@ -85,3 +85,25 @@ contract 真源随 DB 层落 server-common，`prisma:emit` 脚本改由 server-c
 - `worker.service.ts`：新增 `runningByKind` per-kind 运行计数、`perKindLimit(kind)`（`WORKER_MAX_CONCURRENT_<KIND>` → download 兼容旧 `MAX_CONCURRENT_DOWNLOADS` → 缺省全局 `WORKER_MAX_CONCURRENT`）、`saturatedKinds()`；`pollOnce` 把已达 per-kind 上限的 kind 透传给 `claimNextJob` 排除。
 - 解决 B3：高清 `download` 迁 worker_job 后不再因 `MAX_CONCURRENT_DOWNLOADS` 失效而与长耗时 `analyze` 抢同一全局 2 槽；缺省（无 per-kind env）行为与 Phase 2 完全一致。
 - 验证：`worker-loop.test.ts` 原 6 用例零改动仍绿（向后兼容证明）+ 新增 2 用例；server-common 11/77、server 17/140 全绿；typecheck/build 绿。
+
+
+## Stage B-4 — 接通 download 作业 kind（单体内）
+
+### server-common
+- 新增 `claimCreatedTaskById(id)`：单条守卫 `UPDATE task SET status='downloading' WHERE id=$1 AND status='created' RETURNING`，0 行返回 undefined——跨进程原子，取代非原子的 `claimNextCreatedTask`（已删除）。
+- 新增 `findActiveDownloadJobByTask(taskId)`：按 `kind='download' AND ref_id AND status IN (queued/leased/running)` 取活跃作业，供 stop/delete 取消。
+
+### DownloadService（去 taskCache）
+- 删 `taskCache` / `onTaskFinished` / `restoreTaskCacheFromDatabase` / `TaskEntry`。
+- `executeTask` 开头原子认领（`claimCreatedTaskById`），非 created 直接 return（不抛，避免作业重试风暴）；状态门收紧为**仅 created**；进度/完成/失败只写 DB。
+- `stopTask`/`resumeTask` 改读 DB 守卫；`deleteTask`/`clearTasks` 去缓存。
+
+### DownloadScheduler（生产者 + handler 宿主）
+- 注入 `WorkerService`，注册 `download` handler；删 `runningSet`/`tryScheduleNext`，高清并发交 B-3 per-kind（`WORKER_MAX_CONCURRENT_DOWNLOAD` 回退 `MAX_CONCURRENT_DOWNLOADS`）。
+- `createDownload`/`resumeTask` → `enqueueDownloadJob`（dedupKey 幂等）；`stopTask`/`deleteTask` → `cancelActiveDownloadJob`（delete 先取消）。
+- handler：`payload.taskId` → `getTaskById`（无则跳过）→ `executeTask` → `onAnalysisTrigger?.`（analyze 的 success 校验照旧 gate）。
+- B6 兜底：`onModuleInit` 为所有 created 任务补入队；`downloading→failed` 启动对账保留，注明 B-5 归 nas-worker。
+
+### 验证
+- 全仓 typecheck/build 绿；server **17 files / 138 tests**（删 2 条过时 claimNextCreatedTask 用例）、server-common **12 files / 80 tests**（新增 download-job.test 3 例）。
+- 五链路手测留待部署前人工确认（见 plan Note）。

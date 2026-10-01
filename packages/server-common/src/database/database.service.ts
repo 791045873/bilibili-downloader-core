@@ -617,23 +617,20 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   }
 
   /**
-   * 原子抢占队首 created 任务（created → downloading）。
-   * 单语句守卫更新，避免异步化后两步操作产生的并发双抢。
+   * 原子认领指定任务：created → downloading（守卫 WHERE status='created'）。
+   * 已被认领/删除/非 created 时返回 undefined（0 行）。跨进程安全。
    */
-  async claimNextCreatedTask(): Promise<TaskRecord | undefined> {
+  async claimCreatedTaskById(id: number): Promise<TaskRecord | undefined> {
     const now = new Date().toISOString();
     const { rows } = await this.pool.query(
-      `UPDATE task SET status = 'downloading', "updatedAt" = $1
-       WHERE id = (
-         SELECT id FROM task WHERE status = 'created' ORDER BY "createdAt" ASC LIMIT 1
-       )
+      `UPDATE task SET status = 'downloading', "updatedAt" = $2
+       WHERE id = $1 AND status = 'created'
        RETURNING id`,
-      [now],
+      [String(id), now],
     );
     if (rows.length === 0) {
       return undefined;
     }
-    const id = Number(rows[0].id);
     this.logger.log(
       createLogMessage("Persisted task status change", {
         taskId: id,
@@ -1737,6 +1734,19 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     const { rows } = await this.pool.query(
       `SELECT * FROM worker_job WHERE kind = $1 ORDER BY id DESC LIMIT 1`,
       [kind],
+    );
+    return rows.length > 0 ? mapWorkerJobRow(rows[0]) : undefined;
+  }
+
+  /** 按 task 查当前活跃（queued/leased/running）的 download 作业（stop/delete 取消用）。 */
+  async findActiveDownloadJobByTask(
+    taskId: number,
+  ): Promise<WorkerJobRecord | undefined> {
+    const { rows } = await this.pool.query(
+      `SELECT * FROM worker_job
+       WHERE kind = 'download' AND ref_id = $1 AND status IN ('queued','leased','running')
+       LIMIT 1`,
+      [String(taskId)],
     );
     return rows.length > 0 ? mapWorkerJobRow(rows[0]) : undefined;
   }
