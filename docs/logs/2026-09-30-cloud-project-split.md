@@ -200,3 +200,14 @@ contract 真源随 DB 层落 server-common，`prisma:emit` 脚本改由 server-c
 - cloud-server healthcheck 命中 `/`（前端静态，经 ServeStatic 不过 AuthGuard）；上线时确认返回 200，否则 nas-worker 的 `depends_on cloud-server: healthy` 不满足。
 - 既有陈旧引用（与本次无关，待清理）：`cloud-server/scripts/db-init.sh|.ps1` 与 one-off-migrations SQL 注释仍提 `packages/server/.env` 旧路径；`.env.example`/docs 内嵌真实 RDS 实例名/COS 桶可泛化为占位。
 
+## 后继小项（2026-10-01，Stage D 之后）
+
+### embedding 向量复用键常量/归一化下沉 adapters（Deferred 项，已解决）
+- 新增 `packages/adapters/src/embedding/embedding-defaults.ts`：`DEFAULT_EMBEDDING_MODEL`/`DEFAULT_EMBEDDING_DIMENSIONS`/`DEFAULT_EMBEDDING_BASE_URL` + `EmbeddingConfigError` + `normalizeEmbeddingText`，经 barrel 导出。
+- cloud/nas 的 `knowledge/embedding.service.ts` 删除两份逐字一致的本地定义，改为从 `@bilibili-downloader/adapters/embedding` import，并原样 re-export 以保持既有调用点（chat.service / knowledge-search / knowledge-publisher）import 路径不变。单一真源杜绝向量复用键漂移（漂移会静默影响去重/计费/检索）。
+- 验证：typecheck/build 绿；三包测试 cloud 85 / nas 63 / server-common 84 全绿（计数不变，纯重构行为等价）。
+
+### 文档基础设施标识泛化（审计 nit，部分处理）
+- `packages/docker/.env.example`（活跃配置模板）：真实 RDS 实例名 `pgm-bp1zn6…` → `pgm-xxxxxxxx`；COS `ap-chengdu`/`ai-summary-1325700411`（含账号 APPID）→ `ap-guangzhou`/`your-bucket-1300000000` 占位。
+- 历史记录（`docs/testing/`、`docs/plans/`、`docs/logs/`、`docs/requirements/` 中 2026-08-24 迁移/COS 阶段的验证证据）内嵌的真实标识**不改写**：属 append-only / 冻结的历史验证证据，重写会篡改审计轨迹；且均为基础设施标识非凭据，真实密钥仅在 gitignored 的 `.env`、未入库。
+

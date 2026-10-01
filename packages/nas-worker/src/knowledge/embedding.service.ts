@@ -1,32 +1,15 @@
 import { Injectable } from "@nestjs/common";
 import {
+  DEFAULT_EMBEDDING_BASE_URL,
+  DEFAULT_EMBEDDING_DIMENSIONS,
+  DEFAULT_EMBEDDING_MODEL,
   EmbeddingApiError,
   EmbeddingClient,
+  EmbeddingConfigError,
   EMBEDDING_BATCH_LIMIT,
+  normalizeEmbeddingText,
 } from "@bilibili-downloader/adapters/embedding";
 import { DatabaseService } from "@bilibili-downloader/server-common";
-
-// nas-worker 副本：与 cloud-server 侧 `knowledge/embedding.service.ts` 为两份薄 wrapper。
-// 真实客户端在 `@bilibili-downloader/adapters/embedding`；此处仅做 Nest 注入与配置读取。
-// normalizeEmbeddingText / 维度守卫等易漂移项两侧须逐字一致（向量复用键，漂移会静默重复计费）。
-export const DEFAULT_EMBEDDING_MODEL = "qwen3.7-text-embedding";
-export const DEFAULT_EMBEDDING_DIMENSIONS = 1024;
-const DEFAULT_EMBEDDING_BASE_URL =
-  "https://dashscope.aliyuncs.com/compatible-mode/v1";
-
-export class EmbeddingConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "EmbeddingConfigError";
-  }
-}
-
-export function normalizeEmbeddingText(...parts: string[]): string {
-  return parts
-    .map((p) => p.replace(/\s+/g, " ").trim())
-    .filter((p) => p.length > 0)
-    .join(" ");
-}
 
 @Injectable()
 export class EmbeddingService {
@@ -78,4 +61,12 @@ export class EmbeddingService {
   }
 }
 
-export { EmbeddingApiError };
+// 向量复用键相关常量/归一化/错误类型下沉 adapters（单一真源，防 cloud/nas 漂移）；
+// 此处 re-export 保持既有调用点的 import 路径不变。
+export {
+  EmbeddingApiError,
+  EmbeddingConfigError,
+  normalizeEmbeddingText,
+  DEFAULT_EMBEDDING_MODEL,
+  DEFAULT_EMBEDDING_DIMENSIONS,
+};

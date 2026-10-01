@@ -204,7 +204,7 @@ Exit Criteria:
 - Consequence Until Fixed: 本地开发/测试/typecheck/build 全部正常；**仅镜像构建与容器部署不可用**（自 Stage A 起到 Stage D 批准前）。
 - Successor Required: `yes`（Stage D：三镜像重写时一并接线 server-common 与 contract 取件路径）
 
-### embedding 常量/`normalizeEmbeddingText` 尚未下沉 adapters
+### embedding 常量/`normalizeEmbeddingText` 尚未下沉 adapters ✅ 已解决（2026-10-01：下沉 `adapters/src/embedding/embedding-defaults.ts`，cloud/nas wrapper 改为 import + re-export，单一真源防漂移）
 - Classification: `code-hygiene followup`
 - What: COS 已下沉 `adapters/src/cos`；embedding 的 `EmbeddingClient` 本就在 adapters，但 `DEFAULT_EMBEDDING_MODEL/DIMENSIONS/BASE_URL` 常量与 `normalizeEmbeddingText`（向量复用键，漂移会静默影响去重/计费）目前仍为 cloud/nas 两份逐字一致 wrapper。
 - Why Not Blocking: 两份已加「须逐字一致」注释，当前行为正确；下沉是防漂移加固。
