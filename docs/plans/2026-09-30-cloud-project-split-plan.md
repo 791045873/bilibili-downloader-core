@@ -80,9 +80,10 @@ Status: done
 
 #### B-2 作业契约下沉 + N2 纯 DB 去重
 
-- [ ] `Add`：`server-common/src/worker/job-kinds.ts`（kind 常量 + payload 类型 + dedupKey 构造器），替换 **9 处**手写副本（`analysis-trigger.service.ts:134,204`、`analysis.controller.ts:196,448`、`analysis-task.controller.ts:84,97,339,378`、`analysis-video-resolver.ts:147`）。
-- [ ] `Fix`：`create-dedup.ts` 删 `fileExists` 入参、改提示文案；`download.service.ts:453-478` 去磁盘判定。
-- [ ] `Proof`：`rg -n 'dedupKey: `' packages/*/src` → 0 命中；`create-dedup.test.ts` 改写后绿（含新增「文件已删仍拦截」）；`worker-job.test.ts` 零改动仍绿；文案与已改写的 AC3 一致。
+Status: done
+- [x] `Add`：`server-common/src/worker/job-kinds.ts`（kind 常量 + payload 类型 + dedupKey 构造器），替换 **9 处**手写副本（analysis-trigger ×2、analysis.controller ×2、analysis-task.controller ×4、analysis-video-resolver ×1）。
+- [x] `Fix`：`create-dedup.ts` 去 `fileExists`/`completedOutputFile` 改 `completedTaskExists`；`download.service.ts` 的 `evaluateCreateDedup` 去磁盘判定与 `resolveFromDownloadRoot` import。
+- [x] `Proof`：`rg 'dedupKey:' packages/*/src` 全部为构造器调用、无模板字面量；`create-dedup.test.ts` 按新 AC3 重写（4 用例，含「文件已删仍拦截」）后绿；`worker-job.test.ts` **零改动仍绿**；全仓 typecheck/build 绿；server 17/140 + server-common 11/75 = 215（create-dedup 少 1 用例，AC3 收窄预期）。
 
 #### B-3 WorkerService per-kind 并发（裁决 B3）
 

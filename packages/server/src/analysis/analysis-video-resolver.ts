@@ -14,7 +14,10 @@ import { mkdir } from "node:fs/promises";
 import { TaskStatus } from "@bilibili-downloader/core/domain";
 import { DatabaseService } from "@bilibili-downloader/server-common";
 import { DownloadService } from "../download/download.service.js";
-import { createLogMessage } from "@bilibili-downloader/server-common";
+import {
+  createLogMessage,
+  lowResDownloadDedupKey,
+} from "@bilibili-downloader/server-common";
 import { PathsService } from "../paths/paths.service.js";
 import { resolveFromDownloadRoot } from "@bilibili-downloader/server-common";
 import isNil from "lodash/isNil.js";
@@ -142,7 +145,7 @@ export class AnalysisVideoResolver implements ScreenshotSourceResolver {
       queue: "nas",
       refType: "task",
       refId: input.taskId,
-      dedupKey: `lowres:${input.bvid}:${input.cid}`,
+      dedupKey: lowResDownloadDedupKey(input.bvid, input.cid),
       payload: {
         taskId: input.taskId,
         analysisSubTaskId,

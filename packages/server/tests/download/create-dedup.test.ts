@@ -1,50 +1,39 @@
 import { describe, expect, it } from "vitest";
 import { decideCreateDedupVerdict } from "../../src/download/create-dedup.js";
 
-describe("decideCreateDedupVerdict", () => {
+describe("decideCreateDedupVerdict（纯 DB 去重，2026-09-30 修订）", () => {
   it("active 任务存在即拦截", () => {
     const v = decideCreateDedupVerdict({
       activeTaskExists: true,
-      completedOutputFile: undefined,
-      fileExists: false,
+      completedTaskExists: false,
     });
     expect(v.block).toBe(true);
     expect(v.message).toContain("排队中或下载中");
   });
 
-  it("success 且文件存在拦截", () => {
+  it("已有 success 任务即拦截（不再校验磁盘）", () => {
     const v = decideCreateDedupVerdict({
       activeTaskExists: false,
-      completedOutputFile: "sub/a.mp4",
-      fileExists: true,
+      completedTaskExists: true,
     });
     expect(v.block).toBe(true);
-    expect(v.message).toContain("已下载且文件存在");
+    expect(v.message).toContain("已下载");
   });
 
-  it("success 但文件缺失放行（可重新下载）", () => {
+  it("文件被手动删除后仍拦截（AC3 已改写：纯 DB，success 记录在即拦）", () => {
+    // 磁盘文件已删但 DB 仍有 success 记录 → 拆分后创建入口（cloud）无法感知磁盘，
+    // 一律按 DB 记录拦截。用户需先删任务记录再重建。
     const v = decideCreateDedupVerdict({
       activeTaskExists: false,
-      completedOutputFile: "sub/a.mp4",
-      fileExists: false,
+      completedTaskExists: true,
     });
-    expect(v).toEqual({ block: false });
-  });
-
-  it("success 记录无 outputFile 时不拦截", () => {
-    const v = decideCreateDedupVerdict({
-      activeTaskExists: false,
-      completedOutputFile: null,
-      fileExists: false,
-    });
-    expect(v).toEqual({ block: false });
+    expect(v.block).toBe(true);
   });
 
   it("无任何记录放行", () => {
     const v = decideCreateDedupVerdict({
       activeTaskExists: false,
-      completedOutputFile: undefined,
-      fileExists: false,
+      completedTaskExists: false,
     });
     expect(v).toEqual({ block: false });
   });

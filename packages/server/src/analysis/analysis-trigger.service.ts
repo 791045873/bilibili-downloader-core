@@ -22,7 +22,11 @@ import { PromptService } from "./prompt.service.js";
 import { PathsService } from "../paths/paths.service.js";
 import { resolveFromDownloadRoot } from "@bilibili-downloader/server-common";
 import { KnowledgePublisherService } from "../knowledge/knowledge-publisher.service.js";
-import { WorkerService } from "@bilibili-downloader/server-common";
+import {
+  WorkerService,
+  analyzeDedupKey,
+  analyzeContinuationDedupKey,
+} from "@bilibili-downloader/server-common";
 import { SummaryIntegrityService } from "./summary-integrity.service.js";
 import { ScreenshotRetryService } from "./screenshot-retry.service.js";
 import type { WorkerJobRecord } from "@bilibili-downloader/server-common";
@@ -131,7 +135,7 @@ export class AnalysisTriggerService implements OnModuleInit {
       queue: "nas",
       refType: "task",
       refId: taskId,
-      dedupKey: `analyze:${task.bvid}:${task.cid}`,
+      dedupKey: analyzeDedupKey(task.bvid, task.cid),
       payload: { taskId, promptId },
     });
   }
@@ -201,7 +205,7 @@ export class AnalysisTriggerService implements OnModuleInit {
         queue: "nas",
         refType: "task",
         refId: taskId,
-        dedupKey: `analyze:cont:${bvid}:${cid}`,
+        dedupKey: analyzeContinuationDedupKey(bvid, cid),
         payload: { taskId, continuation: true },
       });
     } catch (err) {

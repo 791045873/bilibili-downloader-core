@@ -8,3 +8,4 @@ export * from "./logging/request-logging.interceptor.js";
 export * from "./paths/path-anchor.js";
 export * from "./prompt/builtin-prompt.js";
 export * from "./worker/worker.service.js";
+export * from "./worker/job-kinds.js";

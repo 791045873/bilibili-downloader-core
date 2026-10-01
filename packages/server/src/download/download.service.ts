@@ -29,7 +29,6 @@ import {
 import type { DownloadDto } from "./download.dto.js";
 import { buildOutputFileName } from "./file-naming.js";
 import { decideCreateDedupVerdict } from "./create-dedup.js";
-import { resolveFromDownloadRoot } from "@bilibili-downloader/server-common";
 import { createLogMessage } from "@bilibili-downloader/server-common";
 
 interface LowResDownloadResult {
@@ -446,31 +445,20 @@ autoSummary: dto.autoSummary,
     return { created: true, id, message: "任务已创建" };
   }
 
-  /** 入队去重判定：active 任务存在，或 success 任务 outputFile 在磁盘真实存在 */
+  /** 入队去重判定（纯 DB）：active 任务存在，或已有 success 任务则拦截。
+   * 拆分后创建入口在 cloud、磁盘仅 nas 可见，故不再校验文件存在性（见
+   * docs/requirements/2026-09-09-download-create-dedup.md 2026-09-30 修订）。 */
   private async evaluateCreateDedup(
     bvid: string,
     cid: number,
   ): Promise<{ block: boolean; message?: string }> {
     const active = await this.db.findActiveTaskByBvidAndCid(bvid, cid);
-    let completedOutputFile: string | null | undefined;
-    let completedFileExists = false;
-    if (!active) {
-      const completed = await this.db.findCompletedTaskByBvidAndCid(bvid, cid);
-      completedOutputFile = completed?.outputFile;
-      if (completedOutputFile) {
-        const abs = resolveFromDownloadRoot(
-          completedOutputFile,
-          this.paths.DOWNLOAD_ROOT,
-        );
-        completedFileExists = abs
-          ? await this.fileExists(abs)
-          : false;
-      }
-    }
+    const completed = active
+      ? undefined
+      : await this.db.findCompletedTaskByBvidAndCid(bvid, cid);
     return decideCreateDedupVerdict({
       activeTaskExists: Boolean(active),
-      completedOutputFile,
-      fileExists: completedFileExists,
+      completedTaskExists: Boolean(completed),
     });
   }
 

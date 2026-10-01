@@ -13,7 +13,12 @@ import {
   Query,
   Body,
 } from "@nestjs/common";
-import { DatabaseService } from "@bilibili-downloader/server-common";
+import {
+  DatabaseService,
+  analyzeDedupKey,
+  screenshotRetryDedupKey,
+  INTEGRITY_CHECK_DEDUP_KEY,
+} from "@bilibili-downloader/server-common";
 import type { AiSummaryTaskRecord } from "@bilibili-downloader/server-common";
 import { DownloadService } from "../download/download.service.js";
 import { AnalysisTriggerService } from "./analysis-trigger.service.js";
@@ -79,7 +84,7 @@ export class AnalysisTaskController {
       queue: "nas",
       refType: "task",
       refId: taskId,
-      dedupKey: `analyze:${task.bvid}:${task.cid}`,
+      dedupKey: analyzeDedupKey(task.bvid, task.cid),
       payload: { taskId, promptId },
     });
 
@@ -92,7 +97,7 @@ export class AnalysisTaskController {
     await this.databaseService.enqueueJob({
       kind: "integrity_check",
       queue: "nas",
-      dedupKey: "integrity_check",
+      dedupKey: INTEGRITY_CHECK_DEDUP_KEY,
     });
     return { message: "完整性检查已开始" };
   }
@@ -334,7 +339,7 @@ export class AnalysisTaskController {
       queue: "nas",
       refType: "task",
       refId: task.id,
-      dedupKey: `analyze:${summaryTask.bvid}:${summaryTask.cid}`,
+      dedupKey: analyzeDedupKey(summaryTask.bvid, summaryTask.cid),
       payload: { taskId: task.id, promptId: summaryTask.promptId },
     });
 
@@ -373,7 +378,7 @@ export class AnalysisTaskController {
       queue: "nas",
       refType: "summary_task",
       refId: summaryTaskId,
-      dedupKey: `screenshot_retry:${summaryTaskId}`,
+      dedupKey: screenshotRetryDedupKey(summaryTaskId),
       payload: { summaryTaskId },
     });
 

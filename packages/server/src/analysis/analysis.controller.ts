@@ -17,6 +17,8 @@ import { DownloadService } from "../download/download.service.js";
 import {
   createLogMessage,
   summarizeText,
+  analyzeDedupKey,
+  lowResDownloadDedupKey,
 } from "@bilibili-downloader/server-common";
 
 // 与 Python 视觉代理写死基址（qwen_vision_proxy.py: DASHSCOPE_BASE_URL）保持一致的原生 API 端点，
@@ -127,7 +129,7 @@ export class AnalysisController {
       queue: "nas",
       refType: "task",
       refId: task.id!,
-      dedupKey: `analyze:${body.bvid}:${body.cid}`,
+      dedupKey: analyzeDedupKey(body.bvid, body.cid),
       payload: { taskId: task.id!, promptId },
     });
     return { message: "AI 总结触发中" };
@@ -379,7 +381,7 @@ export class AnalysisController {
         queue: "nas",
         refType: "task",
         refId: input.taskId,
-        dedupKey: `lowres:${input.bvid}:${input.cid}`,
+        dedupKey: lowResDownloadDedupKey(input.bvid, input.cid),
         payload: {
           taskId: input.taskId,
           analysisSubTaskId,

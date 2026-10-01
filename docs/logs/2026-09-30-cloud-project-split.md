@@ -59,3 +59,21 @@ contract 真源随 DB 层落 server-common，`prisma:emit` 脚本改由 server-c
 
 - 全仓 `typecheck` / `build` 绿；server 17 files / 141 tests、server-common 11 files / 75 tests 全绿（**216 计数不变**，本片未动任何测试）。
 - 断言：`rg "AnalysisEngine|AnalysisVideoResolver|PromptService|AnalysisTriggerService" analysis.controller.ts` → 0 命中；`rg "abortTask|SingleDownloadDto|resolveForRun|abortControllers|analysis/run" packages/*/src` → 0 命中（仅剩 `db.getTasks()` 这一无关同名方法）。
+
+
+## Stage B-2 — 作业契约下沉 + 纯 DB 去重
+
+### 作业契约下沉（N6）
+
+新增 `packages/server-common/src/worker/job-kinds.ts`（经 barrel 导出）：`JOB_KIND` 常量、各作业 payload 类型、dedupKey 构造器（`downloadDedupKey`/`analyzeDedupKey`/`analyzeContinuationDedupKey`/`lowResDownloadDedupKey`/`screenshotRetryDedupKey` + `INTEGRITY_CHECK_DEDUP_KEY`）。替换全仓 **9 处手写 dedupKey 副本**：`analysis-trigger.service.ts`(analyze + analyze:cont)、`analysis.controller.ts`(analyze + lowres)、`analysis-video-resolver.ts`(lowres)、`analysis-task.controller.ts`(analyze×2 + integrity_check + screenshot_retry)。拆分后 cloud/nas 共引一处，消除跨包静默漂移。
+
+### N2 纯 DB 去重（已改写 AC3）
+
+`create-dedup.ts`：`CreateDedupInput` 去掉 `completedOutputFile`/`fileExists`，改为 `completedTaskExists: boolean`；`download.service.ts` 的 `evaluateCreateDedup` 去掉 `fileExists` 磁盘判定与 `resolveFromDownloadRoot` import，改为「active 存在 或 已有 success 任务则拦截」。行为变化：DB 有 success 记录但盘上文件已删时由放行重下改为 409 拦截——需求 `docs/requirements/2026-09-09-download-create-dedup.md` 需求项 4 / AC3 已按人工批准改写。
+
+### 验证
+
+- 全仓 `typecheck` / `build` 绿。
+- server **17 files / 140 tests**（`create-dedup.test.ts` 由 5 → 4 用例，按新 AC3 重写：active 拦截、success 拦截、**文件已删仍拦截**、无记录放行）；server-common **11 files / 75 tests**，其中 `worker-job.test.ts` **零改动仍绿**（dedupKey 下沉未改作业仓储行为）。
+- 计数：216 → **215**（create-dedup 少 1 用例，符合 AC3 收窄预期，非回归）。
+- 断言：`rg 'dedupKey:\s*`' packages/*/src` → 0 命中（全部改为构造器调用）。
