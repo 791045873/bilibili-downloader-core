@@ -4,8 +4,9 @@
  */
 
 import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
-import { QwenClient, type LlmConfig, type MultimodalContent } from "@bilibili-downloader/adapters";
+import { type LlmConfig, type MultimodalContent } from "@bilibili-downloader/adapters";
 import { DatabaseService } from "@bilibili-downloader/server-common";
+import { OpenAiVisionClient } from "./openai-vision-client.js";
 import {
   EmbeddingApiError,
   EmbeddingConfigError,
@@ -43,7 +44,7 @@ export class ChatService {
   ): Promise<{ userMessageId: number; assistantMessageId: number | null; reply: ChatReplyPayload }> {
     const config = getChatConfig();
     // 配置预检在落库前：缺配置时 503 且不落任何消息
-    const qwen = await this.createQwenClient();
+    const qwen = await this.createVisionClient();
     const history = await this.db.listMessages(conversationId);
     const userMessageId = await this.db.insertMessage({
       conversationId,
@@ -157,7 +158,7 @@ export class ChatService {
   }
 
   private async rewriteQuestion(
-    qwen: QwenClient,
+    qwen: OpenAiVisionClient,
     historyText: string,
     content: string,
   ): Promise<string> {
@@ -188,7 +189,7 @@ export class ChatService {
   }
 
   private async analyzePhotos(
-    qwen: QwenClient,
+    qwen: OpenAiVisionClient,
     photoUrls: string[],
   ): Promise<string> {
     const content: MultimodalContent[] = [
@@ -211,7 +212,7 @@ export class ChatService {
   }
 
   private async generateReply(
-    qwen: QwenClient,
+    qwen: OpenAiVisionClient,
     args: {
       hits: ChatHit[];
       historyText: string;
@@ -276,8 +277,8 @@ export class ChatService {
     });
   }
 
-  /** 沿用现有先例：读用户配置后自行构造 QwenClient（无共享 DI 先例） */
-  private async createQwenClient(): Promise<QwenClient> {
+  /** 沿用现有先例：读用户配置后自行构造多模态客户端（无共享 DI 先例） */
+  private async createVisionClient(): Promise<OpenAiVisionClient> {
     const settings = await this.db.getSettings(["llm.apiKey", "llm.modelName"]);
     const apiKey = settings["llm.apiKey"];
     const modelName = settings["llm.modelName"];
@@ -300,7 +301,7 @@ export class ChatService {
         process.env.QWEN_VISION_PROXY_TIMEOUT_MS,
       ),
     };
-    return new QwenClient(config);
+    return new OpenAiVisionClient(config);
   }
 }
 

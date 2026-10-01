@@ -84,6 +84,9 @@ importers:
       multer:
         specifier: ^2.3.0
         version: 2.3.0
+      openai:
+        specifier: ^7.25.0
+        version: 7.25.0(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.7.3)(undici@7.29.0)(ws@8.21.3)
       prisma:
         specifier: 8.0.0-rc.12
         version: 8.0.0-rc.12(@types/node@22.19.19)(@types/react@19.2.18)(@vercel/nft@1.11.0(rollup@4.60.4))(magicast@0.5.4)(pg@8.22.0)(rollup@4.60.4)(typanion@3.14.0)(typescript@5.9.3)(vite@5.4.21(@types/node@22.19.19)(lightningcss@1.33.0)(terser@5.47.1))(vitest@2.1.9(@types/node@22.19.19)(lightningcss@1.33.0)(terser@5.47.1))(ws@8.21.3)
@@ -4456,6 +4459,30 @@ packages:
   open@11.0.2:
     resolution: {integrity: sha512-RWqF+pBSkqecEvCKOn8QYhaNdRMJDZRIrlS/7rTDdLHaPcfXGCZ/h8zb413NfvdeAV0MR7T1yJcA34/q+CSm1Q==, tarball: https://registry.npmjs.org/open/-/open-11.0.2.tgz}
     engines: {node: '>=20'}
+
+  openai@7.25.0:
+    resolution: {integrity: sha512-cnk0d4QT58Vq0vl2KG+DCa/C2+cXthsK2rUeaqtprq33mKv9dlX8o7fWSS283wa2IE/aVdsRyX1+Dqwz551olg==, tarball: https://registry.npmjs.org/openai/-/openai-7.25.0.tgz}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@aws-sdk/credential-provider-node': '>=3.972.0 <4'
+      '@smithy/hash-node': '>=4.3.0 <5'
+      '@smithy/signature-v4': '>=5.4.0 <6'
+      undici: '>=5 <9'
+      ws: ^8.21.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      '@aws-sdk/credential-provider-node':
+        optional: true
+      '@smithy/hash-node':
+        optional: true
+      '@smithy/signature-v4':
+        optional: true
+      undici:
+        optional: true
+      ws:
+        optional: true
+      zod:
+        optional: true
 
   openapi-fetch@0.14.0:
     resolution: {integrity: sha512-PshIdm1NgdLvb05zp8LqRQMNSKzIlPkyMxYFxwyHR+UlKD4t2nUjkDhNxeRbhRSEd3x5EUNh2w5sJYwkhOH4fg==, tarball: https://registry.npmjs.org/openapi-fetch/-/openapi-fetch-0.14.0.tgz}
@@ -10463,6 +10490,13 @@ snapshots:
       is-inside-container: 1.0.0
       powershell-utils: 0.2.1
       wsl-utils: 1.0.0
+
+  openai@7.25.0(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.7.3)(undici@7.29.0)(ws@8.21.3):
+    optionalDependencies:
+      '@aws-sdk/credential-provider-node': 3.972.82
+      '@smithy/signature-v4': 5.7.3
+      undici: 7.29.0
+      ws: 8.21.3
 
   openapi-fetch@0.14.0:
     dependencies:

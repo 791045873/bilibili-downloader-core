@@ -9,7 +9,6 @@ import {
   Post,
   Put,
 } from "@nestjs/common";
-import type { LlmConfig } from "@bilibili-downloader/adapters/llm";
 import type { VideoPage } from "@bilibili-downloader/core/ports";
 import { DatabaseService } from "@bilibili-downloader/server-common";
 import { DownloadScheduler } from "../download/download-scheduler.js";
@@ -413,37 +412,6 @@ export class AnalysisController {
     }
     return `${mainTitle} P${matchedPage.page}`;
   }
-
-  /** 云端 LLM 配置读取：Stage C 将改为 openai SDK 连 QWEN_VISION_PROXY_URL，故保留 */
-  private async getLlmConfig(): Promise<LlmConfig> {
-    const settings = await this.resolveLlmSettings();
-    const apiKey = settings["llm.apiKey"];
-    const modelName = settings["llm.modelName"];
-    const visionProxyUrl = process.env.QWEN_VISION_PROXY_URL;
-    const visionProxyTimeoutMs = parseVisionProxyTimeoutMs(
-      process.env.QWEN_VISION_PROXY_TIMEOUT_MS,
-    );
-
-    if (!apiKey) {
-      throw new BadRequestException("缺少 LLM 配置：API Key 未设置");
-    }
-    if (!modelName) {
-      throw new BadRequestException("缺少 LLM 配置：模型未设置");
-    }
-
-    return {
-      apiKey,
-      modelName,
-      visionProxyUrl,
-      visionProxyTimeoutMs,
-    };
-  }
-}
-
-function parseVisionProxyTimeoutMs(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function parseOptionalPromptId(value: unknown): number | undefined {
