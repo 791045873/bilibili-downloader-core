@@ -1600,7 +1600,9 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     queue: string,
     owner: string,
     ttlSeconds: number,
+    excludeKinds: string[] = [],
   ): Promise<WorkerJobRecord | undefined> {
+    const exclude = excludeKinds.length > 0 ? excludeKinds : null;
     const { rows } = await this.pool.query(
       `UPDATE worker_job SET status='running', lease_owner=$2,
          lease_expires_at = now() + ($3 || ' seconds')::interval,
@@ -1608,11 +1610,12 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
        WHERE id = (
          SELECT id FROM worker_job
          WHERE queue = $1 AND status = 'queued' AND available_at <= now() AND cancel_requested = 0
+           AND ($4::text[] IS NULL OR kind <> ALL($4::text[]))
          ORDER BY priority DESC, id ASC
          FOR UPDATE SKIP LOCKED LIMIT 1
        )
        RETURNING *`,
-      [queue, owner, String(ttlSeconds)],
+      [queue, owner, String(ttlSeconds), exclude],
     );
     return rows.length > 0 ? mapWorkerJobRow(rows[0]) : undefined;
   }

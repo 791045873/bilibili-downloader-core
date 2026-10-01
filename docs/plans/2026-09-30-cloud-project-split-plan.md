@@ -87,8 +87,9 @@ Status: done
 
 #### B-3 WorkerService per-kind 并发（裁决 B3）
 
-- [ ] `Fix`：`server-common/src/worker/worker.service.ts` 的 `drain()` 改按 kind 计数 + 新增 `WORKER_MAX_CONCURRENT_<KIND>`，缺省退化为全局 `WORKER_MAX_CONCURRENT`（默认 2）；`MAX_CONCURRENT_DOWNLOADS` 映射到 download kind 的上限。
-- [ ] `Proof`：`tests/worker/worker-loop.test.ts` **零改动**仍绿（向后兼容证明）+ 新增两条用例（单 kind 满额时他 kind 仍派发、缺省 env 行为等于 Phase 2）；server-common `typecheck`/`build` 绿。
+Status: done
+- [x] `Fix`：`claimNextJob` 增 `excludeKinds` 过滤（SQL `kind <> ALL($4)`，空数组=旧行为）；`worker.service.ts` 新增 `runningByKind` 计数 + `perKindLimit(kind)`（读 `WORKER_MAX_CONCURRENT_<KIND>`，download 兼容旧 `MAX_CONCURRENT_DOWNLOADS`，缺省退化为全局 `WORKER_MAX_CONCURRENT`）+ `saturatedKinds()`；`pollOnce` 把已达上限的 kind 排除，避免长耗时 analyze 占满全局槽位。
+- [x] `Proof`：`tests/worker/worker-loop.test.ts` 原 6 用例**零改动仍绿**（向后兼容）+ 新增 2 用例（claimNextJob 排除指定 kind 且空数组=Phase 2 默认；某 kind 达 per-kind 上限时排除该 kind、其他 kind 仍派发）；server-common 11 files/77 tests、server 17/140 全绿；全仓 typecheck/build 绿。
 
 #### B-4 接通 `download` kind（单体内完成，最大一片）
 

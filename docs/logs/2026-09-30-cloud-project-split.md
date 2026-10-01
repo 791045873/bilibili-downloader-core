@@ -77,3 +77,11 @@ contract 真源随 DB 层落 server-common，`prisma:emit` 脚本改由 server-c
 - server **17 files / 140 tests**（`create-dedup.test.ts` 由 5 → 4 用例，按新 AC3 重写：active 拦截、success 拦截、**文件已删仍拦截**、无记录放行）；server-common **11 files / 75 tests**，其中 `worker-job.test.ts` **零改动仍绿**（dedupKey 下沉未改作业仓储行为）。
 - 计数：216 → **215**（create-dedup 少 1 用例，符合 AC3 收窄预期，非回归）。
 - 断言：`rg 'dedupKey:\s*`' packages/*/src` → 0 命中（全部改为构造器调用）。
+
+
+## Stage B-3 — WorkerService per-kind 并发上限（裁决 B3）
+
+- `claimNextJob(queue, owner, ttl, excludeKinds=[])`：SQL 增 `AND ($4::text[] IS NULL OR kind <> ALL($4::text[]))`，空数组退化为旧行为。
+- `worker.service.ts`：新增 `runningByKind` per-kind 运行计数、`perKindLimit(kind)`（`WORKER_MAX_CONCURRENT_<KIND>` → download 兼容旧 `MAX_CONCURRENT_DOWNLOADS` → 缺省全局 `WORKER_MAX_CONCURRENT`）、`saturatedKinds()`；`pollOnce` 把已达 per-kind 上限的 kind 透传给 `claimNextJob` 排除。
+- 解决 B3：高清 `download` 迁 worker_job 后不再因 `MAX_CONCURRENT_DOWNLOADS` 失效而与长耗时 `analyze` 抢同一全局 2 槽；缺省（无 per-kind env）行为与 Phase 2 完全一致。
+- 验证：`worker-loop.test.ts` 原 6 用例零改动仍绿（向后兼容证明）+ 新增 2 用例；server-common 11/77、server 17/140 全绿；typecheck/build 绿。

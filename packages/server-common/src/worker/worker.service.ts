@@ -33,7 +33,10 @@ export class WorkerService implements OnModuleInit, OnApplicationShutdown {
   private readonly failBackoffSec: number;
   private readonly maxConcurrent: number;
   private readonly enabled: boolean;
+  /** per-kind 并发上限缓存（env `WORKER_MAX_CONCURRENT_<KIND>`，缺省 = 全局，不另加限） */
+  private readonly perKindLimits = new Map<string, number>();
   private running = 0;
+  private readonly runningByKind = new Map<string, number>();
   private pollTimer?: ReturnType<typeof setInterval>;
   private reapTimer?: ReturnType<typeof setInterval>;
   private heartbeatTimer?: ReturnType<typeof setInterval>;
@@ -94,19 +97,53 @@ export class WorkerService implements OnModuleInit, OnApplicationShutdown {
     return dispatched;
   }
 
-  /** 认领并执行单个作业（fire-and-forget 执行），认领成功返回 true。 */
+  /** 认领并执行单个作业（fire-and-forget 执行），认领成功返回 true。
+   * 已达 per-kind 上限的 kind 本轮排除，避免某 kind（如长耗时 analyze）占满全局槽位。 */
   async pollOnce(): Promise<boolean> {
     const job = await this.db.claimNextJob(
       this.queue,
       this.workerId,
       this.leaseTtlSec,
+      this.saturatedKinds(),
     );
     if (!job) return false;
     this.running += 1;
+    this.runningByKind.set(job.kind, (this.runningByKind.get(job.kind) ?? 0) + 1);
     void this.runJob(job).finally(() => {
       this.running -= 1;
+      this.runningByKind.set(
+        job.kind,
+        Math.max(0, (this.runningByKind.get(job.kind) ?? 1) - 1),
+      );
     });
     return true;
+  }
+
+  /** 当前已达各自 per-kind 上限的 kind 列表（无 per-kind 配置的 kind 永不入列）。 */
+  private saturatedKinds(): string[] {
+    const saturated: string[] = [];
+    for (const [kind, running] of this.runningByKind) {
+      if (running >= this.perKindLimit(kind)) {
+        saturated.push(kind);
+      }
+    }
+    return saturated;
+  }
+
+  /** 某 kind 的并发上限：`WORKER_MAX_CONCURRENT_<KIND>`；download 兼容旧
+   * `MAX_CONCURRENT_DOWNLOADS`；均未配置则取全局上限（即不额外限制）。 */
+  private perKindLimit(kind: string): number {
+    const cached = this.perKindLimits.get(kind);
+    if (cached !== undefined) return cached;
+    const envName = `WORKER_MAX_CONCURRENT_${kind.toUpperCase()}`;
+    let value = Number(process.env[envName]);
+    if ((!Number.isFinite(value) || value <= 0) && kind === "download") {
+      value = Number(process.env.MAX_CONCURRENT_DOWNLOADS);
+    }
+    const limit =
+      Number.isFinite(value) && value > 0 ? value : this.maxConcurrent;
+    this.perKindLimits.set(kind, limit);
+    return limit;
   }
 
   async runReaperOnce(): Promise<number> {

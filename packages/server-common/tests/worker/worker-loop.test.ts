@@ -96,4 +96,43 @@ describe("worker loop 派发与终态", () => {
     const read = await db.getWorkerJobById(claimed!.id);
     expect(read!.status).toBe("queued");
   });
+
+  it("claimNextJob 可排除指定 kind（per-kind 限流底座；空数组=Phase 2 默认）", async () => {
+    await db.enqueueJob({ kind: "analyze" });
+    await db.enqueueJob({ kind: "download" });
+    // 排除 analyze → 拿到 download
+    const claimed = await db.claimNextJob("nas", "w", 60, ["analyze"]);
+    expect(claimed?.kind).toBe("download");
+    // 不排除（空数组）→ 按 id 顺序拿到 analyze（与 Phase 2 行为一致）
+    const next = await db.claimNextJob("nas", "w", 60, []);
+    expect(next?.kind).toBe("analyze");
+  });
+
+  it("某 kind 达 per-kind 上限时排除该 kind，其他 kind 仍派发", async () => {
+    process.env.WORKER_MAX_CONCURRENT_SLOW = "1";
+    try {
+      const worker = makeWorker();
+      let release!: () => void;
+      const gate = new Promise<void>((r) => {
+        release = r;
+      });
+      worker.registerHandler("slow", async () => {
+        await gate;
+      });
+      worker.registerHandler("fast", async () => ({ ok: 1 }));
+      const s1 = await db.enqueueJob({ kind: "slow" });
+      const s2 = await db.enqueueJob({ kind: "slow" });
+      const f = await db.enqueueJob({ kind: "fast" });
+      const dispatched = await worker.drain();
+      // slow 上限=1：派发 1 个 slow + fast；第二个 slow 被排除、留 queued
+      expect(dispatched).toBe(2);
+      await waitForStatus(f.id, "succeeded");
+      const s2row = await db.getWorkerJobById(s2.id);
+      expect(s2row!.status).toBe("queued");
+      release();
+      await waitForStatus(s1.id, "succeeded");
+    } finally {
+      delete process.env.WORKER_MAX_CONCURRENT_SLOW;
+    }
+  });
 });
