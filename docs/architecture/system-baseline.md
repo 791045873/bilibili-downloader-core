@@ -60,7 +60,7 @@ Phase 3 代码已落地的三应用职责与物理隔离（模块边界与依赖
 
 ## Data Access Approach
 
-- 数据访问层：`packages/server-common/src/database/database.service.ts` 门面，内部全量走 Prisma 8 client（`@prisma/orm-postgres`，contract 在 `packages/server-common/src/prisma/contract.*`，`pnpm --filter @bilibili-downloader/server-common prisma:emit` 生成）；例外仅两个守卫型原子 claim（`claimAiSummaryTask`/`claimNextCreatedTask`）保留 raw SQL + `pg` Pool
+- 数据访问层：`packages/server-common/src/database/database.service.ts` 门面，内部全量走 Prisma 8 client（`@prisma/orm-postgres`，contract 在 `packages/server-common/src/prisma/contract.*`，`pnpm --filter @bilibili-downloader/server-common prisma:emit` 生成）；例外仅两个守卫型原子 claim（`claimAiSummaryTask`/`claimCreatedTaskById`）保留 raw SQL + `pg` Pool
 - Schema 所有权：Prisma contract/migration（2026-09-02 P3 起，`initSchema()` 已移除）。`db init` fresh / `db sign` 采纳存量 / `db migrate` 演进；权威校验 `db verify`，启动哨兵做表+关键列快检。`prisma.config.ts` 在 cloud-server（server-common 另保留一份），`seed.mjs` 在 `cloud-server/scripts`，`ensure-pgvector.mjs` 与 `one-off-migrations/` 在 `server-common/scripts`
 - 数据层行为测试：`packages/server-common/tests/`（vitest，`TEST_DATABASE_URL`，globalSetup 自动 `db init`）；cloud-server / nas-worker 另有各自包内测试
 - 下载任务状态通过数据库记录

@@ -132,3 +132,24 @@ contract 真源随 DB 层落 server-common，`prisma:emit` 脚本改由 server-c
 
 ### 验证
 - `pnpm install` 纳入两新包（workspace 10 projects）；`pnpm typecheck`、`pnpm build` 全绿（含 cloud-server/nas-worker）；server 测试不受影响。
+
+## Stage B-5 — 第 3–5 步：拆三大类 + cloud/nas 双向搬迁 + 退役 server
+
+### 第 3 步：拆分三大类（按 split-map 的 per-member 归属）
+- `AnalysisTriggerService`（903 行）→ 云端 `analysis-job-producer.service`（入队 analyze/lowres、查询视图、ai-summary-task 读模型）与 nas `analysis-executor.service`（`trigger`/`runAnalysis`/`claimAiSummaryTask`/`reconcileStaleAnalysisState`/`upsertAiSummaryTask`）；执行侧注册 analyze/analyze:cont/lowres/screenshot_retry 四个 handler 于 `analysis-job-handlers.service` 构造器。
+- `DownloadService`（947 行）→ 云端 `download-task.service`（创建/停止/删除/分页读，生产者语义）与 nas `download-executor.service`（真实下载执行），`download-job-handler.service` 构造器注册 download handler。
+- `DownloadScheduler` → 云端 `download-scheduler`（生产者：入队/取消活跃作业）与 nas 执行链解耦；per-kind 并发沿用 B-3。
+
+### 第 4 步：cloud/nas 双向搬迁（~50 文件 git mv，保留历史）
+- 云端 `cloud-server`：analysis（读模型/控制器/文档生成/摘要渲染）、download（任务服务/调度/控制器）、knowledge（搜索控制器/embedding/cos-store 薄 wrapper）、chat、parse、user-auth、video、worker（仅 controller）、auth 控制器；`config/bili-cache.ts`（N4：`resolveCloudCookieFilePath`/`resolveCloudBiliApiCacheDir`）。
+- nas `nas-worker`：analysis（执行器/handler 注册/引擎/视频解析/截图兜底/完整性/时间戳/文档生成）、download（执行器/handler/命名）、knowledge（发布/embedding/cos-store）、notification、paths（`PathsService` 归位）、worker（`@Global` provide `WorkerService`）。
+- 物理隔离达成：cloud 侧对 ffmpeg/analysis-engine/`FfmpegScreenshot`/`PathsService` 真实 import 0 命中（仅注释与已登记的 Stage C `QwenClient→QWEN_VISION_PROXY_URL` 例外）；nas 侧 `@Controller`/HTTP `listen` 0 命中。
+
+### 第 5 步：退役 `packages/server`
+- 删除整个 `packages/server`；`cloud-server`/`nas-worker`/`server-common` 三应用成立。prisma `prisma.config.ts` 落 cloud-server；`scripts/seed.mjs` 随之迁移。
+- 已知破坏延后 Stage D：`Dockerfile.server` 与根 `dev:server` 脚本仍引用已删包，`pnpm docker:build` 失效——部署为保护区，待人工批准（见 plan Deferred）。
+
+### 验证
+- 全仓 `pnpm typecheck` / `pnpm build` 绿；测试 **218 守恒**（server-common 12/80 + cloud-server 12/76 + nas-worker 6/62），与拆分前计数一致。
+- 独立子代理 closure audit：**PASS-WITH-FIXES，无 Blocker**（物理隔离 grep、作业契约闭环、行为等价、Stage D 门禁均逐条核验；should-fix 已并入——见 plan Closure Audit Evidence）。
+

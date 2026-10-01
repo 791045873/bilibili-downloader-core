@@ -2218,7 +2218,7 @@ export async function verifySchemaTables(query: {
       `Database schema is missing tables: ${missingTables.join(", ")}. ` +
         `For a fresh database run: pnpm --filter @bilibili-downloader/cloud-server exec prisma db init --db <DATABASE_URL>. ` +
         `To adopt an existing database run: pnpm --filter @bilibili-downloader/cloud-server exec prisma db sign --db <DATABASE_URL>. ` +
-        `For schema evolution see packages/server/prisma/baseline/README.md.`,
+        `For schema evolution see packages/server-common/src/prisma（contract 真源）.`,
     );
   }
   const columns = await query(

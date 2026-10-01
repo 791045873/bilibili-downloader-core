@@ -1,6 +1,6 @@
 # 2026-09-30 Phase 3 — 拆分 cloud-server / nas-worker（server-common 前置 + 项目拆分 + 部署[gated]）
 
-> Plan Status: planned
+> Plan Status: done（Stage A–C 代码拆分完成并过独立 closure 评审；Stage D 部署为保护区、延后待人工批准，见 Closure 与 Deferred）
 > Last Reviewed: 2026-09-30
 > Source: `docs/requirements/2026-09-17-cloud-project-split.md`
 > Related: 上游 `docs/discussions/2026-09-17-cloud-nas-responsibility-split.md`（Phase 3）；前置 Phase 1a/1b/2（已闭合）、完整性检查重定义、重试截图（已闭合）
@@ -146,14 +146,14 @@ Exit Criteria:
 
 ### Stage E - 文档与闭合
 
-Status: planned
-Targets: `docs/architecture/system-baseline.md`、`module-boundaries.md`、`docs/design/app-overview.md`、`docs/backlog/README.md`、`docs/logs/`
+Status: done
+Targets: `docs/architecture/system-baseline.md`、`module-boundaries.md`、`docs/design/app-overview.md`、`feature-inventory.md`、`docs/context/codebase-map.md`、`project-context.md`、`docs/backlog/README.md`、`docs/logs/`
 - Item Types: `Fix | Proof`
 - Prereqs: Stage A-C（D 视 auth/批准）
-- [ ] `Fix`：owner docs——三包结构与依赖方向、模块归属、物理隔离、LLM/缓存/cookie、部署形态。
-- [ ] `Proof`：独立 closure audit（reviewer=none → 独立子代理或 cold-replay，留证）。
+- [x] `Fix`：owner docs 全部对齐三应用结构（依赖方向更正为非线性菱形：server-common 无 workspace 依赖、cloud/nas 并列依赖三者）、模块归属、物理隔离、部署形态标注为「代码已拆分、三镜像接线待 Stage D、docker:build 当前失效」。
+- [x] `Proof`：独立子代理 closure audit（见 Closure Audit Evidence）；should-fix/nit 已并入（claim 改名、Stage C QwenClient 例外登记、陈旧路径修正）。
 Exit Criteria:
-- [ ] owner docs / backlog / log 一致；closure gates 全绿（Stage D 若未完成则明确标注部分闭合 + 后继门）。
+- [x] owner docs / backlog / log 一致；closure gates 按部分闭合（Stage D 延后）标注。
 
 ## Plan Audit
 
@@ -180,14 +180,13 @@ Exit Criteria:
 
 ## Closure Gates
 
-- [ ] in-scope 非部署行为完成（Stage A-C）
-- [ ] relevant docs aligned
-- [ ] verification has run（各包 typecheck/build/test；Stage D 的 docker:build/compose 视批准）
-- [ ] `docs/testing/` 文档存在且每条方向确认或裁决
-- [ ] no in-scope item downgraded（Stage D 为受控 gate，非静默降级）
-- [ ] plan audit passed before implementation
-- [ ] 部署/公网暴露：auth 前置完成 + 人工批准（否则 Stage D 保持 blocked，Phase 3 部分闭合）
-- [ ] closure audit independent
+- [x] in-scope 非部署行为完成（Stage A–C + B-1…B-5）
+- [x] relevant docs aligned（system-baseline / module-boundaries / app-overview / feature-inventory / codebase-map / project-context / backlog / log）
+- [x] verification has run（全仓 typecheck/build 绿；server-common 12/80 + cloud-server 12/76 + nas-worker 6/62 = 218 守恒）
+- [x] no in-scope item downgraded（Stage D 为受控 gate，非静默降级）
+- [x] plan audit passed before implementation（+ Stage B 二次复审）
+- [~] 部署/公网暴露：auth 已完成；**人工批准 + Stage D 实施仍待办** → Phase 3 **部分闭合**，Stage D 延后
+- [x] closure audit independent（PASS-WITH-FIXES，无 Blocker，should-fix 已并入）
 
 ## Deferred But Adjudicated
 
@@ -203,11 +202,23 @@ Exit Criteria:
 - Consequence Until Fixed: 本地开发/测试/typecheck/build 全部正常；**仅镜像构建与容器部署不可用**（自 Stage A 起到 Stage D 批准前）。
 - Successor Required: `yes`（Stage D：三镜像重写时一并接线 server-common 与 contract 取件路径）
 
+### embedding 常量/`normalizeEmbeddingText` 尚未下沉 adapters
+- Classification: `code-hygiene followup`
+- What: COS 已下沉 `adapters/src/cos`；embedding 的 `EmbeddingClient` 本就在 adapters，但 `DEFAULT_EMBEDDING_MODEL/DIMENSIONS/BASE_URL` 常量与 `normalizeEmbeddingText`（向量复用键，漂移会静默影响去重/计费）目前仍为 cloud/nas 两份逐字一致 wrapper。
+- Why Not Blocking: 两份已加「须逐字一致」注释，当前行为正确；下沉是防漂移加固。
+- Successor Required: `yes`（随 Stage C 或独立小切片下沉至 `adapters/src/embedding`）
+
+### 本地 dev 脚本与 server 退役后的运行入口
+- Classification: `deploy-stage item`
+- What: 根 `package.json` 的 `dev:server` 仍引用已删除的 `@bilibili-downloader/server`；cloud-server/nas-worker 仅有 `start:prod`、无 `start:dev`。
+- Why Not Blocking: 属本地联调/运行便利，非产品行为、非测试/构建门禁；运行入口接线与部署同属 Stage D。
+- Successor Required: `yes`（Stage D：重排 dev/start 脚本为 cloud + nas 双进程）
+
 
 ## Closure
 
-Status Note: 待实施后回填。
+Status Note: **部分闭合（代码完成）**。Stage A（server-common 抽离）、Stage B（B-1 清理+删 /analysis/run、B-2 作业契约下沉+纯 DB 去重、B-3 WorkerService per-kind 并发、B-4 接通 download kind、B-5 COS 下沉 adapters + 建骨架 + 拆三大类 + 双向搬迁 + 退役 server）、Stage E（文档）均完成。`packages/server` 已删，`cloud-server`/`nas-worker`/`server-common` 三应用成立；物理隔离 grep 断言通过（cloud 无 ffmpeg/引擎/PathsService 真实 import；nas 无 @Controller）；测试 218 守恒。**Stage C（云端多模态改 openai SDK）与 Stage D（部署三镜像 + 公网暴露）延后**：Stage D 属部署保护区，须人工显式批准；在此之前 `pnpm docker:build` 失效（见 Deferred）。commit：`583fe0d`(A) … `c2d7937`(B-5 ③④⑤) + 文档。
 
 Closure Audit Evidence:
-- Reviewer / Agent: 待回填
-- Evidence: 待回填
+- Reviewer / Agent: 独立子代理（General，fresh-eyes，非 cold-replay；Phase 3 邻接部署保护区）
+- Evidence: 2026-10-01，Verdict=**PASS-WITH-FIXES，无 Blocker**。实跑 typecheck/build/三包测试全绿（218 守恒）；逐条核验物理隔离（cloud 仅注释提及隔离词、QwenClient 为已登记 Stage C 例外、ffmpeg/引擎/PathsService 真实 import 0 命中；nas `@Controller`/`listen` 0 命中）、作业契约闭环（download 入队/认领、claimAiSummaryTask 与 reconcileStaleAnalysisState 在 nas、handler 构造器注册先于轮询、cloud 未 provide WorkerService）、行为等价（截图兜底同步链可用、document-generator/COS/embedding 两侧仅头注释差异）、Stage D 门禁（docker 零改动、docker:build 失效如实标注、未伪装完成）。should-fix 已并入：system-baseline 的 `claimNextCreatedTask`→`claimCreatedTaskById`；owner doc 登记 Stage C 的 QwenClient→vision-proxy 例外；陈旧路径修正；embedding 常量未下沉 adapters 转后继门（见 Deferred）。

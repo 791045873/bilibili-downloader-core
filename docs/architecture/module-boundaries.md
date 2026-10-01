@@ -43,7 +43,7 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 - Allowed dependencies: `packages/core/`, `packages/adapters/`, `packages/server-common/`
 - Forbidden dependencies: `packages/frontend/`, `packages/nas-worker/`
 - Owner docs: `docs/design/app-overview.md`
-- 物理隔离: **不含** ffmpeg / 分析引擎 / vision-proxy 客户端 / PathsService / 媒体路径 join / SMTP 出站；B站 cookie/cache 目录经 `src/config/bili-cache.ts` env 配置。
+- 物理隔离: **不含** ffmpeg / 分析执行引擎 / PathsService / 媒体路径 join / SMTP 出站（唯一例外：chat-RAG 的 `QwenClient` 经 HTTP 连 `QWEN_VISION_PROXY_URL` 调多模态，见下方依赖图，属 Stage C 待换 openai SDK 的登记例外）；B站 cookie/cache 目录经 `src/config/bili-cache.ts` env 配置。
 - Logging ownership: cloud-server 负责对外请求的高语义日志与错误语义（经 server-common 日志实现）。
 - Async job boundary（生产者侧）：触发方（controller / 分析编排生产者）只负责入队 `worker_job`，不直接调用执行服务；`worker-controller` 仅只读查询，不 provide `WorkerService`。并发/去重由 `worker_job.dedup_key` 的 active-unique 索引在库层强制。
 

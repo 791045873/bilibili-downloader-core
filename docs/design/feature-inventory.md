@@ -11,7 +11,7 @@ Track the stable feature map for the application.
 | 单视频下载（Core） | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | MVP 核心能力，支持 BV/AV/URL 输入 |
 | 资源解析（B站 API） | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | 视频详情、播放流信息获取 |
 | FFmpeg 音视频合并 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | 分离下载后合并为 MP4 |
-| Web 前端 | done | `docs/design/app-overview.md` | `docs/requirements/mvp.md` | Vue 3 SPA，视频输入 + 下载列表 + 设置 |
+| Web 前端 | done | `docs/design/app-overview.md` | `docs/requirements/mvp.md` | React 19 SPA，视频输入 + 下载列表 + 设置 |
 | Server 后端 API | done | `docs/design/app-overview.md` | `docs/requirements/mvp.md` | NestJS + PostgreSQL（Prisma 8），任务管理；自 Phase 3 拆分为 cloud-server（对外 HTTP）/ nas-worker（作业执行）/ server-common（共享内核） |
 | Docker 容器化部署 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | compose 双容器（server + vision-proxy），NAS 挂载共享 volume；**三镜像接线待 Stage D**（见下方云端/NAS 拆分行） |
 | HTTP 内置下载器 | done | `docs/architecture/system-baseline.md` | `docs/requirements/mvp.md` | 支持重试和基础进度 |
