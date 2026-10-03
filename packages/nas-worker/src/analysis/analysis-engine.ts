@@ -11,6 +11,7 @@
 import { mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { Logger } from "@nestjs/common";
 import {
   parseSrtFile,
@@ -31,6 +32,18 @@ import { BUILTIN_AI_PROMPT_CONTENT } from "@bilibili-downloader/server-common";
 
 function formatSubtitleEntry(entry: SrtEntry): string {
   return `[${entry.index}] ${entry.text}`;
+}
+
+/**
+ * 本地文件路径转为合法 file:// URI 供多模态 url 字段使用。
+ * 直接下传裸路径（尤其 Windows 反斜杠路径）会被下游 httpx 当作 netloc 解析，
+ * 触发 "contains invalid characters under NFKC normalization"。已是 http(s)/file URL 则原样返回。
+ */
+export function toMediaUrl(pathOrUrl: string): string {
+  if (/^(?:https?|file):\/\//i.test(pathOrUrl)) {
+    return pathOrUrl;
+  }
+  return pathToFileURL(pathOrUrl).href;
 }
 
 export interface AnalysisInput {
@@ -169,7 +182,7 @@ export class AnalysisEngine {
     let analysis: SubtitleAnalysis;
     try {
       const userContent: MultimodalContent[] = [
-        { type: "video_url", video_url: { url: input.videoPath } },
+        { type: "video_url", video_url: { url: toMediaUrl(input.videoPath) } },
       ];
       if (fullSubtitleText.length > 0) {
         userContent.push({ type: "text", text: fullSubtitleText });
