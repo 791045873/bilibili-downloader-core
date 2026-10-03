@@ -1,0 +1,68 @@
+# 两机分布式部署 —— NAS 侧（nas-worker + 其本地 vision-proxy）。
+# 与 docker-compose.cloud.yml 配套：两边连同一云 PostgreSQL（DATABASE_URL / WORKER_DATABASE_URL）。
+# 用法（在 NAS 上，仓库根已 clone）：
+#   pnpm docker:nas:up          # = node compose.mjs -f docker-compose.nas.yml up -d
+#   pnpm docker:nas:config / :logs / :down
+# 次序：务必先起云服务器侧（cloud-server 跑 prisma db init 建库）；本侧不建库，
+#   启动早于 schema 就绪时靠 restart: unless-stopped + 应用内 DB 哨兵自动重试直到可用。
+# vision-proxy 在本侧读 NAS 本地媒体做视频分析，故挂载媒体卷。
+name: bilibili-downloader-nas
+
+services:
+  vision-proxy:
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: packages/docker/Dockerfile.vision-proxy
+    image: bilibili-downloader:vision-proxy-${VISION_PROXY_VERSION:?未设置 VISION_PROXY_VERSION：请先运行任意 pnpm docker:* 命令同步版本，或设置 VISION_PROXY_VERSION 环境变量}
+    restart: unless-stopped
+    environment:
+      QWEN_VISION_PROXY_MAX_BODY_BYTES: ${QWEN_VISION_PROXY_MAX_BODY_BYTES:-16777216}
+      QWEN_VISION_PROXY_MAX_CONCURRENCY: ${QWEN_VISION_PROXY_MAX_CONCURRENCY:-2}
+      QWEN_VISION_PROXY_SOCKET_TIMEOUT: ${QWEN_VISION_PROXY_SOCKET_TIMEOUT:-120}
+      LOG_DIR: /download/logs
+      LOG_MAX_FILES: ${LOG_MAX_FILES:-7}
+    volumes:
+      - "${DOWNLOAD_HOST_PATH:-${HOME:-$USERPROFILE}/Downloads/bilibili_download}:/download"
+
+  # 作业消费与执行（下载/分析/截图），含 ffmpeg。无对外 HTTP、不建库、挂载媒体卷。
+  nas-worker:
+    platform: linux/amd64
+    depends_on:
+      vision-proxy:
+        condition: service_healthy
+    build:
+      context: ../..
+      dockerfile: packages/docker/Dockerfile.nas-worker
+    image: bilibili-downloader:nas-worker-${NAS_WORKER_VERSION:?未设置 NAS_WORKER_VERSION：请先运行任意 pnpm docker:* 命令同步版本，或设置 NAS_WORKER_VERSION 环境变量}
+    restart: unless-stopped
+    environment:
+      # 最小权限角色：ops 配 WORKER_DATABASE_URL 指向受限角色；缺省回退特权 DATABASE_URL。
+      DATABASE_URL: ${WORKER_DATABASE_URL:-${DATABASE_URL:?未设置 DATABASE_URL：请配置云端 PostgreSQL 连接串（见 packages/docker/.env.example）}}
+      OUTPUT_DIR: /download
+      LOG_DIR: /download/logs
+      LOG_MAX_FILES: ${LOG_MAX_FILES:-7}
+      QWEN_VISION_PROXY_URL: ${QWEN_VISION_PROXY_URL:-http://vision-proxy:8765/v1/chat/completions}
+      QWEN_VISION_PROXY_TIMEOUT_MS: ${QWEN_VISION_PROXY_TIMEOUT_MS:-}
+      # PLACEHOLDER_NAS_ENV
+      MAX_CONCURRENT_LLM_CALLS: ${MAX_CONCURRENT_LLM_CALLS:-2}
+      MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-10}
+      WORKER_MAX_CONCURRENT: ${WORKER_MAX_CONCURRENT:-}
+      WORKER_MAX_CONCURRENT_DOWNLOAD: ${WORKER_MAX_CONCURRENT_DOWNLOAD:-}
+      WORKER_MAX_CONCURRENT_ANALYZE: ${WORKER_MAX_CONCURRENT_ANALYZE:-}
+      TENCENT_COS_SECRET_ID: ${TENCENT_COS_SECRET_ID:-}
+      TENCENT_COS_SECRET_KEY: ${TENCENT_COS_SECRET_KEY:-}
+      TENCENT_COS_REGION: ${TENCENT_COS_REGION:-}
+      TENCENT_COS_BUCKET: ${TENCENT_COS_BUCKET:-}
+      TENCENT_COS_PUBLIC_URL_PREFIX: ${TENCENT_COS_PUBLIC_URL_PREFIX:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-qwen3.7-text-embedding}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      NOTIFICATION_EMAIL: ${NOTIFICATION_EMAIL:-}
+    volumes:
+      - "${DOWNLOAD_HOST_PATH:-${HOME:-$USERPROFILE}/Downloads/bilibili_download}:/download"

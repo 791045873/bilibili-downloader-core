@@ -15,6 +15,14 @@
     "docker:run": "node compose.mjs up -d",
     "docker:down": "node compose.mjs down",
     "docker:logs": "node compose.mjs logs -f --no-log-prefix",
-    "docker:config": "node compose.mjs config"
+    "docker:config": "node compose.mjs config",
+    "docker:cloud:up": "node compose.mjs -f docker-compose.cloud.yml up -d",
+    "docker:cloud:down": "node compose.mjs -f docker-compose.cloud.yml down",
+    "docker:cloud:logs": "node compose.mjs -f docker-compose.cloud.yml logs -f --no-log-prefix",
+    "docker:cloud:config": "node compose.mjs -f docker-compose.cloud.yml config",
+    "docker:nas:up": "node compose.mjs -f docker-compose.nas.yml up -d",
+    "docker:nas:down": "node compose.mjs -f docker-compose.nas.yml down",
+    "docker:nas:logs": "node compose.mjs -f docker-compose.nas.yml logs -f --no-log-prefix",
+    "docker:nas:config": "node compose.mjs -f docker-compose.nas.yml config"
   }
 }

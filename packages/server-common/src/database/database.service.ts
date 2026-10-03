@@ -1,6 +1,7 @@
 import {
   Injectable,
   Logger,
+  Optional,
   OnApplicationShutdown,
   OnModuleInit,
 } from "@nestjs/common";
@@ -209,7 +210,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
    * `downloadRoot` 只用于写入侧把绝对路径规范化为相对锚点；不传则与 `PathsService.DOWNLOAD_ROOT`
    * 同源、同为 getter 语义（每次求值读 env），以保持既有行为。
    */
-  constructor(prisma?: PrismaService, downloadRoot?: string) {
+  constructor(prisma?: PrismaService, @Optional() downloadRoot?: string) {
     this.injectedDownloadRoot = downloadRoot;
 
     const databaseUrl = process.env.DATABASE_URL;

@@ -1,0 +1,80 @@
+# 两机分布式部署 —— 云服务器侧（cloud-server + 其本地 vision-proxy）。
+# 与 docker-compose.nas.yml 配套：两边连同一云 PostgreSQL（DATABASE_URL）。
+# 用法（在云服务器上，仓库根已 clone）：
+#   pnpm docker:cloud:up        # = node compose.mjs -f docker-compose.cloud.yml up -d
+#   pnpm docker:cloud:config / :logs / :down
+# 镜像可在本机构建，或 pnpm docker:save 后在本机 docker load 同 tag。
+# 启动次序：云服务器先起（本文件内 cloud-server 跑 prisma db init 建库），再起 NAS 侧。
+name: bilibili-downloader-cloud
+
+services:
+  # 云端问答图片均为公网 URL（COS），此代理仅转发至 DashScope、不读本地媒体，故无媒体卷。
+  # 如不想在云端跑代理：把 cloud-server 的 QWEN_VISION_PROXY_URL 指向一个 DashScope
+  # 兼容端点，并删除本 service 及 cloud-server 的 depends_on。
+  vision-proxy:
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: packages/docker/Dockerfile.vision-proxy
+    image: bilibili-downloader:vision-proxy-${VISION_PROXY_VERSION:?未设置 VISION_PROXY_VERSION：请先运行任意 pnpm docker:* 命令同步版本，或设置 VISION_PROXY_VERSION 环境变量}
+    restart: unless-stopped
+    environment:
+      QWEN_VISION_PROXY_MAX_BODY_BYTES: ${QWEN_VISION_PROXY_MAX_BODY_BYTES:-16777216}
+      QWEN_VISION_PROXY_MAX_CONCURRENCY: ${QWEN_VISION_PROXY_MAX_CONCURRENCY:-2}
+      QWEN_VISION_PROXY_SOCKET_TIMEOUT: ${QWEN_VISION_PROXY_SOCKET_TIMEOUT:-120}
+      LOG_DIR: /download/logs
+      LOG_MAX_FILES: ${LOG_MAX_FILES:-7}
+    volumes:
+      - "cloud-proxy-logs:/download"
+
+  # 对外 HTTP + 前端静态 + 作业生产 + schema 属主（db init）。无媒体卷、无 ffmpeg/Python。
+  cloud-server:
+    platform: linux/amd64
+    depends_on:
+      vision-proxy:
+        condition: service_healthy
+    build:
+      context: ../..
+      dockerfile: packages/docker/Dockerfile.cloud-server
+    image: bilibili-downloader:cloud-server-${CLOUD_SERVER_VERSION:?未设置 CLOUD_SERVER_VERSION：请先运行任意 pnpm docker:* 命令同步版本，或设置 CLOUD_SERVER_VERSION 环境变量}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      LOG_DIR: /app/logs
+      LOG_MAX_FILES: ${LOG_MAX_FILES:-7}
+      # 特权连接串：cloud-server 建表 + 幂等播种。
+      DATABASE_URL: ${DATABASE_URL:?未设置 DATABASE_URL：请配置云端 PostgreSQL 特权连接串（见 packages/docker/.env.example）}
+      # PLACEHOLDER_CLOUD_ENV
+      MAX_CONCURRENT_LLM_CALLS: ${MAX_CONCURRENT_LLM_CALLS:-2}
+      QWEN_VISION_PROXY_URL: ${QWEN_VISION_PROXY_URL:-http://vision-proxy:8765/v1/chat/completions}
+      QWEN_VISION_PROXY_TIMEOUT_MS: ${QWEN_VISION_PROXY_TIMEOUT_MS:-}
+      TENCENT_COS_SECRET_ID: ${TENCENT_COS_SECRET_ID:-}
+      TENCENT_COS_SECRET_KEY: ${TENCENT_COS_SECRET_KEY:-}
+      TENCENT_COS_REGION: ${TENCENT_COS_REGION:-}
+      TENCENT_COS_BUCKET: ${TENCENT_COS_BUCKET:-}
+      TENCENT_COS_PUBLIC_URL_PREFIX: ${TENCENT_COS_PUBLIC_URL_PREFIX:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-qwen3.7-text-embedding}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      CHAT_VISUAL_INPUT: ${CHAT_VISUAL_INPUT:-true}
+      CHAT_HIT_THRESHOLD: ${CHAT_HIT_THRESHOLD:-0.30}
+      CHAT_HISTORY_ROUNDS: ${CHAT_HISTORY_ROUNDS:-6}
+      CHAT_RETRIEVAL_K: ${CHAT_RETRIEVAL_K:-10}
+      PHOTO_MAX_EDGE: ${PHOTO_MAX_EDGE:-1600}
+      PHOTO_JPEG_QUALITY: ${PHOTO_JPEG_QUALITY:-80}
+      PHOTO_MAX_UPLOAD_MB: ${PHOTO_MAX_UPLOAD_MB:-10}
+      PHOTO_MAX_PER_MESSAGE: ${PHOTO_MAX_PER_MESSAGE:-3}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-168}
+      LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}
+      LOGIN_FAILURE_WINDOW_MINUTES: ${LOGIN_FAILURE_WINDOW_MINUTES:-15}
+      LOGIN_BLOCK_MINUTES: ${LOGIN_BLOCK_MINUTES:-15}
+    volumes:
+      - "cloud-logs:/app/logs"
+
+volumes:
+  cloud-logs: {}
+  cloud-proxy-logs: {}
