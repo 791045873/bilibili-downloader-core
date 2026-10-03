@@ -287,16 +287,16 @@ export class ChatService {
         "缺少 LLM 配置（llm.apiKey / llm.modelName），请先在设置页配置",
       );
     }
-    const visionProxyUrl = process.env.QWEN_VISION_PROXY_URL;
-    if (!visionProxyUrl) {
+    const openaiBaseUrl = process.env.QWEN_API_BASE;
+    if (!openaiBaseUrl) {
       throw new ServiceUnavailableException(
-        "缺少 QWEN_VISION_PROXY_URL 配置，无法调用多模态模型",
+        "缺少 QWEN_API_BASE 配置，无法调用多模态模型",
       );
     }
     const config: LlmConfig = {
       apiKey,
       modelName,
-      visionProxyUrl,
+      openaiBaseUrl,
       visionProxyTimeoutMs: parseVisionProxyTimeoutMs(
         process.env.QWEN_VISION_PROXY_TIMEOUT_MS,
       ),

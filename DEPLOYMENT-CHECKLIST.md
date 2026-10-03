@@ -20,7 +20,7 @@
 - [ ] `ADMIN_INITIAL_PASSWORD` = 初始 admin 口令（**不设则全 API 401、无人可登录、无法建号**；播种后建议从环境移除）。
 - [ ] `SESSION_COOKIE_SECURE=true`（HTTPS 暴露时；纯 HTTP 置 true 会导致登录态立刻丢失）。
 - [ ] COS 五项、`EMBEDDING_*`、SMTP/`NOTIFICATION_EMAIL`（需邮件通知时）、`DOWNLOAD_HOST_PATH`（NAS 媒体宿主目录）。
-- [ ] 云端多模态模型端点 `CLOUD_LLM_BASE_URL`（默认 DashScope 北京 compatible-mode；国际站改 `dashscope-intl`）。cloud-server 经 openai SDK 直连，**不依赖 vision-proxy**。
+- [ ] 云端多模态模型端点 `QWEN_API_BASE`（OpenAI SDK baseURL，基址无需 `/chat/completions`；默认 DashScope 北京 compatible-mode，国际站改 `dashscope-intl`）。cloud-server 经 openai SDK 直连，**不依赖 vision-proxy**。
 - [ ] `QWEN_VISION_PROXY_URL`（**仅 NAS 侧**：默认走 compose 内 `vision-proxy:8765`；跨主机部署再改为可达地址）。
 
 ## D. 启动与网络
@@ -35,7 +35,7 @@
 - [ ] NAS：`pnpm docker:nas:up`（`docker-compose.nas.yml`：nas-worker + 本地 vision-proxy + 媒体卷；无对外端口）。
 - [ ] **先起云侧**（cloud-server `db init` 建库）再起 NAS 侧；NAS 侧不建库，启动早于 schema 就绪时靠 `restart` + 应用内哨兵重试。
 - [ ] 两侧 `.env` 都能连到同一云 RDS，且各自出口 IP 在 RDS 白名单内；NAS 侧建议配 `WORKER_DATABASE_URL`（受限角色）。
-- [ ] 云侧多模态经 `CLOUD_LLM_BASE_URL` 直连 DashScope（无需 vision-proxy）；NAS 侧本地 vision-proxy，`QWEN_VISION_PROXY_URL` 用 compose 内默认服务名即可（无需跨主机互连）。
+- [ ] 云侧多模态经 `QWEN_API_BASE` 直连 DashScope（无需 vision-proxy）；NAS 侧本地 vision-proxy，`QWEN_VISION_PROXY_URL` 用 compose 内默认服务名即可（无需跨主机互连）。
 
 ## E. 上线后人工验证（运行级，手动执行）
 - [ ] cloud-server 容器日志见 `prisma db init` 成功 + HTTP 监听 3000；`/` 返回 200（否则 nas-worker 的 `depends_on: cloud-server healthy` 不满足、不会启动）。

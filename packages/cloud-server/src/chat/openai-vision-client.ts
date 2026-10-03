@@ -1,12 +1,12 @@
 /**
- * 云端多模态客户端（Stage C）：用 OpenAI 官方 Node SDK 连接所配置的
- * `QWEN_VISION_PROXY_URL`——该值是一个 OpenAI 兼容端点 URL，云端默认直连
- * DashScope compatible-mode（`https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`），
+ * 云端多模态客户端（Stage C）：用 OpenAI 官方 Node SDK 调多模态模型。
+ * baseURL 直接取自 env `QWEN_API_BASE`（OpenAI 兼容端点，默认直连 DashScope
+ * compatible-mode `https://dashscope.aliyuncs.com/compatible-mode/v1`），
  * 无需 Python vision-proxy（代理仅 NAS 用于读取本地视频文件）。
  *
- * baseURL = 去掉 URL 结尾的 `/chat/completions` 后缀；请求体与返回解析保持
- * DashScope 风格（含 `enable_thinking` 透传、`response_format` 透传、
- * `choices[0].message.content` → JSON.parse）。
+ * `deriveOpenAiBaseUrl` 仅作防御性归一：容忍误带 `/chat/completions` 后缀或结尾斜杠。
+ * 请求体与返回解析保持 DashScope 风格（含 `enable_thinking` 透传、`response_format`
+ * 透传、`choices[0].message.content` → JSON.parse）。
  */
 
 import OpenAI from "openai";
@@ -77,12 +77,11 @@ class AsyncLimiter {
 const llmConcurrencyLimiter = new AsyncLimiter(MAX_CONCURRENT_LLM_CALLS);
 
 /**
- * 从完整的 vision proxy URL 推导 OpenAI SDK 的 baseURL。
+ * 防御性归一 `QWEN_API_BASE` 为 OpenAI SDK 的 baseURL。
  *
- * 代理 OpenAI 兼容端点为 `{base}/chat/completions`，而 `QWEN_VISION_PROXY_URL`
- * 配置的是完整端点（compose 默认 `http://vision-proxy:8765/v1/chat/completions`），
- * 故去掉结尾 `/chat/completions` 得到 baseURL；SDK 调用时会再拼回该后缀，最终命中
- * 同一端点（端点/配置不变）。若配置值未以该后缀结尾，则原样作为 baseURL。
+ * SDK 以 `{baseURL}/chat/completions` 发请求，故 baseURL 应为端点基址
+ * （如 `https://dashscope.aliyuncs.com/compatible-mode/v1`）。若配置值误带结尾
+ * `/chat/completions` 或结尾斜杠则在此剥除；否则原样返回。
  */
 export function deriveOpenAiBaseUrl(fullUrl: string): string {
   const trimmed = fullUrl.replace(/\/+$/, "");
@@ -122,15 +121,15 @@ export class OpenAiVisionClient {
   private readonly model: string;
 
   constructor(config: LlmConfig, fetchImpl?: typeof fetch) {
-    if (!config.visionProxyUrl) {
+    if (!config.openaiBaseUrl) {
       throw new Error(
-        "LLM 多模态调用需要配置 QWEN_VISION_PROXY_URL（OpenAI 兼容端点 URL，云端默认 DashScope compatible-mode）",
+        "LLM 多模态调用需要配置 QWEN_API_BASE（OpenAI 兼容端点 baseURL，云端默认 DashScope compatible-mode）",
       );
     }
     this.model = config.modelName;
     this.client = new OpenAI({
       apiKey: config.apiKey,
-      baseURL: deriveOpenAiBaseUrl(config.visionProxyUrl),
+      baseURL: deriveOpenAiBaseUrl(config.openaiBaseUrl),
       timeout: config.visionProxyTimeoutMs ?? VISION_PROXY_DEFAULT_TIMEOUT_MS,
       maxRetries: VISION_PROXY_MAX_RETRIES,
       ...(fetchImpl ? { fetch: fetchImpl } : {}),
@@ -138,7 +137,7 @@ export class OpenAiVisionClient {
   }
 
   usesVisionProxy(): boolean {
-    return true;
+    return false;
   }
 
   async multimodalChat(

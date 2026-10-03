@@ -26,7 +26,7 @@ describe("deriveOpenAiBaseUrl", () => {
 const BASE_CONFIG: LlmConfig = {
   apiKey: "sk-test-key",
   modelName: "qwen-vl-max",
-  visionProxyUrl: "http://vision-proxy:8765/v1/chat/completions",
+  openaiBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 };
 
 function okCompletion(content: string): Response {
@@ -67,7 +67,9 @@ describe("OpenAiVisionClient.multimodalChat", () => {
       messages: [{ role: "user", content: "原始问题" }],
     });
 
-    expect(capturedUrl).toBe("http://vision-proxy:8765/v1/chat/completions");
+    expect(capturedUrl).toBe(
+      "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+    );
     expect(capturedAuth).toBe("Bearer sk-test-key");
     expect(capturedBody.model).toBe("qwen-vl-max");
     expect(capturedBody.enable_thinking).toBe(false);
@@ -106,9 +108,9 @@ describe("OpenAiVisionClient.multimodalChat", () => {
     ).rejects.toThrow("Base64");
   });
 
-  it("未配置 visionProxyUrl 时构造即抛错", () => {
+  it("未配置 QWEN_API_BASE 时构造即抛错", () => {
     expect(
       () => new OpenAiVisionClient({ apiKey: "k", modelName: "m" }),
-    ).toThrow("QWEN_VISION_PROXY_URL");
+    ).toThrow("QWEN_API_BASE");
   });
 });

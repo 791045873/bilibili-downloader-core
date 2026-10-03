@@ -89,4 +89,14 @@
 - 遗留（非本计划范围）：`README.md` 仍描述拆分前两镜像布局（pre-existing，建 backlog 单独刷新，不阻断本次闭合）。
 - 运行期真机冒烟（DashScope compatible-mode 对所配 Qwen-VL 的 `enable_thinking`/`response_format` 顶层接受性）仍为上线前人工动作，未执行。
 
+## Amendment（2026-10-03，同日迭代）
+
+用户指示："OpenAI 的 baseURL 使用 .env 中的 `QWEN_API_BASE` 即可"。据此将上文的 `CLOUD_LLM_BASE_URL`→容器 `QWEN_VISION_PROXY_URL`（去尾派生 baseURL）间接方案，简化为**云端读独立 env `QWEN_API_BASE` 直接作为 OpenAI SDK baseURL**：
+
+- `adapters` `LlmConfig` 加 `openaiBaseUrl?`（仅 cloud 用，NAS QwenClient 不读）；`chat.service.ts` 读 `process.env.QWEN_API_BASE` → `openaiBaseUrl`；`openai-vision-client.ts` 用 `openaiBaseUrl` 作 baseURL（`deriveOpenAiBaseUrl` 降级为防御性归一，容忍误带 `/chat/completions`）。
+- compose（cloud.yml + 单机）cloud-server 环境变量由 `QWEN_VISION_PROXY_URL/CLOUD_LLM_BASE_URL` 改为 `QWEN_API_BASE`（基址，无 `/chat/completions`）。`CLOUD_LLM_BASE_URL` 废弃。
+- 效果：云端（`QWEN_API_BASE`）与 NAS（`QWEN_VISION_PROXY_URL`）**端到端完全不同变量名**，彻底消除共享覆盖 footgun（强于原 compose 级解耦）。
+- 需求偏离说明：需求 2026-09-17 原写"云端经 `QWEN_VISION_PROXY_URL`"，本次经用户裁决改为 `QWEN_API_BASE`（语义更清晰）。
+- 验证：cloud-server typecheck + build + `openai-vision-client.test.ts`（已改用 `openaiBaseUrl`/`QWEN_API_BASE`）+ 两份 compose config；独立 closure audit。详见 `docs/logs/2026-10-03-cloud-qwen-api-base.md`。
+
 

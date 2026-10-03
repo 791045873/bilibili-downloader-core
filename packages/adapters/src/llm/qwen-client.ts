@@ -78,6 +78,8 @@ export interface LlmConfig {
   modelName: string;
   visionProxyUrl?: string;
   visionProxyTimeoutMs?: number;
+  /** 云端 OpenAI 兼容端点 baseURL（env QWEN_API_BASE）；仅 cloud OpenAiVisionClient 使用，NAS QwenClient 不读 */
+  openaiBaseUrl?: string;
 }
 
 /** 多模态消息内容块（文本、图片或视频） */
