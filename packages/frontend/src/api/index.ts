@@ -417,6 +417,14 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
   return request("/auth/user");
 }
 
+/** 手动粘贴 B 站 cookie 直接登录（写入 app_settings 并刷新 SDK 客户端） */
+export async function setBiliCookie(cookie: string): Promise<{ message: string }> {
+  return request("/auth/cookie", {
+    method: "POST",
+    body: JSON.stringify({ cookie }),
+  });
+}
+
 // ==================== RAG 穿搭问答 ====================
 
 /** 不预设 Content-Type 的请求（FormData 需浏览器自行带 boundary）；401 处理与 request 一致 */

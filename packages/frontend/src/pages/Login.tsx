@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { Button, QRCode } from "antd";
+import { App, Button, Divider, Input, QRCode } from "antd";
 import { statusText, useAuthStore } from "../stores/auth";
 
 const statusColor: Record<string, string> = {
@@ -17,7 +17,11 @@ export function Component() {
   const loginStatus = useAuthStore((s) => s.loginStatus);
   const startLogin = useAuthStore((s) => s.startLogin);
   const stopPolling = useAuthStore((s) => s.stopPolling);
+  const loginWithCookie = useAuthStore((s) => s.loginWithCookie);
+  const { message } = App.useApp();
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [cookieInput, setCookieInput] = useState("");
+  const [cookieSubmitting, setCookieSubmitting] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -30,6 +34,24 @@ export function Component() {
   const startSession = () => {
     setSessionStarted(true);
     void startLogin();
+  };
+
+  const submitCookie = async () => {
+    const cookie = cookieInput.trim();
+    if (!cookie) {
+      message.warning("请先粘贴 Cookie");
+      return;
+    }
+    setCookieSubmitting(true);
+    try {
+      await loginWithCookie(cookie);
+      message.success("Cookie 已应用");
+      setCookieInput("");
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "Cookie 应用失败");
+    } finally {
+      setCookieSubmitting(false);
+    }
   };
 
   return (
@@ -77,6 +99,31 @@ export function Component() {
             )}
           </div>
         )}
+
+        <Divider plain className="!my-6 !text-xs !text-zinc-400">
+          或 粘贴 Cookie 登录
+        </Divider>
+        <div className="space-y-2 text-left">
+          <Input.TextArea
+            value={cookieInput}
+            onChange={(e) => setCookieInput(e.target.value)}
+            placeholder="从浏览器复制 bilibili.com 的整串 Cookie，例如 SESSDATA=xxx; bili_jct=xxx; DedeUserID=xxx"
+            autoSize={{ minRows: 3, maxRows: 6 }}
+            disabled={cookieSubmitting}
+          />
+          <Button
+            type="primary"
+            block
+            loading={cookieSubmitting}
+            onClick={submitCookie}
+          >
+            使用此 Cookie 登录
+          </Button>
+          <p className="text-xs text-zinc-400">
+            Cookie 将保存到服务端配置并用于后续解析/下载；请仅粘贴你本人的 bilibili.com
+            Cookie。
+          </p>
+        </div>
 
         <Button className="mt-6" onClick={() => navigate("/")}>
           返回首页

@@ -16,6 +16,7 @@ interface AuthState {
   loginStatus: string;
   checkLogin: () => Promise<void>;
   startLogin: () => Promise<void>;
+  loginWithCookie: (cookie: string) => Promise<void>;
   closeQrCode: () => void;
   logout: () => void;
   startPolling: () => void;
@@ -51,6 +52,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (e) {
       console.error("获取登录二维码失败:", e);
     }
+  },
+
+  async loginWithCookie(cookie: string) {
+    // 失败（如 cookie 无效）抛出由调用方提示；成功后停轮询并刷新登录态
+    await api.setBiliCookie(cookie);
+    get().stopPolling();
+    await get().checkLogin();
   },
 
   startPolling() {
