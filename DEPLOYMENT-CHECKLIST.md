@@ -20,21 +20,22 @@
 - [ ] `ADMIN_INITIAL_PASSWORD` = 初始 admin 口令（**不设则全 API 401、无人可登录、无法建号**；播种后建议从环境移除）。
 - [ ] `SESSION_COOKIE_SECURE=true`（HTTPS 暴露时；纯 HTTP 置 true 会导致登录态立刻丢失）。
 - [ ] COS 五项、`EMBEDDING_*`、SMTP/`NOTIFICATION_EMAIL`（需邮件通知时）、`DOWNLOAD_HOST_PATH`（NAS 媒体宿主目录）。
-- [ ] `QWEN_VISION_PROXY_URL`（默认走 compose 内 `vision-proxy:8765`；跨主机部署再改为可达地址）。
+- [ ] 云端多模态模型端点 `CLOUD_LLM_BASE_URL`（默认 DashScope 北京 compatible-mode；国际站改 `dashscope-intl`）。cloud-server 经 openai SDK 直连，**不依赖 vision-proxy**。
+- [ ] `QWEN_VISION_PROXY_URL`（**仅 NAS 侧**：默认走 compose 内 `vision-proxy:8765`；跨主机部署再改为可达地址）。
 
 ## D. 启动与网络
-- [ ] `pnpm docker:run`（compose up -d）。启动顺序由 compose 保证：vision-proxy healthy → cloud-server（跑 `prisma db init` 建 schema）healthy → nas-worker。
+- [ ] `pnpm docker:run`（compose up -d）。启动顺序由 compose 保证：vision-proxy healthy → nas-worker；cloud-server 不再依赖 vision-proxy（多模态直连 DashScope），仅作为 schema 属主先跑 `prisma db init`。
 - [ ] 确认**仅 cloud-server:3000 对外发布**；nas-worker 与 vision-proxy 不映射宿主端口。
 - [ ] 公网暴露务必置于 **TLS / 反向代理** 之后（配 HTTPS，再回头确认 `SESSION_COOKIE_SECURE=true`）。
 - [ ] 反代传递真实客户端 IP（登录失败锁定按 IP 计；反代后 IP 粒度塌缩是 auth 已知遗留项，需正确处理 `X-Forwarded-For`）。
 
 ### D-bis. 两机分布式部署（cloud-server 上云服务器、nas-worker 上 NAS）
 > 单机本地验证用上面的 `pnpm docker:run`（三服务同机）。真正两机分开时改用按主机拆分的 compose：
-- [ ] 云服务器：`pnpm docker:cloud:up`（`docker-compose.cloud.yml`：cloud-server + 本地 vision-proxy；暴露 3000）。
+- [ ] 云服务器：`pnpm docker:cloud:up`（`docker-compose.cloud.yml`：仅 cloud-server，多模态直连 DashScope，无 vision-proxy；暴露 3000）。
 - [ ] NAS：`pnpm docker:nas:up`（`docker-compose.nas.yml`：nas-worker + 本地 vision-proxy + 媒体卷；无对外端口）。
 - [ ] **先起云侧**（cloud-server `db init` 建库）再起 NAS 侧；NAS 侧不建库，启动早于 schema 就绪时靠 `restart` + 应用内哨兵重试。
 - [ ] 两侧 `.env` 都能连到同一云 RDS，且各自出口 IP 在 RDS 白名单内；NAS 侧建议配 `WORKER_DATABASE_URL`（受限角色）。
-- [ ] 两侧各自本地 vision-proxy，`QWEN_VISION_PROXY_URL` 用 compose 内默认服务名即可（无需跨主机互连）。
+- [ ] 云侧多模态经 `CLOUD_LLM_BASE_URL` 直连 DashScope（无需 vision-proxy）；NAS 侧本地 vision-proxy，`QWEN_VISION_PROXY_URL` 用 compose 内默认服务名即可（无需跨主机互连）。
 
 ## E. 上线后人工验证（运行级，手动执行）
 - [ ] cloud-server 容器日志见 `prisma db init` 成功 + HTTP 监听 3000；`/` 返回 200（否则 nas-worker 的 `depends_on: cloud-server healthy` 不满足、不会启动）。

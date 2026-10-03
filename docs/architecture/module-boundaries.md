@@ -65,7 +65,7 @@ Define the main code ownership boundaries for `bilibili-downloader-core`.
 - Forbidden dependencies: 不依赖 `packages/core/`、`packages/cloud-server/`、`packages/nas-worker/`、`packages/server-common/`、`packages/adapters/` 等 Node 包；不通过代码导入 Node 侧实现。
 - Owner docs: `docs/architecture/2026-07-06-video-analysis-baseline.md`
 - 运行边界: 独立容器 `vision-proxy`（compose 网络内 `0.0.0.0:8765`，不发布宿主机端口）；宿主开发模式由 `scripts/start-vision-proxy.mjs` 经 `packages/vision-proxy/.venv` 拉起；开发模式密钥读 `packages/vision-proxy/.env`，容器模式密钥经 compose 注入。
-- 通信边界: 与调用方（分析执行在 nas-worker；chat 多模态在 cloud-server）之间仅经 HTTP 契约（`/v1/chat/completions`、`/healthz`），共享 `/download` 文件系统保证本地媒体可读（本地媒体读取由承载 PathsService 的 nas-worker 侧使用）。
+- 通信边界: 分析执行在 nas-worker，经 HTTP 契约（`/v1/chat/completions`、`/healthz`）调用本地 vision-proxy，并共享 `/download` 文件系统保证本地媒体可读（本地媒体读取由承载 PathsService 的 nas-worker 侧使用）。chat 多模态在 cloud-server，经 openai SDK 直连 DashScope compatible-mode，**不经 vision-proxy**。
 
 ### `packages/frontend/`
 
@@ -88,7 +88,7 @@ frontend ──(HTTP)──→ cloud-server
 cloud-server / nas-worker ──→ adapters ──→ core
 cloud-server / nas-worker ──→ server-common
 nas-worker ──(HTTP)──→ vision-proxy   # 分析执行读本地媒体
-cloud-server ──(HTTP)──→ vision-proxy  # chat 多模态
+cloud-server ──(HTTP)──→ DashScope compatible-mode  # chat 多模态直连（openai SDK，不经 vision-proxy）
 cloud-server ──(enqueue worker_job)──→ [DB] ──(consume)──→ nas-worker
 docker ──(build)──→ cloud-server + nas-worker + frontend | vision-proxy
 ```

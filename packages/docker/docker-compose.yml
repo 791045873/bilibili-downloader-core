@@ -18,11 +18,9 @@ services:
       - "${DOWNLOAD_HOST_PATH:-${HOME:-$USERPROFILE}/Downloads/bilibili_download}:/download"
 
   # 对外 HTTP + 前端静态 + 作业生产 + schema 属主（db init）。无媒体卷、无 ffmpeg/Python。
+  # 多模态直连 DashScope 兼容端点（CLOUD_LLM_BASE_URL），不依赖 vision-proxy。
   cloud-server:
     platform: linux/amd64
-    depends_on:
-      vision-proxy:
-        condition: service_healthy
     build:
       context: ../..
       dockerfile: packages/docker/Dockerfile.cloud-server
@@ -37,7 +35,9 @@ services:
       # 特权连接串：cloud-server 建表 + 幂等播种。
       DATABASE_URL: ${DATABASE_URL:?未设置 DATABASE_URL：请配置云端 PostgreSQL 特权连接串（见 packages/docker/.env.example）}
       MAX_CONCURRENT_LLM_CALLS: ${MAX_CONCURRENT_LLM_CALLS:-2}
-      QWEN_VISION_PROXY_URL: ${QWEN_VISION_PROXY_URL:-http://vision-proxy:8765/v1/chat/completions}
+      # 多模态模型端点：openai SDK 去尾 /chat/completions 作 baseURL，直连 DashScope 兼容端点。
+      # 独立变量 CLOUD_LLM_BASE_URL，避免被 NAS 用的全局 QWEN_VISION_PROXY_URL 覆盖。
+      QWEN_VISION_PROXY_URL: ${CLOUD_LLM_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions}
       QWEN_VISION_PROXY_TIMEOUT_MS: ${QWEN_VISION_PROXY_TIMEOUT_MS:-}
       TENCENT_COS_SECRET_ID: ${TENCENT_COS_SECRET_ID:-}
       TENCENT_COS_SECRET_KEY: ${TENCENT_COS_SECRET_KEY:-}

@@ -1,11 +1,11 @@
 /**
- * 云端多模态客户端（Stage C）：改用 OpenAI 官方 Node SDK 连接所配置的
- * `QWEN_VISION_PROXY_URL`（与 NAS 侧 QwenClient 走同一 Python 视觉代理）。
+ * 云端多模态客户端（Stage C）：用 OpenAI 官方 Node SDK 连接所配置的
+ * `QWEN_VISION_PROXY_URL`——该值是一个 OpenAI 兼容端点 URL，云端默认直连
+ * DashScope compatible-mode（`https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`），
+ * 无需 Python vision-proxy（代理仅 NAS 用于读取本地视频文件）。
  *
- * 仅更换调用库，不改端点 / 模型 / 配置：代理暴露 OpenAI 兼容的
- * `POST {base}/v1/chat/completions`，故 baseURL = 去掉 URL 结尾的
- * `/chat/completions` 后缀；请求体与返回解析与原 QwenClient 逐字段一致
- * （含 DashScope 专有的 `enable_thinking` 透传、`response_format` 透传、
+ * baseURL = 去掉 URL 结尾的 `/chat/completions` 后缀；请求体与返回解析保持
+ * DashScope 风格（含 `enable_thinking` 透传、`response_format` 透传、
  * `choices[0].message.content` → JSON.parse）。
  */
 
@@ -124,7 +124,7 @@ export class OpenAiVisionClient {
   constructor(config: LlmConfig, fetchImpl?: typeof fetch) {
     if (!config.visionProxyUrl) {
       throw new Error(
-        "LLM 多模态调用需要配置 QWEN_VISION_PROXY_URL（当前仅支持经 Python 视觉代理调用）",
+        "LLM 多模态调用需要配置 QWEN_VISION_PROXY_URL（OpenAI 兼容端点 URL，云端默认 DashScope compatible-mode）",
       );
     }
     this.model = config.modelName;
@@ -146,8 +146,8 @@ export class OpenAiVisionClient {
   ): Promise<MultimodalChatResult> {
     assertNoBase64MediaUrls(params);
 
-    // 请求体与原 QwenClient 逐字段一致：透传 messages / stream / enable_thinking /
-    // response_format，并补 model。非标准字段（enable_thinking、video_url）由 SDK 原样序列化。
+    // 请求体保持 DashScope 风格：透传 messages / stream / enable_thinking /
+    // response_format，并补 model。非标准字段（enable_thinking）由 SDK 原样序列化进 body。
     const body = { ...params, model: this.model };
 
     const completion = await llmConcurrencyLimiter.run(() =>
@@ -165,7 +165,7 @@ export class OpenAiVisionClient {
     ).choices?.[0]?.message?.content;
 
     if (!rawContent) {
-      throw new Error("LLM 多模态代理返回空响应");
+      throw new Error("LLM 多模态返回空响应");
     }
 
     return {
