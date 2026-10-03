@@ -16,3 +16,8 @@ packages/server/migrations/
 
 # 本地临时脚本/提交信息（勿入库）
 _tmp_*
+
+# 运行时产物（dev/本地跑生成，勿入库）
+.bili-api-cache/
+.cloud-cookies.json
+.cookies.json
