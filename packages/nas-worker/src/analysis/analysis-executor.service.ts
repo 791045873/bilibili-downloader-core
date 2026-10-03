@@ -166,13 +166,13 @@ export class AnalysisExecutorService {
    */
   private async resolvePromptId(
     task: TaskRecord,
-    explicit?: number,
+    explicit?: number | null,
   ): Promise<number | undefined> {
-    if (explicit !== undefined && (await this.db.getAiPromptById(explicit))) {
+    if (explicit != null && (await this.db.getAiPromptById(explicit))) {
       return explicit;
     }
     if (
-      task.promptId !== undefined &&
+      task.promptId != null &&
       (await this.db.getAiPromptById(task.promptId))
     ) {
       return task.promptId;
